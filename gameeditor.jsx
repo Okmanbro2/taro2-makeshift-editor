@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { createRoot } from 'react-dom/client';
 import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil } from 'lucide-react';
 
 const ENTITY_TABS = [
@@ -1928,3 +1929,6 @@ export default function GameContentEditor() {
 		</div>
 	);
 }
+
+const appRoot = document.getElementById('root');
+if (appRoot) createRoot(appRoot).render(<GameContentEditor />);
