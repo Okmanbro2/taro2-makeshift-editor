@@ -1,0 +1,1935 @@
+import React, { useState, useMemo, useRef } from 'react';
+import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil } from 'lucide-react';
+
+const ENTITY_TABS = [
+	{ key: 'unitTypes', label: 'Units', folderType: 'unit', root: 'units' },
+	{ key: 'itemTypes', label: 'Items', folderType: 'item', root: 'items' },
+	{ key: 'projectileTypes', label: 'Projectiles', folderType: 'projectile', root: 'projectiles' },
+];
+const REFERENCE_TABS = [
+	{ key: 'attributeTypes', label: 'Attributes' },
+	{ key: 'variables', label: 'Variables' },
+];
+const GROUP_TABS = [
+	{ key: 'unitTypeGroups', label: 'Unit Type Groups', dataType: 'unitTypeGroup', collection: 'unitTypes' },
+	{ key: 'itemTypeGroups', label: 'Item Type Groups', dataType: 'itemTypeGroup', collection: 'itemTypes' },
+];
+const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
+const TILE_PX = 64; // 1 tile = 64x64 in-game pixels, used as the reference scale for the body size preview
+
+function generateKey() {
+	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+	let out = '';
+	for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+	return out;
+}
+
+function deepClone(obj) {
+	return obj ? JSON.parse(JSON.stringify(obj)) : obj;
+}
+
+// Ensures every unit/item/projectile has a folders[] placement record (defaulting
+// to that tab's root if missing), and that the three root folder nodes exist.
+// This lets the rest of the app assume every entity is always "filed" somewhere,
+// instead of special-casing "this entity predates the folders feature."
+function normalizeFolders(parsed) {
+	if (!parsed.data.folders) parsed.data.folders = {};
+	const folders = parsed.data.folders;
+
+	for (const t of ENTITY_TABS) {
+		if (!folders[t.root]) {
+			folders[t.root] = { name: ROOT_NAMES[t.root], type: 'folder', closed: false };
+		}
+	}
+
+	for (const t of ENTITY_TABS) {
+		const map = parsed.data[t.key] || {};
+		for (const key of Object.keys(map)) {
+			if (!folders[key] || folders[key].type === 'folder') {
+				folders[key] = { type: t.folderType, parent: t.root, closed: false };
+			}
+		}
+	}
+
+	return parsed;
+}
+
+// Is `candidateId` the same as `folderId`, or nested somewhere inside it?
+// Used to stop a group from being moved into its own descendant.
+function isSelfOrDescendant(folders, folderId, candidateId) {
+	let cur = candidateId;
+	const seen = new Set();
+	while (cur != null) {
+		if (cur === folderId) return true;
+		if (seen.has(cur)) return false; // guard against any pre-existing cycle
+		seen.add(cur);
+		cur = folders[cur]?.parent;
+	}
+	return false;
+}
+
+// Same idea, but for the top-level scripts collection, where folder markers and
+// scripts live in the same flat dict and "top level" is represented by parent: null
+// rather than a named root id.
+function isSelfOrDescendantScript(scripts, folderId, candidateId) {
+	let cur = candidateId;
+	const seen = new Set();
+	while (cur != null) {
+		if (cur === folderId) return true;
+		if (seen.has(cur)) return false;
+		seen.add(cur);
+		cur = scripts[cur]?.parent ?? null;
+	}
+	return false;
+}
+
+function flattenFolderOptions(folders, rootId) {
+	const out = [];
+	function walk(id, depth) {
+		const node = folders[id];
+		out.push({ id, depth, name: node?.name || ROOT_NAMES[id] || id });
+		Object.entries(folders)
+			.filter(([, v]) => v.type === 'folder' && v.parent === id)
+			.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''))
+			.forEach(([childId]) => walk(childId, depth + 1));
+	}
+	walk(rootId, 0);
+	return out;
+}
+
+export default function GameContentEditor() {
+	const [gameData, setGameData] = useState(null);
+	const [fileName, setFileName] = useState('');
+	const [fileError, setFileError] = useState('');
+	const [activeTab, setActiveTab] = useState('unitTypes');
+	const [selectedKey, setSelectedKey] = useState(null);
+	const [selectedFolderId, setSelectedFolderId] = useState(null);
+	const [collapsed, setCollapsed] = useState({}); // folderId -> bool, UI-only
+	const [selectedScriptFolderId, setSelectedScriptFolderId] = useState(null);
+	const [scriptCollapsed, setScriptCollapsed] = useState({});
+	const [scriptDraft, setScriptDraft] = useState(null);
+	const [scriptBodyError, setScriptBodyError] = useState('');
+	const [draft, setDraft] = useState(null);
+	const [groupDraft, setGroupDraft] = useState(null);
+	const [advancedText, setAdvancedText] = useState('');
+	const [advancedError, setAdvancedError] = useState('');
+	const [search, setSearch] = useState('');
+	const [showNewModal, setShowNewModal] = useState(false);
+	const [cloneFrom, setCloneFrom] = useState('');
+	const [savedMsg, setSavedMsg] = useState('');
+	const [gridPreview, setGridPreview] = useState({ cols: 1, rows: 1 });
+	const [selectedBodyName, setSelectedBodyName] = useState('default');
+	const [spriteNatural, setSpriteNatural] = useState(null); // {w, h} of the currently loaded sprite sheet image
+	const [assetBaseUrl, setAssetBaseUrl] = useState(() => localStorage.getItem('editorAssetBaseUrl') || '');
+	const fileInputRef = useRef(null);
+
+	function updateAssetBaseUrl(value) {
+		setAssetBaseUrl(value);
+		localStorage.setItem('editorAssetBaseUrl', value);
+	}
+
+	// Sprite URLs in game.json are relative (e.g. "/sprites/foo.png") - they only
+	// resolve once pointed at wherever the game server actually hosts /sprites/.
+	function resolveAssetUrl(url) {
+		if (!url) return '';
+		if (/^https?:\/\//i.test(url)) return url;
+		if (!assetBaseUrl) return url;
+		return assetBaseUrl.replace(/\/$/, '') + (url.startsWith('/') ? url : '/' + url);
+	}
+
+	const isEntityTab = ENTITY_TABS.some((t) => t.key === activeTab);
+	const activeTabDef = ENTITY_TABS.find((t) => t.key === activeTab);
+	const categoryMap = gameData?.data?.[activeTab] || {};
+	const attributeTypes = gameData?.data?.attributeTypes || {};
+	const folders = gameData?.data?.folders || {};
+
+	const isGroupTab = GROUP_TABS.some((t) => t.key === activeTab);
+	const activeGroupDef = GROUP_TABS.find((t) => t.key === activeTab);
+	const groupMemberCollection = gameData?.data?.[activeGroupDef?.collection] || {};
+
+	const filteredEntries = useMemo(() => {
+		const entries = Object.entries(categoryMap);
+		entries.sort((a, b) => (a[1]?.name || '').localeCompare(b[1]?.name || ''));
+		if (!search.trim()) return entries;
+		const q = search.toLowerCase();
+		return entries.filter(([k, v]) => (v?.name || '').toLowerCase().includes(q) || k.toLowerCase().includes(q));
+	}, [categoryMap, search]);
+
+	// Tree of folders + entities under the active tab's root, for the non-search view.
+	const tree = useMemo(() => {
+		if (!isEntityTab || !gameData) return [];
+		function build(parentId) {
+			const kids = Object.entries(folders).filter(([, v]) => v.parent === parentId);
+			const subFolders = kids
+				.filter(([, v]) => v.type === 'folder')
+				.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''))
+				.map(([id, v]) => ({ kind: 'folder', id, name: v.name, children: build(id) }));
+			const entities = kids
+				.filter(([, v]) => v.type === activeTabDef.folderType)
+				.filter(([id]) => categoryMap[id])
+				.map(([id]) => ({ kind: 'entity', id }))
+				.sort((a, b) => (categoryMap[a.id]?.name || '').localeCompare(categoryMap[b.id]?.name || ''));
+			return [...subFolders, ...entities];
+		}
+		return build(activeTabDef.root);
+	}, [gameData, activeTab, folders, categoryMap, isEntityTab, activeTabDef]);
+
+	const folderOptions = useMemo(() => {
+		if (!isEntityTab || !gameData) return [];
+		return flattenFolderOptions(folders, activeTabDef.root);
+	}, [gameData, folders, activeTabDef, isEntityTab]);
+
+	const groupVariableEntries = useMemo(() => {
+		if (!isGroupTab || !gameData) return [];
+		const entries = Object.entries(gameData.data.variables || {}).filter(
+			([, v]) => v?.dataType === activeGroupDef.dataType
+		);
+		entries.sort((a, b) => a[0].localeCompare(b[0]));
+		if (!search.trim()) return entries;
+		const q = search.toLowerCase();
+		return entries.filter(([k]) => k.toLowerCase().includes(q));
+	}, [gameData, isGroupTab, activeGroupDef, search]);
+
+	const isScriptsTab = activeTab === 'globalScripts';
+	const scriptsCollection = gameData?.data?.scripts || {};
+
+	// Search flattens across all groups (same convention as the entity tabs);
+	// otherwise render the real folder/script tree starting from parent: null.
+	const scriptSearchResults = useMemo(() => {
+		if (!isScriptsTab || !search.trim()) return [];
+		const q = search.toLowerCase();
+		return Object.entries(scriptsCollection)
+			.filter(([, v]) => 'triggers' in v && ((v.name || '').toLowerCase().includes(q)))
+			.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''));
+	}, [isScriptsTab, search, scriptsCollection]);
+
+	const scriptTree = useMemo(() => {
+		if (!isScriptsTab || !gameData || search.trim()) return [];
+		function build(parentId) {
+			const kids = Object.entries(scriptsCollection).filter(([, v]) => (v.parent ?? null) === parentId);
+			const folders = kids
+				.filter(([, v]) => 'folderName' in v)
+				.sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0))
+				.map(([id, v]) => ({ kind: 'folder', id, name: v.folderName, children: build(id) }));
+			const leaves = kids
+				.filter(([, v]) => 'triggers' in v)
+				.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''))
+				.map(([id]) => ({ kind: 'script', id }));
+			return [...folders, ...leaves];
+		}
+		return build(null);
+	}, [isScriptsTab, gameData, scriptsCollection, search]);
+
+	const scriptFolderOptions = useMemo(() => {
+		if (!isScriptsTab || !gameData) return [];
+		const out = [{ id: null, depth: 0, name: '(top level)' }];
+		function walk(parentId, depth) {
+			Object.entries(scriptsCollection)
+				.filter(([, v]) => 'folderName' in v && (v.parent ?? null) === parentId)
+				.sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0))
+				.forEach(([id, v]) => {
+					out.push({ id, depth, name: v.folderName });
+					walk(id, depth + 1);
+				});
+		}
+		walk(null, 1);
+		return out;
+	}, [isScriptsTab, gameData, scriptsCollection]);
+
+	function handleUpload(e) {
+		const file = e.target.files[0];
+		if (!file) return;
+		setFileError('');
+		setFileName(file.name);
+		const reader = new FileReader();
+		reader.onload = (evt) => {
+			try {
+				const parsed = JSON.parse(evt.target.result);
+				if (!parsed?.data) throw new Error("This doesn't look like a game.json — no top-level \"data\" field found.");
+				normalizeFolders(parsed);
+				setGameData(parsed);
+				setSelectedKey(null);
+				setSelectedFolderId(null);
+				setDraft(null);
+			} catch (err) {
+				setFileError(err.message);
+			}
+		};
+		reader.readAsText(file);
+	}
+
+	function loadDraftFromEntity(key, entity) {
+		const { name, attributes, variables, cellSheet, bodies, ...rest } = entity;
+		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
+		setDraft({
+			key,
+			name: name || '',
+			attributes: deepClone(attributes) || {},
+			variables: deepClone(variables) || {},
+			cellSheet: deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 },
+			bodies: clonedBodies,
+			folderId: folders[key]?.parent ?? activeTabDef.root,
+			isNew: false,
+		});
+		setSelectedBodyName(clonedBodies.default ? 'default' : Object.keys(clonedBodies)[0]);
+		setSpriteNatural(null);
+		setGridPreview({ cols: cellSheet?.columnCount || 1, rows: cellSheet?.rowCount || 1 });
+		setAdvancedText(JSON.stringify(rest, null, 2));
+		setAdvancedError('');
+		setSavedMsg('');
+	}
+
+	function selectEntity(key) {
+		setSelectedKey(key);
+		loadDraftFromEntity(key, categoryMap[key] || {});
+	}
+
+	function startNew(baseKey) {
+		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
+		const newKey = generateKey();
+		const { name, attributes, variables, cellSheet, bodies, ...rest } = base;
+		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
+		setSelectedKey(newKey);
+		setDraft({
+			key: newKey,
+			name: baseKey ? `${name || 'Unnamed'} Copy` : 'New ' + ENTITY_TABS.find((t) => t.key === activeTab)?.label.slice(0, -1),
+			attributes: deepClone(attributes) || {},
+			variables: deepClone(variables) || {},
+			cellSheet: deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 },
+			bodies: clonedBodies,
+			folderId: selectedFolderId || activeTabDef.root,
+			isNew: true,
+		});
+		setSelectedBodyName(clonedBodies.default ? 'default' : Object.keys(clonedBodies)[0]);
+		setSpriteNatural(null);
+		setGridPreview({ cols: cellSheet?.columnCount || 1, rows: cellSheet?.rowCount || 1 });
+		setAdvancedText(JSON.stringify(rest, null, 2));
+		setAdvancedError('');
+		setShowNewModal(false);
+		setCloneFrom('');
+		setSavedMsg('');
+	}
+
+	function addAttribute(attrKey) {
+		if (!attrKey || draft.attributes[attrKey]) return;
+		const def = attributeTypes[attrKey];
+		setDraft((d) => ({
+			...d,
+			attributes: {
+				...d.attributes,
+				[attrKey]: { value: def?.value ?? 0, min: def?.min ?? 0, max: def?.max ?? 100 },
+			},
+		}));
+	}
+
+	function removeAttribute(attrKey) {
+		setDraft((d) => {
+			const next = { ...d.attributes };
+			delete next[attrKey];
+			return { ...d, attributes: next };
+		});
+	}
+
+	function updateAttributeField(attrKey, field, value) {
+		setDraft((d) => ({
+			...d,
+			attributes: { ...d.attributes, [attrKey]: { ...d.attributes[attrKey], [field]: value } },
+		}));
+	}
+
+	function addVariable() {
+		const name = prompt('New variable name (e.g. targetLocked):');
+		if (!name || draft.variables[name]) return;
+		setDraft((d) => ({ ...d, variables: { ...d.variables, [name]: { default: '', dataType: 'string' } } }));
+	}
+
+	function removeVariable(name) {
+		setDraft((d) => {
+			const next = { ...d.variables };
+			delete next[name];
+			return { ...d, variables: next };
+		});
+	}
+
+	function updateVariableField(name, field, value) {
+		setDraft((d) => ({ ...d, variables: { ...d.variables, [name]: { ...d.variables[name], [field]: value } } }));
+	}
+
+	function updateCellSheetField(field, value) {
+		setDraft((d) => ({ ...d, cellSheet: { ...d.cellSheet, [field]: value } }));
+		if (field === 'columnCount') setGridPreview((g) => ({ ...g, cols: Number(value) || 1 }));
+		if (field === 'rowCount') setGridPreview((g) => ({ ...g, rows: Number(value) || 1 }));
+	}
+
+	function updateBodySize(field, value) {
+		setDraft((d) => ({
+			...d,
+			bodies: {
+				...d.bodies,
+				[selectedBodyName]: { ...d.bodies[selectedBodyName], [field]: Number(value) || 0 },
+			},
+		}));
+	}
+
+	function addBody() {
+		const name = prompt('New body name (e.g. crouching):');
+		if (!name || draft.bodies[name]) return;
+		setDraft((d) => ({
+			...d,
+			bodies: { ...d.bodies, [name]: { type: 'dynamic', width: TILE_PX, height: TILE_PX } },
+		}));
+		setSelectedBodyName(name);
+	}
+
+	function removeBody(name) {
+		const remaining = Object.keys(draft.bodies).filter((k) => k !== name);
+		if (remaining.length === 0) {
+			alert("Can't remove the last body — every unit/item/projectile needs at least one.");
+			return;
+		}
+		setDraft((d) => {
+			const next = { ...d.bodies };
+			delete next[name];
+			return { ...d, bodies: next };
+		});
+		if (selectedBodyName === name) setSelectedBodyName(remaining[0]);
+	}
+
+	function saveDraft() {
+		let restParsed;
+		try {
+			restParsed = advancedText.trim() ? JSON.parse(advancedText) : {};
+		} catch (err) {
+			setAdvancedError('Advanced JSON is invalid: ' + err.message);
+			return;
+		}
+		setAdvancedError('');
+		const finalEntity = {
+			...restParsed,
+			name: draft.name,
+			attributes: draft.attributes,
+			variables: draft.variables,
+			cellSheet: draft.cellSheet,
+			bodies: draft.bodies,
+		};
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			next.data[activeTab][draft.key] = finalEntity;
+			if (!next.data.folders) next.data.folders = {};
+			next.data.folders[draft.key] = {
+				...(next.data.folders[draft.key] || {}),
+				type: activeTabDef.folderType,
+				parent: draft.folderId || activeTabDef.root,
+				closed: false,
+			};
+			return next;
+		});
+		setDraft((d) => ({ ...d, isNew: false }));
+		setSavedMsg('Saved to the working copy in this tool. Download the file below to keep it.');
+	}
+
+	function deleteEntity() {
+		if (!selectedKey) return;
+		if (!window.confirm('Remove this entry from the working copy? This can\'t be undone in the tool.')) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			delete next.data[activeTab][selectedKey];
+			if (next.data.folders) delete next.data.folders[selectedKey];
+			return next;
+		});
+		setSelectedKey(null);
+		setDraft(null);
+	}
+
+	function selectGroup(key) {
+		const v = gameData.data.variables[key];
+		setSelectedKey(key);
+		setGroupDraft({ key, originalKey: key, entries: deepClone(v?.default) || {}, isNew: false });
+		setSavedMsg('');
+	}
+
+	function startNewGroup() {
+		const name = prompt('New group name (e.g. "Day Zombies"):');
+		if (!name) return;
+		if (gameData.data.variables?.[name]) {
+			alert('A variable named "' + name + '" already exists. Pick a different name.');
+			return;
+		}
+		setSelectedKey(name);
+		setGroupDraft({ key: name, originalKey: null, entries: {}, isNew: true });
+		setSavedMsg('');
+	}
+
+	function addGroupMember(id) {
+		if (!id || groupDraft.entries[id]) return;
+		setGroupDraft((d) => ({ ...d, entries: { ...d.entries, [id]: { probability: 20, quantity: 1 } } }));
+	}
+
+	function removeGroupMember(id) {
+		setGroupDraft((d) => {
+			const next = { ...d.entries };
+			delete next[id];
+			return { ...d, entries: next };
+		});
+	}
+
+	function updateGroupMemberField(id, field, value) {
+		setGroupDraft((d) => ({
+			...d,
+			entries: { ...d.entries, [id]: { ...d.entries[id], [field]: value } },
+		}));
+	}
+
+	function saveGroupDraft() {
+		const trimmed = groupDraft.key.trim();
+		if (!trimmed) {
+			alert('This group needs a name.');
+			return;
+		}
+		if (trimmed !== groupDraft.originalKey && gameData.data.variables?.[trimmed]) {
+			alert('A variable named "' + trimmed + '" already exists. Pick a different name.');
+			return;
+		}
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.variables) next.data.variables = {};
+			if (!groupDraft.isNew && groupDraft.originalKey && groupDraft.originalKey !== trimmed) {
+				delete next.data.variables[groupDraft.originalKey];
+			}
+			next.data.variables[trimmed] = { default: groupDraft.entries, dataType: activeGroupDef.dataType };
+			return next;
+		});
+		setSelectedKey(trimmed);
+		setGroupDraft((d) => ({ ...d, key: trimmed, originalKey: trimmed, isNew: false }));
+		setSavedMsg('Saved to the working copy in this tool. Download the file below to keep it.');
+	}
+
+	function deleteGroup() {
+		if (!selectedKey) return;
+		if (!window.confirm('Remove this group from the working copy? Anything referencing it by name in your scripts would break.')) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			delete next.data.variables[selectedKey];
+			return next;
+		});
+		setSelectedKey(null);
+		setGroupDraft(null);
+	}
+
+	function selectScript(key) {
+		const s = scriptsCollection[key];
+		if (!s) return;
+		const { name, parent, order, key: _k, ...body } = s;
+		setSelectedKey(key);
+		setScriptDraft({ key, name: name || '', parentId: parent ?? null, isNew: false, bodyText: JSON.stringify(body, null, 2) });
+		setScriptBodyError('');
+		setSavedMsg('');
+	}
+
+	function startNewScript(parentId) {
+		const name = prompt('New script name:');
+		if (!name) return;
+		const id = generateKey();
+		setSelectedKey(id);
+		setScriptDraft({
+			key: id,
+			name,
+			parentId: parentId ?? null,
+			isNew: true,
+			bodyText: JSON.stringify({ triggers: [], conditions: [], actions: [] }, null, 2),
+		});
+		setScriptBodyError('');
+		setSavedMsg('');
+	}
+
+	function saveScriptDraft() {
+		let body;
+		try {
+			body = scriptDraft.bodyText.trim() ? JSON.parse(scriptDraft.bodyText) : { triggers: [], conditions: [], actions: [] };
+		} catch (err) {
+			setScriptBodyError('Script JSON is invalid: ' + err.message);
+			return;
+		}
+		setScriptBodyError('');
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.scripts) next.data.scripts = {};
+			next.data.scripts[scriptDraft.key] = {
+				...body,
+				key: scriptDraft.key,
+				name: scriptDraft.name,
+				parent: scriptDraft.parentId,
+				order: next.data.scripts[scriptDraft.key]?.order ?? 0,
+			};
+			return next;
+		});
+		setScriptDraft((d) => ({ ...d, isNew: false }));
+		setSavedMsg('Saved to the working copy in this tool. Download the file below to keep it.');
+	}
+
+	function deleteScript() {
+		if (!selectedKey) return;
+		if (!window.confirm("Remove this script from the working copy? This can't be undone in the tool.")) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			delete next.data.scripts[selectedKey];
+			return next;
+		});
+		setSelectedKey(null);
+		setScriptDraft(null);
+	}
+
+	function addScriptFolder(parentId) {
+		const name = prompt('New script group name:');
+		if (!name) return;
+		const id = generateKey();
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.scripts) next.data.scripts = {};
+			next.data.scripts[id] = { key: id, folderName: name, parent: parentId ?? null, order: 0, expanded: true };
+			return next;
+		});
+		setSelectedScriptFolderId(id);
+	}
+
+	function renameScriptFolder(id) {
+		const node = scriptsCollection[id];
+		const name = prompt('Rename group:', node?.folderName || '');
+		if (!name) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			next.data.scripts[id] = { ...next.data.scripts[id], folderName: name };
+			return next;
+		});
+	}
+
+	function deleteScriptFolder(id) {
+		const node = scriptsCollection[id];
+		if (!node) return;
+		if (
+			!window.confirm(
+				`Delete the "${node.folderName}" group? Anything inside it (sub-groups, scripts) moves up to its parent group — nothing inside it gets deleted.`
+			)
+		)
+			return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			const parentId = next.data.scripts[id]?.parent ?? null;
+			Object.values(next.data.scripts).forEach((node) => {
+				if ((node.parent ?? null) === id) node.parent = parentId;
+			});
+			delete next.data.scripts[id];
+			return next;
+		});
+		if (selectedScriptFolderId === id) setSelectedScriptFolderId(null);
+	}
+
+	function moveScriptFolder(id, newParentId) {
+		if (newParentId === id) return;
+		if (isSelfOrDescendantScript(scriptsCollection, id, newParentId)) {
+			alert("Can't move a group inside itself or one of its own sub-groups.");
+			return;
+		}
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			next.data.scripts[id] = { ...next.data.scripts[id], parent: newParentId };
+			return next;
+		});
+	}
+
+	function addFolder(parentId) {
+		const name = prompt('New group name:');
+		if (!name) return;
+		const id = generateKey();
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.folders) next.data.folders = {};
+			next.data.folders[id] = { name, parent: parentId, type: 'folder', closed: false };
+			return next;
+		});
+		setSelectedFolderId(id);
+	}
+
+	function renameFolder(id) {
+		const current = folders[id];
+		const name = prompt('Rename group:', current?.name || '');
+		if (!name) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			next.data.folders[id] = { ...next.data.folders[id], name };
+			return next;
+		});
+	}
+
+	// Deleting a group never deletes what's inside it - contents move up to
+	// the deleted group's own parent, same as "un-nesting" a folder.
+	function deleteFolder(id) {
+		const folder = folders[id];
+		if (!folder) return;
+		if (
+			!window.confirm(
+				`Delete the "${folder.name}" group? Anything inside it (sub-groups, units, items) moves up to its parent group — nothing inside it gets deleted.`
+			)
+		)
+			return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			const parentId = next.data.folders[id]?.parent;
+			Object.values(next.data.folders).forEach((node) => {
+				if (node.parent === id) node.parent = parentId;
+			});
+			delete next.data.folders[id];
+			return next;
+		});
+		if (selectedFolderId === id) setSelectedFolderId(null);
+	}
+
+	function moveFolder(id, newParentId) {
+		if (newParentId === id) return;
+		if (isSelfOrDescendant(folders, id, newParentId)) {
+			alert("Can't move a group inside itself or one of its own sub-groups.");
+			return;
+		}
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			next.data.folders[id] = { ...next.data.folders[id], parent: newParentId };
+			return next;
+		});
+	}
+
+	function addAttributeType() {
+		const name = prompt('New attribute name (e.g. Shield):');
+		if (!name) return;
+		const key = generateKey();
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			next.data.attributeTypes[key] = {
+				name,
+				min: 0,
+				max: 100,
+				value: 0,
+				isVisible: true,
+				displayValue: true,
+				showAsHUD: false,
+				color: 'white',
+				decimalPlaces: 0,
+			};
+			return next;
+		});
+	}
+
+	function updateAttributeType(key, field, value) {
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			next.data.attributeTypes[key] = { ...next.data.attributeTypes[key], [field]: value };
+			return next;
+		});
+	}
+
+	function addGlobalVariable() {
+		const name = prompt('New global variable name:');
+		if (!name) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.variables) next.data.variables = {};
+			next.data.variables[name] = { default: '', dataType: 'string' };
+			return next;
+		});
+	}
+
+	function updateGlobalVariable(name, field, value) {
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			next.data.variables[name] = { ...next.data.variables[name], [field]: value };
+			return next;
+		});
+	}
+
+	function downloadJson() {
+		const blob = new Blob([JSON.stringify(gameData)], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = fileName || 'game.json';
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+		URL.revokeObjectURL(url);
+	}
+
+	const unusedAttributeKeys = draft
+		? Object.keys(attributeTypes).filter((k) => !draft.attributes[k])
+		: [];
+
+	function FolderRow({ node, depth }) {
+		const isCollapsed = collapsed[node.id];
+		return (
+			<div>
+				<div
+					className={`flex items-center gap-1 px-2 py-1.5 border-b border-slate-900 group ${
+						selectedFolderId === node.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+					}`}
+					style={{ paddingLeft: 8 + depth * 14 }}
+				>
+					<button
+						onClick={() => setCollapsed((c) => ({ ...c, [node.id]: !c[node.id] }))}
+						className="text-slate-500 hover:text-slate-300 shrink-0"
+					>
+						{isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+					</button>
+					<button
+						onClick={() => setSelectedFolderId(node.id)}
+						className="flex-1 text-left text-sm text-slate-300 truncate font-medium"
+					>
+						{node.name || '(unnamed group)'}
+					</button>
+					<div className="hidden group-hover:flex items-center gap-1 shrink-0">
+						<button title="New sub-group" onClick={() => addFolder(node.id)} className="text-slate-500 hover:text-amber-400">
+							<FolderPlus size={13} />
+						</button>
+						<button title="Rename" onClick={() => renameFolder(node.id)} className="text-slate-500 hover:text-amber-400">
+							<Pencil size={13} />
+						</button>
+						<select
+							title="Move to another group"
+							value=""
+							onChange={(e) => e.target.value && moveFolder(node.id, e.target.value)}
+							className="bg-slate-950 border border-slate-800 rounded text-xs text-slate-500 max-w-[90px] focus:outline-none"
+						>
+							<option value="" disabled>
+								Move to...
+							</option>
+							{folderOptions
+								.filter((f) => f.id !== node.id)
+								.map((f) => (
+									<option key={f.id} value={f.id}>
+										{'—'.repeat(f.depth)} {f.name}
+									</option>
+								))}
+						</select>
+						<button title="Delete group" onClick={() => deleteFolder(node.id)} className="text-slate-500 hover:text-red-400">
+							<Trash2 size={13} />
+						</button>
+					</div>
+				</div>
+				{!isCollapsed && node.children.map((child) =>
+					child.kind === 'folder' ? (
+						<FolderRow key={child.id} node={child} depth={depth + 1} />
+					) : (
+						<button
+							key={child.id}
+							onClick={() => selectEntity(child.id)}
+							style={{ paddingLeft: 8 + (depth + 1) * 14 + 17 }}
+							className={`w-full text-left pr-3 py-2 border-b border-slate-900 transition-colors ${
+								selectedKey === child.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+							}`}
+						>
+							<div className="text-sm text-slate-200 truncate">{categoryMap[child.id]?.name || '(unnamed)'}</div>
+							<div className="text-xs text-slate-600 font-mono truncate">{child.id}</div>
+						</button>
+					)
+				)}
+			</div>
+		);
+	}
+
+	function ScriptFolderRow({ node, depth }) {
+		const isCollapsed = scriptCollapsed[node.id];
+		return (
+			<div>
+				<div
+					className={`flex items-center gap-1 px-2 py-1.5 border-b border-slate-900 group ${
+						selectedScriptFolderId === node.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+					}`}
+					style={{ paddingLeft: 8 + depth * 14 }}
+				>
+					<button
+						onClick={() => setScriptCollapsed((c) => ({ ...c, [node.id]: !c[node.id] }))}
+						className="text-slate-500 hover:text-slate-300 shrink-0"
+					>
+						{isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+					</button>
+					<button
+						onClick={() => setSelectedScriptFolderId(node.id)}
+						className="flex-1 text-left text-sm text-slate-300 truncate font-medium"
+					>
+						{node.name || '(unnamed group)'}
+					</button>
+					<div className="hidden group-hover:flex items-center gap-1 shrink-0">
+						<button title="New sub-group" onClick={() => addScriptFolder(node.id)} className="text-slate-500 hover:text-amber-400">
+							<FolderPlus size={13} />
+						</button>
+						<button title="Rename" onClick={() => renameScriptFolder(node.id)} className="text-slate-500 hover:text-amber-400">
+							<Pencil size={13} />
+						</button>
+						<select
+							title="Move to another group"
+							value=""
+							onChange={(e) => e.target.value !== '' && moveScriptFolder(node.id, e.target.value === '__top__' ? null : e.target.value)}
+							className="bg-slate-950 border border-slate-800 rounded text-xs text-slate-500 max-w-[90px] focus:outline-none"
+						>
+							<option value="" disabled>
+								Move to...
+							</option>
+							{scriptFolderOptions
+								.filter((f) => f.id !== node.id)
+								.map((f) => (
+									<option key={f.id ?? '__top__'} value={f.id ?? '__top__'}>
+										{'—'.repeat(f.depth)} {f.name}
+									</option>
+								))}
+						</select>
+						<button title="Delete group" onClick={() => deleteScriptFolder(node.id)} className="text-slate-500 hover:text-red-400">
+							<Trash2 size={13} />
+						</button>
+					</div>
+				</div>
+				{!isCollapsed &&
+					node.children.map((child) =>
+						child.kind === 'folder' ? (
+							<ScriptFolderRow key={child.id} node={child} depth={depth + 1} />
+						) : (
+							<button
+								key={child.id}
+								onClick={() => selectScript(child.id)}
+								style={{ paddingLeft: 8 + (depth + 1) * 14 + 17 }}
+								className={`w-full text-left pr-3 py-2 border-b border-slate-900 transition-colors ${
+									selectedKey === child.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+								}`}
+							>
+								<div className="text-sm text-slate-200 truncate">{scriptsCollection[child.id]?.name || '(unnamed)'}</div>
+								<div className="text-xs text-slate-600 truncate">
+									{(scriptsCollection[child.id]?.triggers || []).map((t) => t.type).join(', ') || 'no triggers'}
+								</div>
+							</button>
+						)
+					)}
+			</div>
+		);
+	}
+
+	return (
+		<div className="min-h-screen bg-slate-950 text-slate-200 font-sans">
+			<header className="border-b border-slate-800 bg-slate-900/60 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+				<div>
+					<h1 className="text-lg font-semibold text-amber-400 tracking-tight">Content Editor</h1>
+					<p className="text-xs text-slate-500 mt-0.5">Create and edit units, items, and projectiles outside the live editor</p>
+				</div>
+				<div className="flex items-center gap-2">
+					{gameData && (
+						<>
+							<label className="text-xs text-slate-500 hidden md:inline">Asset base URL</label>
+							<input
+								value={assetBaseUrl}
+								onChange={(e) => updateAssetBaseUrl(e.target.value)}
+								placeholder="https://yourgame.duckdns.org:8080"
+								className="hidden md:block w-56 bg-slate-950 border border-slate-800 rounded-md px-2 py-1.5 text-xs placeholder-slate-700 focus:outline-none focus:border-amber-500 mr-1"
+							/>
+							<span className="text-xs text-slate-500 mr-2 hidden sm:inline">{fileName}</span>
+						</>
+					)}
+					<button
+						onClick={() => fileInputRef.current?.click()}
+						className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-700 text-sm hover:bg-slate-800 transition-colors"
+					>
+						<Upload size={14} /> {gameData ? 'Replace file' : 'Upload game.json'}
+					</button>
+					<input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleUpload} />
+					{gameData && (
+						<button
+							onClick={downloadJson}
+							className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+						>
+							<Download size={14} /> Download
+						</button>
+					)}
+				</div>
+			</header>
+
+			{fileError && (
+				<div className="mx-6 mt-4 flex items-start gap-2 rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">
+					<AlertCircle size={16} className="mt-0.5 shrink-0" /> {fileError}
+				</div>
+			)}
+
+			{!gameData ? (
+				<div className="flex flex-col items-center justify-center py-32 text-center px-6">
+					<div className="w-14 h-14 rounded-full border border-slate-700 flex items-center justify-center mb-4">
+						<Upload size={22} className="text-slate-500" />
+					</div>
+					<p className="text-slate-400 max-w-sm text-sm">
+						Upload your game.json to start browsing, editing, or creating units, items, and projectiles.
+					</p>
+				</div>
+			) : (
+				<div className="flex" style={{ minHeight: 'calc(100vh - 73px)' }}>
+					{/* Tab rail */}
+					<nav className="w-40 shrink-0 border-r border-slate-800 py-4">
+						<div className="px-4 text-xs uppercase tracking-wide text-slate-600 mb-1.5">Entities</div>
+						{ENTITY_TABS.map((t) => (
+							<button
+								key={t.key}
+								onClick={() => {
+									setActiveTab(t.key);
+									setSelectedKey(null);
+									setSelectedFolderId(null);
+									setDraft(null);
+									setGroupDraft(null);
+									setSearch('');
+								}}
+								className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
+									activeTab === t.key
+										? 'border-amber-400 text-amber-400 bg-slate-900'
+										: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+								}`}
+							>
+								{t.label}
+								<span className="text-slate-600 ml-1.5 text-xs">{Object.keys(gameData?.data?.[t.key] || {}).length}</span>
+							</button>
+						))}
+						<div className="px-4 text-xs uppercase tracking-wide text-slate-600 mt-5 mb-1.5">Reference</div>
+						{REFERENCE_TABS.map((t) => (
+							<button
+								key={t.key}
+								onClick={() => {
+									setActiveTab(t.key);
+									setSelectedKey(null);
+									setDraft(null);
+									setGroupDraft(null);
+									setSearch('');
+								}}
+								className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
+									activeTab === t.key
+										? 'border-amber-400 text-amber-400 bg-slate-900'
+										: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+								}`}
+							>
+								{t.label}
+							</button>
+						))}
+						{GROUP_TABS.map((t) => (
+							<button
+								key={t.key}
+								onClick={() => {
+									setActiveTab(t.key);
+									setSelectedKey(null);
+									setDraft(null);
+									setGroupDraft(null);
+									setSearch('');
+								}}
+								className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
+									activeTab === t.key
+										? 'border-amber-400 text-amber-400 bg-slate-900'
+										: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+								}`}
+							>
+								{t.label}
+								<span className="text-slate-600 ml-1.5 text-xs">
+									{Object.values(gameData?.data?.variables || {}).filter((v) => v?.dataType === t.dataType).length}
+								</span>
+							</button>
+						))}
+						<div className="px-4 text-xs uppercase tracking-wide text-slate-600 mt-5 mb-1.5">Scripts</div>
+						<button
+							onClick={() => {
+								setActiveTab('globalScripts');
+								setSelectedKey(null);
+								setSelectedScriptFolderId(null);
+								setScriptDraft(null);
+								setSearch('');
+							}}
+							className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
+								activeTab === 'globalScripts'
+									? 'border-amber-400 text-amber-400 bg-slate-900'
+									: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+							}`}
+						>
+							Global scripts
+							<span className="text-slate-600 ml-1.5 text-xs">
+								{Object.values(scriptsCollection).filter((v) => 'triggers' in v).length}
+							</span>
+						</button>
+					</nav>
+
+					{isEntityTab ? (
+						<>
+							{/* List pane */}
+							<div className="w-64 shrink-0 border-r border-slate-800 flex flex-col">
+								<div className="p-3 border-b border-slate-800">
+									<div className="relative">
+										<Search size={13} className="absolute left-2.5 top-2.5 text-slate-600" />
+										<input
+											value={search}
+											onChange={(e) => setSearch(e.target.value)}
+											placeholder="Search..."
+											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-amber-500"
+										/>
+									</div>
+									<div className="flex gap-1.5 mt-2">
+										<button
+											onClick={() => setShowNewModal(true)}
+											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+										>
+											<Plus size={14} /> New {ENTITY_TABS.find((t) => t.key === activeTab)?.label.slice(0, -1)}
+										</button>
+										<button
+											title="New group"
+											onClick={() => addFolder(selectedFolderId || activeTabDef.root)}
+											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-slate-700 text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+										>
+											<FolderPlus size={14} />
+										</button>
+									</div>
+									{selectedFolderId && !search.trim() && (
+										<div className="text-xs text-slate-600 mt-1.5 truncate">
+											New items go into: <span className="text-slate-400">{folders[selectedFolderId]?.name || 'root'}</span>
+										</div>
+									)}
+								</div>
+								<div className="flex-1 overflow-y-auto">
+									{search.trim() ? (
+										<>
+											{filteredEntries.map(([key, entity]) => (
+												<button
+													key={key}
+													onClick={() => selectEntity(key)}
+													className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
+														selectedKey === key ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+													}`}
+												>
+													<div className="text-sm text-slate-200 truncate">{entity?.name || '(unnamed)'}</div>
+													<div className="text-xs text-slate-600 font-mono truncate">{key}</div>
+												</button>
+											))}
+											{filteredEntries.length === 0 && (
+												<div className="text-sm text-slate-600 text-center py-8 px-4">No matches.</div>
+											)}
+										</>
+									) : (
+										<>
+											{tree.map((node) =>
+												node.kind === 'folder' ? (
+													<FolderRow key={node.id} node={node} depth={0} />
+												) : (
+													<button
+														key={node.id}
+														onClick={() => selectEntity(node.id)}
+														className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
+															selectedKey === node.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+														}`}
+													>
+														<div className="text-sm text-slate-200 truncate">{categoryMap[node.id]?.name || '(unnamed)'}</div>
+														<div className="text-xs text-slate-600 font-mono truncate">{node.id}</div>
+													</button>
+												)
+											)}
+											{tree.length === 0 && (
+												<div className="text-sm text-slate-600 text-center py-8 px-4">Nothing here yet.</div>
+											)}
+										</>
+									)}
+								</div>
+							</div>
+
+							{/* Editor pane */}
+							<div className="flex-1 overflow-y-auto p-6">
+								{!draft ? (
+									<div className="text-slate-600 text-sm mt-16 text-center">
+										Select an entry on the left, or create a new one.
+									</div>
+								) : (
+									<div className="max-w-2xl">
+										<div className="flex items-center justify-between mb-4">
+											<div>
+												<input
+													value={draft.name}
+													onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-amber-500 focus:outline-none px-0.5"
+												/>
+												<div className="text-xs text-slate-600 font-mono mt-1">
+													{draft.key} {draft.isNew && <span className="text-amber-500 ml-1">(new, not saved yet)</span>}
+												</div>
+											</div>
+											<div className="flex gap-2">
+												{!draft.isNew && (
+													<button
+														onClick={deleteEntity}
+														className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-900 text-red-400 text-sm hover:bg-red-950/40 transition-colors"
+													>
+														<Trash2 size={13} /> Delete
+													</button>
+												)}
+												<button
+													onClick={saveDraft}
+													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+												>
+													<Save size={13} /> Save to working copy
+												</button>
+											</div>
+										</div>
+
+										<div className="mb-6 flex items-center gap-2">
+											<span className="text-xs text-slate-500 shrink-0">Group</span>
+											<select
+												value={draft.folderId}
+												onChange={(e) => setDraft((d) => ({ ...d, folderId: e.target.value }))}
+												className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-amber-500"
+											>
+												{folderOptions.map((f) => (
+													<option key={f.id} value={f.id}>
+														{'—'.repeat(f.depth)} {f.name}
+													</option>
+												))}
+											</select>
+										</div>
+
+										{savedMsg && (
+											<div className="mb-5 text-sm text-emerald-400 bg-emerald-950/30 border border-emerald-900 rounded-md px-3 py-2">
+												{savedMsg}
+											</div>
+										)}
+
+										{/* Attributes */}
+										<section className="mb-7">
+											<h3 className="text-sm font-medium text-slate-300 mb-2">Attributes</h3>
+											<div className="space-y-2">
+												{Object.entries(draft.attributes).map(([attrKey, attr]) => (
+													<div key={attrKey} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+														<span className="text-sm flex-1 truncate">{attributeTypes[attrKey]?.name || attrKey}</span>
+														<label className="text-xs text-slate-500">value</label>
+														<input
+															type="number"
+															value={attr.value}
+															onChange={(e) => updateAttributeField(attrKey, 'value', Number(e.target.value))}
+															className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+														/>
+														<label className="text-xs text-slate-500">min</label>
+														<input
+															type="number"
+															value={attr.min}
+															onChange={(e) => updateAttributeField(attrKey, 'min', Number(e.target.value))}
+															className="w-14 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+														/>
+														<label className="text-xs text-slate-500">max</label>
+														<input
+															type="number"
+															value={attr.max}
+															onChange={(e) => updateAttributeField(attrKey, 'max', Number(e.target.value))}
+															className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+														/>
+														<button onClick={() => removeAttribute(attrKey)} className="text-slate-600 hover:text-red-400 ml-1">
+															<X size={14} />
+														</button>
+													</div>
+												))}
+											</div>
+											{unusedAttributeKeys.length > 0 && (
+												<select
+													onChange={(e) => {
+														addAttribute(e.target.value);
+														e.target.value = '';
+													}}
+													defaultValue=""
+													className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-amber-500"
+												>
+													<option value="" disabled>+ Attach an existing attribute...</option>
+													{unusedAttributeKeys.map((k) => (
+														<option key={k} value={k}>{attributeTypes[k]?.name || k}</option>
+													))}
+												</select>
+											)}
+										</section>
+
+										{/* Variables */}
+										<section className="mb-7">
+											<h3 className="text-sm font-medium text-slate-300 mb-2">Variables</h3>
+											<div className="space-y-2">
+												{Object.entries(draft.variables).map(([varName, v]) => (
+													<div key={varName} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+														<span className="text-sm flex-1 truncate font-mono">{varName}</span>
+														<select
+															value={v.dataType || 'string'}
+															onChange={(e) => updateVariableField(varName, 'dataType', e.target.value)}
+															className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs"
+														>
+															<option value="string">string</option>
+															<option value="number">number</option>
+															<option value="boolean">boolean</option>
+															<option value="unit">unit</option>
+															<option value="item">item</option>
+														</select>
+														<input
+															value={v.default ?? ''}
+															onChange={(e) => updateVariableField(varName, 'default', e.target.value)}
+															placeholder="default value"
+															className="w-28 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+														/>
+														<button onClick={() => removeVariable(varName)} className="text-slate-600 hover:text-red-400 ml-1">
+															<X size={14} />
+														</button>
+													</div>
+												))}
+											</div>
+											<button
+												onClick={addVariable}
+												className="mt-2 flex items-center gap-1.5 text-sm text-slate-400 hover:text-amber-400 transition-colors"
+											>
+												<Plus size={13} /> Add variable
+											</button>
+										</section>
+
+										{/* Sprite sheet slicer */}
+										<section className="mb-7">
+											<h3 className="text-sm font-medium text-slate-300 mb-2">Sprite sheet</h3>
+											<input
+												value={draft.cellSheet.url || ''}
+												onChange={(e) => updateCellSheetField('url', e.target.value)}
+												placeholder="Image URL"
+												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm mb-2 focus:outline-none focus:border-amber-500"
+											/>
+											<div className="flex gap-4 mb-3">
+												<div>
+													<label className="block text-xs text-slate-500 mb-1">Columns</label>
+													<input
+														type="number"
+														min="1"
+														value={draft.cellSheet.columnCount || 1}
+														onChange={(e) => updateCellSheetField('columnCount', Number(e.target.value))}
+														className="w-20 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+													/>
+												</div>
+												<div>
+													<label className="block text-xs text-slate-500 mb-1">Rows</label>
+													<input
+														type="number"
+														min="1"
+														value={draft.cellSheet.rowCount || 1}
+														onChange={(e) => updateCellSheetField('rowCount', Number(e.target.value))}
+														className="w-20 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+													/>
+												</div>
+											</div>
+											{draft.cellSheet.url ? (
+												<div className="relative inline-block border border-slate-700 rounded-md overflow-hidden max-w-full">
+													<img
+														src={resolveAssetUrl(draft.cellSheet.url)}
+														alt="sprite sheet preview"
+														className="block max-w-full"
+														onLoad={(e) => setSpriteNatural({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
+														onError={(e) => {
+															e.target.style.display = 'none';
+															setSpriteNatural(null);
+														}}
+													/>
+													<div
+														className="absolute inset-0 grid pointer-events-none"
+														style={{
+															gridTemplateColumns: `repeat(${gridPreview.cols}, 1fr)`,
+															gridTemplateRows: `repeat(${gridPreview.rows}, 1fr)`,
+														}}
+													>
+														{Array.from({ length: gridPreview.cols * gridPreview.rows }).map((_, i) => (
+															<div key={i} className="border border-amber-400/60" />
+														))}
+													</div>
+												</div>
+											) : (
+												<p className="text-xs text-slate-600">Add an image URL to preview the grid slicing.</p>
+											)}
+											{draft.cellSheet.url && !assetBaseUrl && !/^https?:\/\//i.test(draft.cellSheet.url) && (
+												<p className="text-xs text-amber-500/80 mt-1.5">
+													This is a relative path ({draft.cellSheet.url}) — set the "Asset base URL" at the top of the
+													page (your game server's address) so previews can actually load it.
+												</p>
+											)}
+											<p className="text-xs text-slate-600 mt-2">
+												Columns/rows should match how many distinct frames are actually laid out in the image — a
+												mismatch here is what causes animations to silently freeze on one frame in-game.
+											</p>
+										</section>
+
+										{/* Body / size */}
+										<section className="mb-7">
+											<h3 className="text-sm font-medium text-slate-300 mb-2">Body &amp; size</h3>
+											<div className="flex flex-wrap items-center gap-1.5 mb-3">
+												{Object.keys(draft.bodies).map((bodyName) => (
+													<span
+														key={bodyName}
+														onClick={() => setSelectedBodyName(bodyName)}
+														className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs cursor-pointer border ${
+															selectedBodyName === bodyName
+																? 'bg-amber-500 border-amber-500 text-slate-950 font-medium'
+																: 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+														}`}
+													>
+														{bodyName}
+														<button
+															onClick={(e) => {
+																e.stopPropagation();
+																removeBody(bodyName);
+															}}
+															className={selectedBodyName === bodyName ? 'text-slate-900/60 hover:text-slate-900' : 'text-slate-600 hover:text-red-400'}
+														>
+															<X size={11} />
+														</button>
+													</span>
+												))}
+												<button
+													onClick={addBody}
+													className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-dashed border-slate-700 text-slate-500 hover:border-amber-500 hover:text-amber-400 transition-colors"
+												>
+													<Plus size={11} /> body
+												</button>
+											</div>
+
+											{draft.bodies[selectedBodyName] && (
+												<div className="flex gap-6 items-start">
+													<div>
+														<div className="flex gap-3 mb-3">
+															<div>
+																<label className="block text-xs text-slate-500 mb-1">Width</label>
+																<input
+																	type="number"
+																	min="1"
+																	value={draft.bodies[selectedBodyName].width ?? TILE_PX}
+																	onChange={(e) => updateBodySize('width', e.target.value)}
+																	className="w-24 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+																/>
+															</div>
+															<div>
+																<label className="block text-xs text-slate-500 mb-1">Height</label>
+																<input
+																	type="number"
+																	min="1"
+																	value={draft.bodies[selectedBodyName].height ?? TILE_PX}
+																	onChange={(e) => updateBodySize('height', e.target.value)}
+																	className="w-24 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+																/>
+															</div>
+														</div>
+														<p className="text-xs text-slate-600 max-w-[15rem]">
+															1 tile = {TILE_PX}×{TILE_PX}px. Other physics settings for this body (type, gravity,
+															rotation, etc.) are still editable in Advanced below.
+														</p>
+													</div>
+
+													{(() => {
+														const body = draft.bodies[selectedBodyName];
+														const bw = body.width || TILE_PX;
+														const bh = body.height || TILE_PX;
+														const scale = 0.5;
+														const tileCss = TILE_PX * scale;
+														const bodyCssW = bw * scale;
+														const bodyCssH = bh * scale;
+
+														const cols = draft.cellSheet.columnCount || 1;
+														const rows = draft.cellSheet.rowCount || 1;
+														const hasSprite = draft.cellSheet.url && spriteNatural;
+														const frameCssW = hasSprite ? (spriteNatural.w / cols) * scale : 0;
+														const frameCssH = hasSprite ? (spriteNatural.h / rows) * scale : 0;
+
+														const containerW = Math.max(tileCss * 2, bodyCssW + tileCss, frameCssW + tileCss);
+														const containerH = Math.max(tileCss * 2, bodyCssH + tileCss, frameCssH + tileCss);
+
+														return (
+															<div className="shrink-0">
+																<div
+																	className="relative border border-slate-700 rounded-md overflow-hidden bg-slate-900"
+																	style={{
+																		width: containerW,
+																		height: containerH,
+																		backgroundImage:
+																			'linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px)',
+																		backgroundSize: `${tileCss}px ${tileCss}px`,
+																	}}
+																>
+																	{hasSprite && (
+																		<div
+																			className="absolute"
+																			style={{
+																				width: frameCssW,
+																				height: frameCssH,
+																				left: '50%',
+																				top: '50%',
+																				transform: 'translate(-50%, -50%)',
+																				backgroundImage: `url(${resolveAssetUrl(draft.cellSheet.url)})`,
+																				backgroundPosition: '0px 0px',
+																				backgroundSize: `${spriteNatural.w * scale}px ${spriteNatural.h * scale}px`,
+																				backgroundRepeat: 'no-repeat',
+																				imageRendering: 'pixelated',
+																			}}
+																		/>
+																	)}
+																	<div
+																		className={`absolute border flex items-center justify-center ${
+																			hasSprite ? 'border-emerald-400' : 'bg-emerald-500/40 border-emerald-400'
+																		}`}
+																		style={{
+																			width: bodyCssW,
+																			height: bodyCssH,
+																			left: '50%',
+																			top: '50%',
+																			transform: 'translate(-50%, -50%)',
+																		}}
+																	>
+																		{!hasSprite && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+																	</div>
+																</div>
+																<p className="text-xs text-slate-600 mt-1.5 text-center">
+																	{(bw / TILE_PX).toFixed(2)} × {(bh / TILE_PX).toFixed(2)} tiles
+																</p>
+															</div>
+														);
+													})()}
+												</div>
+											)}
+										</section>
+
+
+										{/* Advanced raw JSON */}
+										<details className="mb-4">
+											<summary className="text-sm font-medium text-slate-300 cursor-pointer select-none">
+												Advanced (AI behavior, abilities, states, everything else)
+											</summary>
+											<textarea
+												value={advancedText}
+												onChange={(e) => setAdvancedText(e.target.value)}
+												spellCheck={false}
+												rows={14}
+												className="w-full mt-2 bg-slate-900 border border-slate-800 rounded-md p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500"
+											/>
+											{advancedError && <p className="text-xs text-red-400 mt-1">{advancedError}</p>}
+										</details>
+									</div>
+								)}
+							</div>
+						</>
+					) : isGroupTab ? (
+						<>
+							{/* List pane */}
+							<div className="w-64 shrink-0 border-r border-slate-800 flex flex-col">
+								<div className="p-3 border-b border-slate-800">
+									<div className="relative">
+										<Search size={13} className="absolute left-2.5 top-2.5 text-slate-600" />
+										<input
+											value={search}
+											onChange={(e) => setSearch(e.target.value)}
+											placeholder="Search..."
+											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-amber-500"
+										/>
+									</div>
+									<button
+										onClick={startNewGroup}
+										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+									>
+										<Plus size={14} /> New group
+									</button>
+								</div>
+								<div className="flex-1 overflow-y-auto">
+									{groupVariableEntries.map(([key, v]) => (
+										<button
+											key={key}
+											onClick={() => selectGroup(key)}
+											className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
+												selectedKey === key ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+											}`}
+										>
+											<div className="text-sm text-slate-200 truncate">{key}</div>
+											<div className="text-xs text-slate-600">{Object.keys(v?.default || {}).length} members</div>
+										</button>
+									))}
+									{groupVariableEntries.length === 0 && (
+										<div className="text-sm text-slate-600 text-center py-8 px-4">Nothing here yet.</div>
+									)}
+								</div>
+							</div>
+
+							{/* Editor pane */}
+							<div className="flex-1 overflow-y-auto p-6">
+								{!groupDraft ? (
+									<div className="text-slate-600 text-sm mt-16 text-center">
+										Select a group on the left, or create a new one.
+									</div>
+								) : (
+									<div className="max-w-2xl">
+										<div className="flex items-center justify-between mb-4">
+											<div className="flex-1">
+												<label className="block text-xs text-slate-500 mb-1">Key</label>
+												<input
+													value={groupDraft.key}
+													onChange={(e) => setGroupDraft((d) => ({ ...d, key: e.target.value }))}
+													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-amber-500 focus:outline-none px-0.5 w-full"
+												/>
+												{groupDraft.isNew && <span className="text-xs text-amber-500">(new, not saved yet)</span>}
+											</div>
+											<div className="flex gap-2 ml-4">
+												{!groupDraft.isNew && (
+													<button
+														onClick={deleteGroup}
+														className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-900 text-red-400 text-sm hover:bg-red-950/40 transition-colors"
+													>
+														<Trash2 size={13} /> Delete
+													</button>
+												)}
+												<button
+													onClick={saveGroupDraft}
+													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+												>
+													<Save size={13} /> Save to working copy
+												</button>
+											</div>
+										</div>
+
+										<p className="text-xs text-slate-600 mb-4">
+											DataType: <span className="font-mono text-slate-400">{activeGroupDef.dataType}</span> — renaming this
+											group won't update any scripts that already reference it by name.
+										</p>
+
+										{savedMsg && (
+											<div className="mb-5 text-sm text-emerald-400 bg-emerald-950/30 border border-emerald-900 rounded-md px-3 py-2">
+												{savedMsg}
+											</div>
+										)}
+
+										<h3 className="text-sm font-medium text-slate-300 mb-2">
+											{activeGroupDef.collection === 'unitTypes' ? 'Units' : 'Items'} in this group
+										</h3>
+										<div className="space-y-2">
+											{Object.entries(groupDraft.entries).map(([id, entry]) => (
+												<div key={id} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+													<span className="text-sm flex-1 truncate">{groupMemberCollection[id]?.name || id}</span>
+													<label className="text-xs text-slate-500">probability</label>
+													<input
+														type="number"
+														value={entry.probability ?? 0}
+														onChange={(e) => updateGroupMemberField(id, 'probability', Number(e.target.value))}
+														className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+													/>
+													<label className="text-xs text-slate-500">quantity</label>
+													<input
+														type="number"
+														value={entry.quantity ?? 1}
+														onChange={(e) => updateGroupMemberField(id, 'quantity', Number(e.target.value))}
+														className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+													/>
+													<button onClick={() => removeGroupMember(id)} className="text-slate-600 hover:text-red-400 ml-1">
+														<X size={14} />
+													</button>
+												</div>
+											))}
+										</div>
+										<select
+											onChange={(e) => {
+												addGroupMember(e.target.value);
+												e.target.value = '';
+											}}
+											defaultValue=""
+											className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-amber-500"
+										>
+											<option value="" disabled>
+												+ Add {activeGroupDef.collection === 'unitTypes' ? 'a unit' : 'an item'}...
+											</option>
+											{Object.entries(groupMemberCollection)
+												.filter(([id]) => !groupDraft.entries[id])
+												.sort((a, b) => (a[1]?.name || '').localeCompare(b[1]?.name || ''))
+												.map(([id, v]) => (
+													<option key={id} value={id}>
+														{v?.name || id}
+													</option>
+												))}
+										</select>
+									</div>
+								)}
+							</div>
+						</>
+					) : isScriptsTab ? (
+						<>
+							{/* List pane */}
+							<div className="w-64 shrink-0 border-r border-slate-800 flex flex-col">
+								<div className="p-3 border-b border-slate-800">
+									<div className="relative">
+										<Search size={13} className="absolute left-2.5 top-2.5 text-slate-600" />
+										<input
+											value={search}
+											onChange={(e) => setSearch(e.target.value)}
+											placeholder="Search..."
+											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-amber-500"
+										/>
+									</div>
+									<div className="flex gap-1.5 mt-2">
+										<button
+											onClick={() => startNewScript(selectedScriptFolderId)}
+											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+										>
+											<Plus size={14} /> New script
+										</button>
+										<button
+											title="New group"
+											onClick={() => addScriptFolder(selectedScriptFolderId)}
+											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-slate-700 text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+										>
+											<FolderPlus size={14} />
+										</button>
+									</div>
+									{selectedScriptFolderId && !search.trim() && (
+										<div className="text-xs text-slate-600 mt-1.5 truncate">
+											New scripts go into:{' '}
+											<span className="text-slate-400">{scriptsCollection[selectedScriptFolderId]?.folderName || 'top level'}</span>
+										</div>
+									)}
+								</div>
+								<div className="flex-1 overflow-y-auto">
+									{search.trim() ? (
+										<>
+											{scriptSearchResults.map(([key, s]) => (
+												<button
+													key={key}
+													onClick={() => selectScript(key)}
+													className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
+														selectedKey === key ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+													}`}
+												>
+													<div className="text-sm text-slate-200 truncate">{s.name || '(unnamed)'}</div>
+													<div className="text-xs text-slate-600 truncate">
+														{(s.triggers || []).map((t) => t.type).join(', ') || 'no triggers'}
+													</div>
+												</button>
+											))}
+											{scriptSearchResults.length === 0 && (
+												<div className="text-sm text-slate-600 text-center py-8 px-4">No matches.</div>
+											)}
+										</>
+									) : (
+										<>
+											{scriptTree.map((node) =>
+												node.kind === 'folder' ? (
+													<ScriptFolderRow key={node.id} node={node} depth={0} />
+												) : (
+													<button
+														key={node.id}
+														onClick={() => selectScript(node.id)}
+														className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
+															selectedKey === node.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+														}`}
+													>
+														<div className="text-sm text-slate-200 truncate">{scriptsCollection[node.id]?.name || '(unnamed)'}</div>
+														<div className="text-xs text-slate-600 truncate">
+															{(scriptsCollection[node.id]?.triggers || []).map((t) => t.type).join(', ') || 'no triggers'}
+														</div>
+													</button>
+												)
+											)}
+											{scriptTree.length === 0 && (
+												<div className="text-sm text-slate-600 text-center py-8 px-4">Nothing here yet.</div>
+											)}
+										</>
+									)}
+								</div>
+							</div>
+
+							{/* Editor pane */}
+							<div className="flex-1 overflow-y-auto p-6">
+								{!scriptDraft ? (
+									<div className="text-slate-600 text-sm mt-16 text-center">
+										Select a script on the left, or create a new one.
+									</div>
+								) : (
+									<div className="max-w-2xl">
+										<div className="flex items-center justify-between mb-4">
+											<div className="flex-1">
+												<input
+													value={scriptDraft.name}
+													onChange={(e) => setScriptDraft((d) => ({ ...d, name: e.target.value }))}
+													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-amber-500 focus:outline-none px-0.5 w-full"
+												/>
+												<div className="text-xs text-slate-600 font-mono mt-1">
+													{scriptDraft.key} {scriptDraft.isNew && <span className="text-amber-500 ml-1">(new, not saved yet)</span>}
+												</div>
+											</div>
+											<div className="flex gap-2 ml-4">
+												{!scriptDraft.isNew && (
+													<button
+														onClick={deleteScript}
+														className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-900 text-red-400 text-sm hover:bg-red-950/40 transition-colors"
+													>
+														<Trash2 size={13} /> Delete
+													</button>
+												)}
+												<button
+													onClick={saveScriptDraft}
+													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+												>
+													<Save size={13} /> Save to working copy
+												</button>
+											</div>
+										</div>
+
+										<div className="mb-6 flex items-center gap-2">
+											<span className="text-xs text-slate-500 shrink-0">Group</span>
+											<select
+												value={scriptDraft.parentId ?? '__top__'}
+												onChange={(e) =>
+													setScriptDraft((d) => ({ ...d, parentId: e.target.value === '__top__' ? null : e.target.value }))
+												}
+												className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-amber-500"
+											>
+												{scriptFolderOptions.map((f) => (
+													<option key={f.id ?? '__top__'} value={f.id ?? '__top__'}>
+														{'—'.repeat(f.depth)} {f.name}
+													</option>
+												))}
+											</select>
+										</div>
+
+										{savedMsg && (
+											<div className="mb-5 text-sm text-emerald-400 bg-emerald-950/30 border border-emerald-900 rounded-md px-3 py-2">
+												{savedMsg}
+											</div>
+										)}
+
+										<h3 className="text-sm font-medium text-slate-300 mb-2">Triggers, conditions &amp; actions</h3>
+										<textarea
+											value={scriptDraft.bodyText}
+											onChange={(e) => setScriptDraft((d) => ({ ...d, bodyText: e.target.value }))}
+											spellCheck={false}
+											rows={22}
+											className="w-full bg-slate-900 border border-slate-800 rounded-md p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500"
+										/>
+										{scriptBodyError && <p className="text-xs text-red-400 mt-1">{scriptBodyError}</p>}
+										<p className="text-xs text-slate-600 mt-2">
+											Same idea as the "Advanced" box on units/items/projectiles — this is the raw script logic, edited
+											as JSON rather than through a visual builder.
+										</p>
+									</div>
+								)}
+							</div>
+						</>
+					) : activeTab === 'attributeTypes' ? (
+						<div className="flex-1 overflow-y-auto p-6 max-w-2xl">
+							<div className="flex items-center justify-between mb-4">
+								<h2 className="text-base font-medium">Attribute types</h2>
+								<button
+									onClick={addAttributeType}
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+								>
+									<Plus size={14} /> New attribute type
+								</button>
+							</div>
+							<div className="space-y-2">
+								{Object.entries(attributeTypes).map(([key, attr]) => (
+									<div key={key} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+										<input
+											value={attr.name || ''}
+											onChange={(e) => updateAttributeType(key, 'name', e.target.value)}
+											className="flex-1 bg-transparent text-sm focus:outline-none"
+										/>
+										<label className="text-xs text-slate-500">default</label>
+										<input
+											type="number"
+											value={attr.value ?? 0}
+											onChange={(e) => updateAttributeType(key, 'value', Number(e.target.value))}
+											className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+										/>
+										<label className="text-xs text-slate-500">min</label>
+										<input
+											type="number"
+											value={attr.min ?? 0}
+											onChange={(e) => updateAttributeType(key, 'min', Number(e.target.value))}
+											className="w-14 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+										/>
+										<label className="text-xs text-slate-500">max</label>
+										<input
+											type="number"
+											value={attr.max ?? 100}
+											onChange={(e) => updateAttributeType(key, 'max', Number(e.target.value))}
+											className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+										/>
+									</div>
+								))}
+							</div>
+							<p className="text-xs text-slate-600 mt-4">
+								These are the attribute types available to attach on any unit, item, or projectile from its editor tab.
+							</p>
+						</div>
+					) : (
+						<div className="flex-1 overflow-y-auto p-6 max-w-2xl">
+							<div className="flex items-center justify-between mb-4">
+								<h2 className="text-base font-medium">Global variables</h2>
+								<button
+									onClick={addGlobalVariable}
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+								>
+									<Plus size={14} /> New variable
+								</button>
+							</div>
+							<div className="space-y-2">
+								{Object.entries(gameData?.data?.variables || {}).map(([name, v]) => (
+									<div key={name} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+										<span className="text-sm flex-1 font-mono">{name}</span>
+										<select
+											value={v.dataType || 'string'}
+											onChange={(e) => updateGlobalVariable(name, 'dataType', e.target.value)}
+											className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs"
+										>
+											<option value="string">string</option>
+											<option value="number">number</option>
+											<option value="boolean">boolean</option>
+										</select>
+										<input
+											value={v.default ?? ''}
+											onChange={(e) => updateGlobalVariable(name, 'default', e.target.value)}
+											placeholder="default value"
+											className="w-32 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+										/>
+									</div>
+								))}
+							</div>
+							<p className="text-xs text-slate-600 mt-4">
+								Game-wide variables, not tied to any specific unit/item/projectile.
+							</p>
+						</div>
+					)}
+				</div>
+			)}
+
+			{showNewModal && (
+				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-20 px-4">
+					<div className="bg-slate-900 border border-slate-700 rounded-lg p-5 w-full max-w-sm">
+						<div className="flex items-center justify-between mb-4">
+							<h3 className="font-medium">New {ENTITY_TABS.find((t) => t.key === activeTab)?.label.slice(0, -1)}</h3>
+							<button onClick={() => setShowNewModal(false)} className="text-slate-500 hover:text-slate-300">
+								<X size={16} />
+							</button>
+						</div>
+						<button
+							onClick={() => startNew(null)}
+							className="w-full text-left px-3 py-2 rounded-md border border-slate-700 hover:border-amber-500 hover:bg-slate-800/50 mb-3 text-sm transition-colors"
+						>
+							Start from blank
+						</button>
+						<div className="text-xs text-slate-500 mb-1.5">...or duplicate an existing one as a starting point</div>
+						<div className="flex gap-2">
+							<select
+								value={cloneFrom}
+								onChange={(e) => setCloneFrom(e.target.value)}
+								className="flex-1 bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm"
+							>
+								<option value="">Choose...</option>
+								{Object.entries(categoryMap).map(([k, v]) => (
+									<option key={k} value={k}>{v?.name || k}</option>
+								))}
+							</select>
+							<button
+								onClick={() => cloneFrom && startNew(cloneFrom)}
+								disabled={!cloneFrom}
+								className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-400 transition-colors"
+							>
+								<Copy size={13} /> Clone
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
