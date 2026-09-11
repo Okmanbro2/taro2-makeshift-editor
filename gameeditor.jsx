@@ -108,6 +108,7 @@ export default function GameContentEditor() {
 	const [scriptCollapsed, setScriptCollapsed] = useState({});
 	const [scriptDraft, setScriptDraft] = useState(null);
 	const [scriptBodyError, setScriptBodyError] = useState('');
+	const [dialogueDraft, setDialogueDraft] = useState(null);
 	const [draft, setDraft] = useState(null);
 	const [groupDraft, setGroupDraft] = useState(null);
 	const [advancedText, setAdvancedText] = useState('');
@@ -232,6 +233,27 @@ export default function GameContentEditor() {
 		walk(null, 1);
 		return out;
 	}, [isScriptsTab, gameData, scriptsCollection]);
+
+	const isDialoguesTab = activeTab === 'dialogues';
+	const dialoguesCollection = gameData?.data?.dialogues || {};
+
+	// dialogue
+	const pickableScripts = useMemo(
+		() =>
+			Object.entries(scriptsCollection)
+				.filter(([, v]) => 'triggers' in v)
+				.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || '')),
+		[scriptsCollection]
+	);
+
+	const dialogueEntries = useMemo(() => {
+		if (!isDialoguesTab || !gameData) return [];
+		const entries = Object.entries(dialoguesCollection);
+		entries.sort((a, b) => (a[1]?.name || '').localeCompare(b[1]?.name || ''));
+		if (!search.trim()) return entries;
+		const q = search.toLowerCase();
+		return entries.filter(([k, v]) => (v?.name || '').toLowerCase().includes(q) || k.toLowerCase().includes(q));
+	}, [isDialoguesTab, gameData, dialoguesCollection, search]);
 
 	function handleUpload(e) {
 		const file = e.target.files[0];
@@ -634,6 +656,111 @@ export default function GameContentEditor() {
 		});
 	}
 
+	function selectDialogue(key) {
+		const d = dialoguesCollection[key];
+		if (!d) return;
+		setSelectedKey(key);
+		setDialogueDraft({
+			key,
+			name: d.name || '',
+			dialogueTitle: d.dialogueTitle || '',
+			message: d.message || '',
+			image: d.image || '',
+			letterPrintSpeed: d.letterPrintSpeed ?? 0,
+			options: deepClone(d.options) || [],
+			isNew: false,
+		});
+		setSavedMsg('');
+	}
+	
+	function startNewDialogue() {
+		const id = generateKey();
+		setSelectedKey(id);
+		setDialogueDraft({
+			key: id,
+			name: 'New Dialogue',
+			dialogueTitle: '',
+			message: '',
+			image: '',
+			letterPrintSpeed: 0,
+			options: [],
+			isNew: true,
+		});
+		setSavedMsg('');
+	}
+
+	function updateDialogueField(field, value) {
+		setDialogueDraft((d) => ({ ...d, [field]: value }));
+	}
+
+	function addDialogueOption() {
+		setDialogueDraft((d) => ({
+			...d,
+			options: [...d.options, { name: 'New option', scriptName: '', followUpDialogue: '' }],
+		}));
+	}
+
+	function updateDialogueOption(index, field, value) {
+		setDialogueDraft((d) => {
+			const options = [...d.options];
+			options[index] = { ...options[index], [field]: value };
+			return { ...d, options };
+		});
+	}
+
+	function removeDialogueOption(index) {
+		setDialogueDraft((d) => ({ ...d, options: d.options.filter((_, i) => i !== index) }));
+	}
+
+	function moveDialogueOption(index, direction) {
+		setDialogueDraft((d) => {
+			const options = [...d.options];
+			const target = index + direction;
+			if (target < 0 || target >= options.length) return d;
+			[options[index], options[target]] = [options[target], options[index]];
+			return { ...d, options };
+		});
+	}
+
+	function saveDialogueDraft() {
+		if (!dialogueDraft.dialogueTitle.trim() && !dialogueDraft.message.trim()) {
+			if (!window.confirm('This dialogue has no title or message - save it anyway?')) return;
+		}
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.dialogues) next.data.dialogues = {};
+			next.data.dialogues[dialogueDraft.key] = {
+				name: dialogueDraft.name,
+				dialogueTitle: dialogueDraft.dialogueTitle,
+				message: dialogueDraft.message,
+				image: dialogueDraft.image,
+				letterPrintSpeed: Number(dialogueDraft.letterPrintSpeed) || 0,
+				options: dialogueDraft.options,
+				streamMode: next.data.dialogues[dialogueDraft.key]?.streamMode ?? 1,
+			};
+			return next;
+		});
+		setDialogueDraft((d) => ({ ...d, isNew: false }));
+		setSavedMsg('Saved to the working copy in this tool. Download the file below to keep it.');
+	}
+
+	function deleteDialogue() {
+		if (!selectedKey) return;
+		if (
+			!window.confirm(
+				"Remove this dialogue from the working copy? Any other dialogue's \"then show\" or script's \"open dialogue\" action pointing at it would break - this tool can't find and fix those for you."
+			)
+		)
+			return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			delete next.data.dialogues[selectedKey];
+			return next;
+		});
+		setSelectedKey(null);
+		setDialogueDraft(null);
+	}
+
 	function addFolder(parentId) {
 		const name = prompt('New group name:');
 		if (!name) return;
@@ -914,12 +1041,15 @@ export default function GameContentEditor() {
 				<div className="flex items-center gap-2">
 					{gameData && (
 						<>
-							<label className="text-xs text-slate-500 hidden md:inline">Asset base URL</label>
+							<label className="text-xs text-slate-500 hidden md:inline" title="A domain where /sprites/... actually resolves to real image files - NOT the github.com webpage URL">
+								Image server
+							</label>
 							<input
 								value={assetBaseUrl}
 								onChange={(e) => updateAssetBaseUrl(e.target.value)}
-								placeholder="Github Link"
-								className="hidden md:block w-56 bg-slate-950 border border-slate-800 rounded-md px-2 py-1.5 text-xs placeholder-slate-700 focus:outline-none focus:border-amber-500 mr-1"
+								placeholder="https://raw.githubusercontent.com/user/repo/main"
+								title="Where images actually live, e.g. https://raw.githubusercontent.com/user/repo/main or your own game server's URL - not a github.com/.../tree/... page"
+								className="hidden md:block w-64 bg-slate-950 border border-slate-800 rounded-md px-2 py-1.5 text-xs placeholder-slate-700 focus:outline-none focus:border-amber-500 mr-1"
 							/>
 							<span className="text-xs text-slate-500 mr-2 hidden sm:inline">{fileName}</span>
 						</>
@@ -1044,6 +1174,22 @@ export default function GameContentEditor() {
 							<span className="text-slate-600 ml-1.5 text-xs">
 								{Object.values(scriptsCollection).filter((v) => 'triggers' in v).length}
 							</span>
+						</button>
+						<button
+							onClick={() => {
+								setActiveTab('dialogues');
+								setSelectedKey(null);
+								setDialogueDraft(null);
+								setSearch('');
+							}}
+							className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
+								activeTab === 'dialogues'
+									? 'border-amber-400 text-amber-400 bg-slate-900'
+									: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+							}`}
+						>
+							Dialogues
+							<span className="text-slate-600 ml-1.5 text-xs">{Object.keys(dialoguesCollection).length}</span>
 						</button>
 					</nav>
 
@@ -1796,6 +1942,217 @@ export default function GameContentEditor() {
 											Same idea as the "Advanced" box on units/items/projectiles — this is the raw script logic, edited
 											as JSON rather than through a visual builder.
 										</p>
+									</div>
+								)}
+							</div>
+						</>
+					) : isDialoguesTab ? (
+						<>
+							{/* List pane */}
+							<div className="w-64 shrink-0 border-r border-slate-800 flex flex-col">
+								<div className="p-3 border-b border-slate-800">
+									<div className="relative">
+										<Search size={13} className="absolute left-2.5 top-2.5 text-slate-600" />
+										<input
+											value={search}
+											onChange={(e) => setSearch(e.target.value)}
+											placeholder="Search..."
+											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-amber-500"
+										/>
+									</div>
+									<button
+										onClick={startNewDialogue}
+										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+									>
+										<Plus size={14} /> New dialogue
+									</button>
+								</div>
+								<div className="flex-1 overflow-y-auto">
+									{dialogueEntries.map(([key, d]) => (
+										<button
+											key={key}
+											onClick={() => selectDialogue(key)}
+											className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
+												selectedKey === key ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+											}`}
+										>
+											<div className="text-sm text-slate-200 truncate">{d?.name || '(unnamed)'}</div>
+											<div className="text-xs text-slate-600 truncate">{(d?.options || []).length} option(s)</div>
+										</button>
+									))}
+									{dialogueEntries.length === 0 && (
+										<div className="text-sm text-slate-600 text-center py-8 px-4">Nothing here yet.</div>
+									)}
+								</div>
+							</div>
+
+							{/* Editor pane */}
+							<div className="flex-1 overflow-y-auto p-6">
+								{!dialogueDraft ? (
+									<div className="text-slate-600 text-sm mt-16 text-center">
+										Select a dialogue on the left, or create a new one.
+									</div>
+								) : (
+									<div className="max-w-2xl">
+										<div className="flex items-center justify-between mb-4">
+											<div className="flex-1">
+												<label className="block text-xs text-slate-500 mb-1">Name (editor label only)</label>
+												<input
+													value={dialogueDraft.name}
+													onChange={(e) => updateDialogueField('name', e.target.value)}
+													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-amber-500 focus:outline-none px-0.5 w-full"
+												/>
+												<div className="text-xs text-slate-600 font-mono mt-1">
+													{dialogueDraft.key}{' '}
+													{dialogueDraft.isNew && <span className="text-amber-500 ml-1">(new, not saved yet)</span>}
+												</div>
+											</div>
+											<div className="flex gap-2 ml-4">
+												{!dialogueDraft.isNew && (
+													<button
+														onClick={deleteDialogue}
+														className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-900 text-red-400 text-sm hover:bg-red-950/40 transition-colors"
+													>
+														<Trash2 size={13} /> Delete
+													</button>
+												)}
+												<button
+													onClick={saveDialogueDraft}
+													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+												>
+													<Save size={13} /> Save to working copy
+												</button>
+											</div>
+										</div>
+
+										{savedMsg && (
+											<div className="mb-5 text-sm text-emerald-400 bg-emerald-950/30 border border-emerald-900 rounded-md px-3 py-2">
+												{savedMsg}
+											</div>
+										)}
+
+										<div className="mb-4">
+											<label className="block text-xs text-slate-500 mb-1">Dialogue title (shown to players)</label>
+											<input
+												value={dialogueDraft.dialogueTitle}
+												onChange={(e) => updateDialogueField('dialogueTitle', e.target.value)}
+												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+											/>
+										</div>
+
+										<div className="mb-4">
+											<label className="block text-xs text-slate-500 mb-1">Message</label>
+											<textarea
+												value={dialogueDraft.message}
+												onChange={(e) => updateDialogueField('message', e.target.value)}
+												rows={4}
+												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+											/>
+											<p className="text-xs text-slate-600 mt-1">Supports basic HTML like {'<br>'} for line breaks.</p>
+										</div>
+
+										<div className="flex gap-4 mb-6">
+											<div className="flex-1">
+												<label className="block text-xs text-slate-500 mb-1">Image URL (optional)</label>
+												<input
+													value={dialogueDraft.image}
+													onChange={(e) => updateDialogueField('image', e.target.value)}
+													className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+												/>
+											</div>
+											<div>
+												<label className="block text-xs text-slate-500 mb-1">Letter print speed</label>
+												<input
+													type="number"
+													min="0"
+													value={dialogueDraft.letterPrintSpeed}
+													onChange={(e) => updateDialogueField('letterPrintSpeed', e.target.value)}
+													className="w-28 bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+												/>
+												<p className="text-xs text-slate-600 mt-1">0 = instant</p>
+											</div>
+											{dialogueDraft.image && (
+												<img
+													src={resolveAssetUrl(dialogueDraft.image)}
+													alt="dialogue"
+													className="w-14 h-14 object-cover rounded-md border border-slate-700"
+													onError={(e) => {
+														e.target.style.display = 'none';
+													}}
+												/>
+											)}
+										</div>
+
+										<h3 className="text-sm font-medium text-slate-300 mb-2">Options</h3>
+										<div className="space-y-2">
+											{dialogueDraft.options.map((opt, i) => (
+												<div key={i} className="bg-slate-900 border border-slate-800 rounded-md p-2.5">
+													<div className="flex items-center gap-2 mb-2">
+														<input
+															value={opt.name}
+															onChange={(e) => updateDialogueOption(i, 'name', e.target.value)}
+															placeholder="Button label"
+															className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm"
+														/>
+														<button
+															onClick={() => moveDialogueOption(i, -1)}
+															disabled={i === 0}
+															className="text-slate-500 hover:text-amber-400 disabled:opacity-30 disabled:hover:text-slate-500"
+														>
+															<ChevronRight size={13} className="-rotate-90" />
+														</button>
+														<button
+															onClick={() => moveDialogueOption(i, 1)}
+															disabled={i === dialogueDraft.options.length - 1}
+															className="text-slate-500 hover:text-amber-400 disabled:opacity-30 disabled:hover:text-slate-500"
+														>
+															<ChevronRight size={13} className="rotate-90" />
+														</button>
+														<button onClick={() => removeDialogueOption(i)} className="text-slate-600 hover:text-red-400">
+															<X size={14} />
+														</button>
+													</div>
+													<div className="flex gap-2">
+														<div className="flex-1">
+															<label className="block text-xs text-slate-500 mb-1">On click, run script</label>
+															<select
+																value={opt.scriptName || ''}
+																onChange={(e) => updateDialogueOption(i, 'scriptName', e.target.value)}
+																className="w-full bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs"
+															>
+																<option value="">(none)</option>
+																{pickableScripts.map(([sk, sv]) => (
+																	<option key={sk} value={sk}>
+																		{sv.name || sk}
+																	</option>
+																))}
+															</select>
+														</div>
+														<div className="flex-1">
+															<label className="block text-xs text-slate-500 mb-1">Then show dialogue</label>
+															<select
+																value={opt.followUpDialogue || ''}
+																onChange={(e) => updateDialogueOption(i, 'followUpDialogue', e.target.value)}
+																className="w-full bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs"
+															>
+																<option value="">(none - closes dialogue)</option>
+																{Object.entries(dialoguesCollection).map(([dk, dv]) => (
+																	<option key={dk} value={dk}>
+																		{dv.name || dk}
+																	</option>
+																))}
+															</select>
+														</div>
+													</div>
+												</div>
+											))}
+										</div>
+										<button
+											onClick={addDialogueOption}
+											className="mt-2 flex items-center gap-1.5 text-sm text-slate-400 hover:text-amber-400 transition-colors"
+										>
+											<Plus size={13} /> Add option
+										</button>
 									</div>
 								)}
 							</div>
