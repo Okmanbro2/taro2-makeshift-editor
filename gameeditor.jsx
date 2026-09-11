@@ -28,10 +28,10 @@ function deepClone(obj) {
 	return obj ? JSON.parse(JSON.stringify(obj)) : obj;
 }
 
-// Ensures every unit/item/projectile has a folders[] placement record (defaulting
-// to that tab's root if missing), and that the three root folder nodes exist.
-// This lets the rest of the app assume every entity is always "filed" somewhere,
-// instead of special-casing "this entity predates the folders feature."
+// ensures every unit/item/projectile has a folders[] placement record (defaulting to that tab's root if missing), and
+// that the three root folder nodes exist
+// this lets the rest of the app assume every entity is always "filed" somewhere,
+// instead of special-casing "this entity predates the folders feature"
 function normalizeFolders(parsed) {
 	if (!parsed.data.folders) parsed.data.folders = {};
 	const folders = parsed.data.folders;
@@ -54,8 +54,8 @@ function normalizeFolders(parsed) {
 	return parsed;
 }
 
-// Is `candidateId` the same as `folderId`, or nested somewhere inside it?
-// Used to stop a group from being moved into its own descendant.
+// is `candidateId` the same as `folderId`, or nested somewhere inside it?
+// used to stop a group from being moved into its own descendant
 function isSelfOrDescendant(folders, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
@@ -68,9 +68,7 @@ function isSelfOrDescendant(folders, folderId, candidateId) {
 	return false;
 }
 
-// Same idea, but for the top-level scripts collection, where folder markers and
-// scripts live in the same flat dict and "top level" is represented by parent: null
-// rather than a named root id.
+// same idea above
 function isSelfOrDescendantScript(scripts, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
@@ -128,8 +126,7 @@ export default function GameContentEditor() {
 		localStorage.setItem('editorAssetBaseUrl', value);
 	}
 
-	// Sprite URLs in game.json are relative (e.g. "/sprites/foo.png") - they only
-	// resolve once pointed at wherever the game server actually hosts /sprites/.
+	// sprite urls
 	function resolveAssetUrl(url) {
 		if (!url) return '';
 		if (/^https?:\/\//i.test(url)) return url;
@@ -155,7 +152,7 @@ export default function GameContentEditor() {
 		return entries.filter(([k, v]) => (v?.name || '').toLowerCase().includes(q) || k.toLowerCase().includes(q));
 	}, [categoryMap, search]);
 
-	// Tree of folders + entities under the active tab's root, for the non-search view.
+	// folder tree
 	const tree = useMemo(() => {
 		if (!isEntityTab || !gameData) return [];
 		function build(parentId) {
@@ -193,8 +190,7 @@ export default function GameContentEditor() {
 	const isScriptsTab = activeTab === 'globalScripts';
 	const scriptsCollection = gameData?.data?.scripts || {};
 
-	// Search flattens across all groups (same convention as the entity tabs);
-	// otherwise render the real folder/script tree starting from parent: null.
+	// search and rendering of folders
 	const scriptSearchResults = useMemo(() => {
 		if (!isScriptsTab || !search.trim()) return [];
 		const q = search.toLowerCase();
@@ -661,8 +657,7 @@ export default function GameContentEditor() {
 		});
 	}
 
-	// Deleting a group never deletes what's inside it - contents move up to
-	// the deleted group's own parent, same as "un-nesting" a folder.
+	// removing folders
 	function deleteFolder(id) {
 		const folder = folders[id];
 		if (!folder) return;
@@ -922,7 +917,7 @@ export default function GameContentEditor() {
 							<input
 								value={assetBaseUrl}
 								onChange={(e) => updateAssetBaseUrl(e.target.value)}
-								placeholder="https://yourgame.duckdns.org:8080"
+								placeholder="Github Link"
 								className="hidden md:block w-56 bg-slate-950 border border-slate-800 rounded-md px-2 py-1.5 text-xs placeholder-slate-700 focus:outline-none focus:border-amber-500 mr-1"
 							/>
 							<span className="text-xs text-slate-500 mr-2 hidden sm:inline">{fileName}</span>
