@@ -1567,11 +1567,12 @@ export default function GameContentEditor() {
 														const cols = draft.cellSheet.columnCount || 1;
 														const rows = draft.cellSheet.rowCount || 1;
 														const hasSprite = draft.cellSheet.url && spriteNatural;
-														const frameCssW = hasSprite ? (spriteNatural.w / cols) * scale : 0;
-														const frameCssH = hasSprite ? (spriteNatural.h / rows) * scale : 0;
 
-														const containerW = Math.max(tileCss * 2, bodyCssW + tileCss, frameCssW + tileCss);
-														const containerH = Math.max(tileCss * 2, bodyCssH + tileCss, frameCssH + tileCss);
+														// The body dimensions are the authoritative collision bounds.
+										// Render the sprite frame at exactly the body's dimensions so
+										// intentional stretching/squashing is visible in the editor.
+										const containerW = Math.max(tileCss * 2, bodyCssW + tileCss);
+														const containerH = Math.max(tileCss * 2, bodyCssH + tileCss);
 
 														return (
 															<div className="shrink-0">
@@ -1589,14 +1590,14 @@ export default function GameContentEditor() {
 																		<div
 																			className="absolute"
 																			style={{
-																				width: frameCssW,
-																				height: frameCssH,
+																				width: bodyCssW,
+																				height: bodyCssH,
 																				left: '50%',
 																				top: '50%',
 																				transform: 'translate(-50%, -50%)',
 																				backgroundImage: `url(${resolveAssetUrl(draft.cellSheet.url)})`,
 																				backgroundPosition: '0px 0px',
-																				backgroundSize: `${spriteNatural.w * scale}px ${spriteNatural.h * scale}px`,
+																				backgroundSize: `${bodyCssW * cols}px ${bodyCssH * rows}px`,
 																				backgroundRepeat: 'no-repeat',
 																				imageRendering: 'pixelated',
 																			}}
