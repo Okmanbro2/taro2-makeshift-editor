@@ -323,7 +323,7 @@ export default function GameContentEditor() {
 	function startNew(baseKey) {
 		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
 		const newKey = generateKey();
-		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
+		const { id: _oldId, name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setSelectedKey(newKey);
 		setDraft({
@@ -566,6 +566,7 @@ export default function GameContentEditor() {
 		};
 		const finalEntity = {
 			...restParsed,
+			id: draft.key,
 			name: draft.name,
 			attributes: draft.attributes,
 			variables: draft.variables,
