@@ -16,7 +16,7 @@ const GROUP_TABS = [
 	{ key: 'itemTypeGroups', label: 'Item Type Groups', dataType: 'itemTypeGroup', collection: 'itemTypes' },
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
-const TILE_PX = 64; 
+const TILE_PX = 64; // 1 tile = 64x64 in-game pixels, used as the reference scale for the body size preview
 
 function generateKey() {
 	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -29,6 +29,10 @@ function deepClone(obj) {
 	return obj ? JSON.parse(JSON.stringify(obj)) : obj;
 }
 
+// ensures every unit/item/projectile has a folders[] placement record (defaulting to that tab's root if missing), and
+// that the three root folder nodes exist
+// this lets the rest of the app assume every entity is always "filed" somewhere,
+// instead of special-casing "this entity predates the folders feature"
 function normalizeFolders(parsed) {
 	if (!parsed.data.folders) parsed.data.folders = {};
 	const folders = parsed.data.folders;
@@ -51,18 +55,21 @@ function normalizeFolders(parsed) {
 	return parsed;
 }
 
+// is `candidateId` the same as `folderId`, or nested somewhere inside it?
+// used to stop a group from being moved into its own descendant
 function isSelfOrDescendant(folders, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
 	while (cur != null) {
 		if (cur === folderId) return true;
-		if (seen.has(cur)) return false; 
+		if (seen.has(cur)) return false; // guard against any pre-existing cycle
 		seen.add(cur);
 		cur = folders[cur]?.parent;
 	}
 	return false;
 }
 
+// same idea above
 function isSelfOrDescendantScript(scripts, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
@@ -96,7 +103,7 @@ export default function GameContentEditor() {
 	const [activeTab, setActiveTab] = useState('unitTypes');
 	const [selectedKey, setSelectedKey] = useState(null);
 	const [selectedFolderId, setSelectedFolderId] = useState(null);
-	const [collapsed, setCollapsed] = useState({}); 
+	const [collapsed, setCollapsed] = useState({}); // folderId -> bool, UI-only
 	const [selectedScriptFolderId, setSelectedScriptFolderId] = useState(null);
 	const [scriptCollapsed, setScriptCollapsed] = useState({});
 	const [scriptDraft, setScriptDraft] = useState(null);
@@ -112,7 +119,8 @@ export default function GameContentEditor() {
 	const [savedMsg, setSavedMsg] = useState('');
 	const [gridPreview, setGridPreview] = useState({ cols: 1, rows: 1 });
 	const [selectedBodyName, setSelectedBodyName] = useState('default');
-	const [spriteNatural, setSpriteNatural] = useState(null); 
+	const [selectedEntityScriptKey, setSelectedEntityScriptKey] = useState('');
+	const [spriteNatural, setSpriteNatural] = useState(null); // {w, h} of the currently loaded sprite sheet image
 	const [assetBaseUrl, setAssetBaseUrl] = useState(() => localStorage.getItem('editorAssetBaseUrl') || '');
 	const fileInputRef = useRef(null);
 
@@ -121,6 +129,7 @@ export default function GameContentEditor() {
 		localStorage.setItem('editorAssetBaseUrl', value);
 	}
 
+	// sprite urls
 	function resolveAssetUrl(url) {
 		if (!url) return '';
 		if (/^https?:\/\//i.test(url)) return url;
@@ -132,6 +141,7 @@ export default function GameContentEditor() {
 	const activeTabDef = ENTITY_TABS.find((t) => t.key === activeTab);
 	const categoryMap = gameData?.data?.[activeTab] || {};
 	const itemTypes = gameData?.data?.itemTypes || {};
+	const playerAttributeTypes = attributeTypes;
 	const attributeTypes = gameData?.data?.attributeTypes || {};
 	const folders = gameData?.data?.folders || {};
 
@@ -147,6 +157,7 @@ export default function GameContentEditor() {
 		return entries.filter(([k, v]) => (v?.name || '').toLowerCase().includes(q) || k.toLowerCase().includes(q));
 	}, [categoryMap, search]);
 
+	// folder tree
 	const tree = useMemo(() => {
 		if (!isEntityTab || !gameData) return [];
 		function build(parentId) {
@@ -184,6 +195,7 @@ export default function GameContentEditor() {
 	const isScriptsTab = activeTab === 'globalScripts';
 	const scriptsCollection = gameData?.data?.scripts || {};
 
+	// search and rendering of folders
 	const scriptSearchResults = useMemo(() => {
 		if (!isScriptsTab || !search.trim()) return [];
 		const q = search.toLowerCase();
@@ -228,6 +240,7 @@ export default function GameContentEditor() {
 	const isDialoguesTab = activeTab === 'dialogues';
 	const dialoguesCollection = gameData?.data?.dialogues || {};
 
+	// dialogue
 	const pickableScripts = useMemo(
 		() =>
 			Object.entries(scriptsCollection)
@@ -268,7 +281,7 @@ export default function GameContentEditor() {
 	}
 
 	function loadDraftFromEntity(key, entity) {
-		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, ...rest } = entity;
+		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = entity;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setDraft({
 			key,
@@ -278,15 +291,23 @@ export default function GameContentEditor() {
 			cellSheet: deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 },
 			bodies: clonedBodies,
 			...(activeTab === 'unitTypes'
-				? { defaultItems: deepClone(defaultItems) || [], inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1 }
+				? {
+					defaultItems: deepClone(defaultItems) || [],
+					inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1,
+				}
 				: {}),
-			...(activeTab === 'unitTypes'
-				? { defaultItems: deepClone(defaultItems) || [], inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1 }
-				: {}),
+			scripts: deepClone(scripts) || {},
+			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], controls: deepClone(controls) || {}, projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
+			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
+			costUnitAttributes: deepClone(entity.cost?.unitAttributes) || {},
+			costPlayerAttributes: deepClone(entity.cost?.playerAttributes) || {},
+			damageUnitAttributes: deepClone(entity.damage?.unitAttributes) || {},
+			damagePlayerAttributes: deepClone(entity.damage?.playerAttributes) || {},
 			folderId: folders[key]?.parent ?? activeTabDef.root,
 			isNew: false,
 		});
 		setSelectedBodyName(clonedBodies.default ? 'default' : Object.keys(clonedBodies)[0]);
+		setSelectedEntityScriptKey('');
 		setSpriteNatural(null);
 		setGridPreview({ cols: cellSheet?.columnCount || 1, rows: cellSheet?.rowCount || 1 });
 		setAdvancedText(JSON.stringify(rest, null, 2));
@@ -302,7 +323,7 @@ export default function GameContentEditor() {
 	function startNew(baseKey) {
 		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
 		const newKey = generateKey();
-		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, ...rest } = base;
+		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setSelectedKey(newKey);
 		setDraft({
@@ -312,10 +333,21 @@ export default function GameContentEditor() {
 			variables: deepClone(variables) || {},
 			cellSheet: deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 },
 			bodies: clonedBodies,
+			scripts: deepClone(scripts) || {},
+			...(activeTab === 'unitTypes'
+				? { defaultItems: deepClone(defaultItems) || [], inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1 }
+				: {}),
+			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], controls: deepClone(controls) || {}, projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
+			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
+			costUnitAttributes: deepClone(base.cost?.unitAttributes) || {},
+			costPlayerAttributes: deepClone(base.cost?.playerAttributes) || {},
+			damageUnitAttributes: deepClone(base.damage?.unitAttributes) || {},
+			damagePlayerAttributes: deepClone(base.damage?.playerAttributes) || {},
 			folderId: selectedFolderId || activeTabDef.root,
 			isNew: true,
 		});
 		setSelectedBodyName(clonedBodies.default ? 'default' : Object.keys(clonedBodies)[0]);
+		setSelectedEntityScriptKey('');
 		setSpriteNatural(null);
 		setGridPreview({ cols: cellSheet?.columnCount || 1, rows: cellSheet?.rowCount || 1 });
 		setAdvancedText(JSON.stringify(rest, null, 2));
@@ -430,6 +462,89 @@ export default function GameContentEditor() {
 		if (selectedBodyName === name) setSelectedBodyName(remaining[0]);
 	}
 
+	function updateDraftField(field, value) {
+		setDraft((d) => ({ ...d, [field]: value }));
+	}
+
+	function updateDraftNestedField(section, field, value) {
+		setDraft((d) => ({ ...d, [section]: { ...(d[section] || {}), [field]: value } }));
+	}
+
+	function updateMappedValue(section, key, value) {
+		setDraft((d) => ({
+			...d,
+			[section]: { ...(d[section] || {}), [key]: value },
+		}));
+	}
+
+	function removeMappedValue(section, key) {
+		setDraft((d) => {
+			const next = { ...(d[section] || {}) };
+			delete next[key];
+			return { ...d, [section]: next };
+		});
+	}
+
+	function addMappedValue(section, key, value = 0) {
+		if (!key) return;
+		setDraft((d) => ({
+			...d,
+			[section]: { ...(d[section] || {}), [key]: value },
+		}));
+	}
+
+	function normalizeTargetList(value) {
+		return Array.from(new Set(Array.isArray(value) ? value.filter(Boolean) : []));
+	}
+
+	function toggleDamageTarget(target) {
+		setDraft((d) => {
+			const current = normalizeTargetList(d.damage?.targetsAffected);
+			const next = current.includes(target) ? current.filter((x) => x !== target) : [...current, target];
+			return { ...d, damage: { ...(d.damage || {}), targetsAffected: next } };
+		});
+	}
+
+	function getEntityScriptEntries() {
+		const map = draft?.scripts || {};
+		return Object.entries(map)
+			.filter(([, value]) => value && 'triggers' in value)
+			.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''));
+	}
+
+	function selectEntityScript(key) {
+		setSelectedEntityScriptKey(key);
+	}
+
+	function updateEntityScriptBody(key, bodyText) {
+		setDraft((d) => ({
+			...d,
+			scripts: {
+				...(d.scripts || {}),
+				[key]: { ...(d.scripts?.[key] || {}), _editorBodyText: bodyText },
+			},
+		}));
+	}
+
+	function saveEntityScriptBody(key) {
+		const script = draft?.scripts?.[key];
+		if (!script) return;
+		const text = script._editorBodyText;
+		if (typeof text !== 'string') return;
+		try {
+			const body = text.trim() ? JSON.parse(text) : { triggers: [], conditions: [], actions: [] };
+			setDraft((d) => ({
+				...d,
+				scripts: {
+					...(d.scripts || {}),
+					[key]: { ...body, key, name: script.name || '', parent: script.parent ?? null, order: script.order ?? 0 },
+				},
+			}));
+		} catch (err) {
+			alert('Script JSON is invalid: ' + err.message);
+		}
+	}
+
 	function saveDraft() {
 		let restParsed;
 		try {
@@ -439,6 +554,16 @@ export default function GameContentEditor() {
 			return;
 		}
 		setAdvancedError('');
+		const finalCost = {
+			...(draft.cost || {}),
+			...(draft.costUnitAttributes ? { unitAttributes: draft.costUnitAttributes } : {}),
+			...(draft.costPlayerAttributes ? { playerAttributes: draft.costPlayerAttributes } : {}),
+		};
+		const finalDamage = {
+			...(draft.damage || {}),
+			...(draft.damageUnitAttributes ? { unitAttributes: draft.damageUnitAttributes } : {}),
+			...(draft.damagePlayerAttributes ? { playerAttributes: draft.damagePlayerAttributes } : {}),
+		};
 		const finalEntity = {
 			...restParsed,
 			name: draft.name,
@@ -446,6 +571,13 @@ export default function GameContentEditor() {
 			variables: draft.variables,
 			cellSheet: draft.cellSheet,
 			bodies: draft.bodies,
+			scripts: Object.fromEntries(Object.entries(draft.scripts || {}).map(([key, value]) => {
+				const { _editorBodyText, ...cleanScript } = value || {};
+				return [key, cleanScript];
+			})),
+			...(activeTab === 'itemTypes' ? { cost: finalCost, damage: finalDamage } : {}),
+			...(activeTab === 'itemTypes' ? { type: draft.type || '', delayBeforeUse: Number(draft.delayBeforeUse) || 0, quantity: draft.quantity ?? null, maxQuantity: draft.maxQuantity ?? null, inventoryImage: draft.inventoryImage || '', description: draft.description || '', fireRate: Number(draft.fireRate) || 0, reloadRate: Number(draft.reloadRate) || 0, isStackable: !!draft.isStackable, isPurchasable: !!draft.isPurchasable, carriedBy: deepClone(draft.carriedBy) || [], canBeUsedBy: deepClone(draft.canBeUsedBy) || [], controls: deepClone(draft.controls) || {}, projectileType: draft.projectileType || '' } : {}),
+			...(activeTab === 'projectileTypes' ? { lifeSpan: draft.lifeSpan ?? null } : {}),
 		};
 		if (activeTab === 'unitTypes') {
 			finalEntity.inventorySize = Math.min(9, Math.max(0, Number(draft.inventorySize) || 0));
@@ -692,7 +824,7 @@ export default function GameContentEditor() {
 		});
 		setSavedMsg('');
 	}
-
+	
 	function startNewDialogue() {
 		const id = generateKey();
 		setSelectedKey(id);
@@ -805,6 +937,7 @@ export default function GameContentEditor() {
 		});
 	}
 
+	// removing folders
 	function deleteFolder(id) {
 		const folder = folders[id];
 		if (!folder) return;
@@ -1479,6 +1612,132 @@ export default function GameContentEditor() {
 							</section>
 						)}
 
+
+						{activeTab === 'itemTypes' && (
+							<section className="mb-7">
+								<h3 className="text-sm font-medium text-slate-300 mb-2">Item details</h3>
+								<div className="grid grid-cols-2 gap-3 mb-3">
+									<div>
+										<label className="block text-xs text-slate-500 mb-1">Item type</label>
+										<select value={draft.type || ''} onChange={(e) => updateDraftField('type', e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
+											<option value="">(unset)</option><option value="weapon">weapon</option><option value="consumable">consumable</option><option value="unusable">unusable</option>
+										</select>
+									</div>
+									<div>
+										<label className="block text-xs text-slate-500 mb-1">Use delay / cooldown</label>
+										<input type="number" min="0" value={draft.delayBeforeUse ?? 0} onChange={(e) => updateDraftField('delayBeforeUse', Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+									</div>
+									<div>
+										<label className="block text-xs text-slate-500 mb-1">Default quantity</label>
+										<input type="number" min="0" value={draft.quantity ?? ''} onChange={(e) => updateDraftField('quantity', e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0))} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+									</div>
+									<div>
+										<label className="block text-xs text-slate-500 mb-1">Max quantity</label>
+										<input type="number" min="0" placeholder="∞" value={draft.maxQuantity ?? ''} onChange={(e) => updateDraftField('maxQuantity', e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0))} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+										<p className="text-[11px] text-slate-600 mt-1">Blank means infinite.</p>
+									</div>
+									<div>
+										<label className="block text-xs text-slate-500 mb-1">Fire rate</label>
+										<input type="number" min="0" value={draft.fireRate ?? 0} onChange={(e) => updateDraftField('fireRate', Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+									</div>
+									<div>
+										<label className="block text-xs text-slate-500 mb-1">Reload rate</label>
+										<input type="number" min="0" value={draft.reloadRate ?? 0} onChange={(e) => updateDraftField('reloadRate', Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+									</div>
+									<div className="col-span-2">
+										<label className="block text-xs text-slate-500 mb-1">Inventory icon URL</label>
+										<input value={draft.inventoryImage || ''} onChange={(e) => updateDraftField('inventoryImage', e.target.value)} placeholder="/sprites/...png" className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+									</div>
+									<div className="col-span-2">
+										<label className="block text-xs text-slate-500 mb-1">Item description</label>
+										<textarea rows={3} value={draft.description || ''} onChange={(e) => updateDraftField('description', e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+									</div>
+								</div>
+
+								<div className="grid grid-cols-2 gap-3 mb-4">
+									<label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={!!draft.isStackable} onChange={(e) => updateDraftField('isStackable', e.target.checked)} /> Stackable</label>
+									<label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={!!draft.isPurchasable} onChange={(e) => updateDraftField('isPurchasable', e.target.checked)} /> Purchasable</label>
+								</div>
+
+								<div className="mb-4">
+									<h4 className="text-xs font-medium text-slate-400 mb-2">Can be carried by</h4>
+									<div className="flex flex-wrap gap-1.5 mb-2">
+										{(draft.carriedBy || []).map((id) => <span key={id} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-900 border border-slate-800 text-xs">{groupMemberCollection?.[id]?.name || categoryMap?.[id]?.name || gameData.data.unitTypes?.[id]?.name || id}<button onClick={() => setDraft((d) => ({...d, carriedBy:(d.carriedBy||[]).filter(x=>x!==id)}))} className="text-slate-500 hover:text-red-400">×</button></span>)}
+									</div>
+									<select defaultValue="" onChange={(e) => { const id=e.target.value; if(!id)return; setDraft(d=>({...d,carriedBy:Array.from(new Set([...(d.carriedBy||[]),id]))})); e.target.value=''; }} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1.5 text-sm"><option value="" disabled>+ Add a unit...</option>{Object.entries(gameData.data.unitTypes||{}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,v])=><option key={id} value={id}>{v?.name||id}</option>)}</select>
+								</div>
+
+								<div className="mb-4">
+									<h4 className="text-xs font-medium text-slate-400 mb-2">Can be used by</h4>
+									<div className="flex flex-wrap gap-1.5 mb-2">
+										{(draft.canBeUsedBy || []).map((id) => <span key={id} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-900 border border-slate-800 text-xs">{gameData.data.unitTypes?.[id]?.name || id}<button onClick={() => setDraft((d) => ({...d, canBeUsedBy:(d.canBeUsedBy||[]).filter(x=>x!==id)}))} className="text-slate-500 hover:text-red-400">×</button></span>)}
+									</div>
+									<select defaultValue="" onChange={(e) => { const id=e.target.value; if(!id)return; setDraft(d=>({...d,canBeUsedBy:Array.from(new Set([...(d.canBeUsedBy||[]),id]))})); e.target.value=''; }} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1.5 text-sm"><option value="" disabled>+ Add a unit...</option>{Object.entries(gameData.data.unitTypes||{}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,v])=><option key={id} value={id}>{v?.name||id}</option>)}</select>
+								</div>
+
+								<div className="mb-4">
+									<h4 className="text-xs font-medium text-slate-400 mb-2">Permitted inventory slots</h4>
+									<div className="flex flex-wrap gap-2">{Array.from({length:9},(_,i)=>i+1).map(slot=><label key={slot} className="text-xs text-slate-300 flex items-center gap-1"><input type="checkbox" checked={(draft.controls?.permittedInventorySlots||[]).includes(slot)} onChange={(e)=>{const cur=draft.controls?.permittedInventorySlots||[]; const next=e.target.checked?Array.from(new Set([...cur,slot])):cur.filter(x=>x!==slot); updateDraftNestedField('controls','permittedInventorySlots',next.sort((a,b)=>a-b));}} /> {slot}</label>)}</div>
+								</div>
+
+								<div className="mb-4">
+									<h4 className="text-xs font-medium text-slate-400 mb-2">Projectile type</h4>
+									<select value={draft.projectileType || ''} onChange={(e)=>updateDraftField('projectileType',e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-sm"><option value="">(none)</option>{Object.entries(gameData.data.projectileTypes||{}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,v])=><option key={id} value={id}>{v?.name||id} ({id})</option>)}</select>
+								</div>
+
+								<div className="grid grid-cols-2 gap-4">
+									<div>
+										<h4 className="text-xs font-medium text-slate-400 mb-2">Cost</h4>
+										<div className="space-y-2">
+											<div><label className="block text-[11px] text-slate-600 mb-1">Item quantity</label><input type="number" min="0" value={draft.cost?.quantity ?? 0} onChange={(e)=>updateDraftNestedField('cost','quantity',Math.max(0,Number(e.target.value)||0))} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" /></div>
+											<div><label className="block text-[11px] text-slate-600 mb-1">Unit attributes</label>{Object.entries(draft.costUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costUnitAttributes',k,Number(e.target.value)||0)} className="w-20 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costUnitAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costUnitAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-slate-600 mb-1">Player attributes</label>{Object.entries(draft.costPlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costPlayerAttributes',k,Number(e.target.value)||0)} className="w-20 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costPlayerAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costPlayerAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costPlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+										</div>
+									</div>
+
+									<div>
+										<h4 className="text-xs font-medium text-slate-400 mb-2">Damage</h4>
+										<div className="space-y-2">
+											<div><label className="block text-[11px] text-slate-600 mb-1">Unit attributes</label>{Object.entries(draft.damageUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damageUnitAttributes',k,e.target.value)} className="w-20 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damageUnitAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damageUnitAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damageUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-slate-600 mb-1">Player attributes</label>{Object.entries(draft.damagePlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damagePlayerAttributes',k,e.target.value)} className="w-20 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damagePlayerAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damagePlayerAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damagePlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-slate-600 mb-1">Who can be hit</label><div className="flex flex-wrap gap-x-3 gap-y-1">{[['hostile','Hostile players'],['neutral','Neutral players'],['friendly','Friendly players'],['other','Everyone except holder']].map(([id,label])=><label key={id} className="text-xs text-slate-300 flex items-center gap-1"><input type="checkbox" checked={(draft.damage?.targetsAffected||[]).includes(id)} onChange={()=>toggleDamageTarget(id)} /> {label}</label>)}</div><p className="text-[11px] text-slate-600 mt-1">The editor stores these in the item's targetsAffected list.</p></div>
+										</div>
+								</div>
+
+								<div className="mt-4 p-2.5 rounded-md border border-slate-800 bg-slate-900/50 text-xs text-slate-600">The item schema does not currently expose a separate <span className="font-mono">cooldown</span> field in this game's data, so "Use delay / cooldown" edits <span className="font-mono">delayBeforeUse</span>.</div>
+							</section>
+						)}
+
+						{activeTab === 'projectileTypes' && (
+							<section className="mb-7">
+								<h3 className="text-sm font-medium text-slate-300 mb-2">Projectile details</h3>
+								<div>
+									<label className="block text-xs text-slate-500 mb-1">Lifespan (ms)</label>
+									<input type="number" min="0" value={draft.lifeSpan ?? ''} onChange={(e)=>updateDraftField('lifeSpan', e.target.value === '' ? null : Math.max(0, Number(e.target.value)||0))} className="w-40 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+								</div>
+							</section>
+						)}
+
+						{/* Entity scripts */}
+						<section className="mb-7">
+							<h3 className="text-sm font-medium text-slate-300 mb-2">Scripts</h3>
+							{getEntityScriptEntries().length === 0 ? (
+								<p className="text-xs text-slate-600">This {activeTabDef?.label?.toLowerCase() || 'entity'} has no embedded scripts.</p>
+							) : (
+								<div className="space-y-2">
+									<select value={selectedEntityScriptKey} onChange={(e)=>selectEntityScript(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-sm">
+										<option value="">Choose a script...</option>
+										{getEntityScriptEntries().map(([id,script])=><option key={id} value={id}>{script.name || id}</option>)}
+									</select>
+									{selectedEntityScriptKey && draft.scripts?.[selectedEntityScriptKey] && (() => {
+										const script = draft.scripts[selectedEntityScriptKey];
+										const raw = script._editorBodyText ?? JSON.stringify((({ _editorBodyText, ...body }) => body)(script), null, 2);
+										return <div className="bg-slate-900 border border-slate-800 rounded-md p-2.5"><div className="text-xs text-slate-500 mb-2">{script.name || selectedEntityScriptKey}</div><textarea value={raw} onChange={(e)=>updateEntityScriptBody(selectedEntityScriptKey,e.target.value)} spellCheck={false} rows={18} className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500" /><button onClick={()=>saveEntityScriptBody(selectedEntityScriptKey)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-800 text-sm hover:bg-slate-700"><Save size={13}/> Apply script JSON</button></div>;
+									})()}
+								</div>
+							)}
+						</section>
+
 						{/* Variables */}
 										<section className="mb-7">
 											<h3 className="text-sm font-medium text-slate-300 mb-2">Variables</h3>
@@ -1665,7 +1924,7 @@ export default function GameContentEditor() {
 														const rows = draft.cellSheet.rowCount || 1;
 														const hasSprite = !!draft.cellSheet.url;
 
-										// why are my indents over here github wtfv
+										// don't know why it keeps doing this
 										const containerW = Math.max(tileCss * 2, bodyCssW + tileCss);
 														const containerH = Math.max(tileCss * 2, bodyCssH + tileCss);
 
@@ -1708,7 +1967,7 @@ export default function GameContentEditor() {
 															/>
 															</div>
 													)}
-
+													
 																		<div
 
 																		className={`absolute border flex items-center justify-center ${
@@ -1734,6 +1993,7 @@ export default function GameContentEditor() {
 												</div>
 											)}
 										</section>
+
 
 										{/* Advanced raw JSON */}
 										<details className="mb-4">
