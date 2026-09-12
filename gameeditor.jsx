@@ -16,7 +16,7 @@ const GROUP_TABS = [
 	{ key: 'itemTypeGroups', label: 'Item Type Groups', dataType: 'itemTypeGroup', collection: 'itemTypes' },
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
-const TILE_PX = 64; // 1 tile = 64x64 in-game pixels, used as the reference scale for the body size preview
+const TILE_PX = 64; 
 
 function generateKey() {
 	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -29,10 +29,6 @@ function deepClone(obj) {
 	return obj ? JSON.parse(JSON.stringify(obj)) : obj;
 }
 
-// ensures every unit/item/projectile has a folders[] placement record (defaulting to that tab's root if missing), and
-// that the three root folder nodes exist
-// this lets the rest of the app assume every entity is always "filed" somewhere,
-// instead of special-casing "this entity predates the folders feature"
 function normalizeFolders(parsed) {
 	if (!parsed.data.folders) parsed.data.folders = {};
 	const folders = parsed.data.folders;
@@ -55,21 +51,18 @@ function normalizeFolders(parsed) {
 	return parsed;
 }
 
-// is `candidateId` the same as `folderId`, or nested somewhere inside it?
-// used to stop a group from being moved into its own descendant
 function isSelfOrDescendant(folders, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
 	while (cur != null) {
 		if (cur === folderId) return true;
-		if (seen.has(cur)) return false; // guard against any pre-existing cycle
+		if (seen.has(cur)) return false; 
 		seen.add(cur);
 		cur = folders[cur]?.parent;
 	}
 	return false;
 }
 
-// same idea above
 function isSelfOrDescendantScript(scripts, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
@@ -103,7 +96,7 @@ export default function GameContentEditor() {
 	const [activeTab, setActiveTab] = useState('unitTypes');
 	const [selectedKey, setSelectedKey] = useState(null);
 	const [selectedFolderId, setSelectedFolderId] = useState(null);
-	const [collapsed, setCollapsed] = useState({}); // folderId -> bool, UI-only
+	const [collapsed, setCollapsed] = useState({}); 
 	const [selectedScriptFolderId, setSelectedScriptFolderId] = useState(null);
 	const [scriptCollapsed, setScriptCollapsed] = useState({});
 	const [scriptDraft, setScriptDraft] = useState(null);
@@ -119,7 +112,7 @@ export default function GameContentEditor() {
 	const [savedMsg, setSavedMsg] = useState('');
 	const [gridPreview, setGridPreview] = useState({ cols: 1, rows: 1 });
 	const [selectedBodyName, setSelectedBodyName] = useState('default');
-	const [spriteNatural, setSpriteNatural] = useState(null); // {w, h} of the currently loaded sprite sheet image
+	const [spriteNatural, setSpriteNatural] = useState(null); 
 	const [assetBaseUrl, setAssetBaseUrl] = useState(() => localStorage.getItem('editorAssetBaseUrl') || '');
 	const fileInputRef = useRef(null);
 
@@ -128,7 +121,6 @@ export default function GameContentEditor() {
 		localStorage.setItem('editorAssetBaseUrl', value);
 	}
 
-	// sprite urls
 	function resolveAssetUrl(url) {
 		if (!url) return '';
 		if (/^https?:\/\//i.test(url)) return url;
@@ -139,6 +131,7 @@ export default function GameContentEditor() {
 	const isEntityTab = ENTITY_TABS.some((t) => t.key === activeTab);
 	const activeTabDef = ENTITY_TABS.find((t) => t.key === activeTab);
 	const categoryMap = gameData?.data?.[activeTab] || {};
+	const itemTypes = gameData?.data?.itemTypes || {};
 	const attributeTypes = gameData?.data?.attributeTypes || {};
 	const folders = gameData?.data?.folders || {};
 
@@ -154,7 +147,6 @@ export default function GameContentEditor() {
 		return entries.filter(([k, v]) => (v?.name || '').toLowerCase().includes(q) || k.toLowerCase().includes(q));
 	}, [categoryMap, search]);
 
-	// folder tree
 	const tree = useMemo(() => {
 		if (!isEntityTab || !gameData) return [];
 		function build(parentId) {
@@ -192,7 +184,6 @@ export default function GameContentEditor() {
 	const isScriptsTab = activeTab === 'globalScripts';
 	const scriptsCollection = gameData?.data?.scripts || {};
 
-	// search and rendering of folders
 	const scriptSearchResults = useMemo(() => {
 		if (!isScriptsTab || !search.trim()) return [];
 		const q = search.toLowerCase();
@@ -237,7 +228,6 @@ export default function GameContentEditor() {
 	const isDialoguesTab = activeTab === 'dialogues';
 	const dialoguesCollection = gameData?.data?.dialogues || {};
 
-	// dialogue
 	const pickableScripts = useMemo(
 		() =>
 			Object.entries(scriptsCollection)
@@ -278,7 +268,7 @@ export default function GameContentEditor() {
 	}
 
 	function loadDraftFromEntity(key, entity) {
-		const { name, attributes, variables, cellSheet, bodies, ...rest } = entity;
+		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, ...rest } = entity;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setDraft({
 			key,
@@ -287,6 +277,12 @@ export default function GameContentEditor() {
 			variables: deepClone(variables) || {},
 			cellSheet: deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 },
 			bodies: clonedBodies,
+			...(activeTab === 'unitTypes'
+				? { defaultItems: deepClone(defaultItems) || [], inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1 }
+				: {}),
+			...(activeTab === 'unitTypes'
+				? { defaultItems: deepClone(defaultItems) || [], inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1 }
+				: {}),
 			folderId: folders[key]?.parent ?? activeTabDef.root,
 			isNew: false,
 		});
@@ -306,7 +302,7 @@ export default function GameContentEditor() {
 	function startNew(baseKey) {
 		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
 		const newKey = generateKey();
-		const { name, attributes, variables, cellSheet, bodies, ...rest } = base;
+		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, ...rest } = base;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setSelectedKey(newKey);
 		setDraft({
@@ -353,6 +349,26 @@ export default function GameContentEditor() {
 		setDraft((d) => ({
 			...d,
 			attributes: { ...d.attributes, [attrKey]: { ...d.attributes[attrKey], [field]: value } },
+		}));
+	}
+
+	function addDefaultItem(itemKey) {
+		if (activeTab !== 'unitTypes' || !itemKey) return;
+		const item = itemTypes[itemKey];
+		if (!item) return;
+		setDraft((d) => ({
+			...d,
+			defaultItems: [
+				...(d.defaultItems || []),
+				{ key: itemKey, value: item.name || itemKey, name: item.name || itemKey },
+			],
+		}));
+	}
+
+	function removeDefaultItem(index) {
+		setDraft((d) => ({
+			...d,
+			defaultItems: (d.defaultItems || []).filter((_, i) => i !== index),
 		}));
 	}
 
@@ -431,6 +447,10 @@ export default function GameContentEditor() {
 			cellSheet: draft.cellSheet,
 			bodies: draft.bodies,
 		};
+		if (activeTab === 'unitTypes') {
+			finalEntity.inventorySize = Math.min(9, Math.max(0, Number(draft.inventorySize) || 0));
+			finalEntity.defaultItems = deepClone(draft.defaultItems) || [];
+		}
 		setGameData((gd) => {
 			const next = deepClone(gd);
 			next.data[activeTab][draft.key] = finalEntity;
@@ -672,7 +692,7 @@ export default function GameContentEditor() {
 		});
 		setSavedMsg('');
 	}
-	
+
 	function startNewDialogue() {
 		const id = generateKey();
 		setSelectedKey(id);
@@ -785,7 +805,6 @@ export default function GameContentEditor() {
 		});
 	}
 
-	// removing folders
 	function deleteFolder(id) {
 		const folder = folders[id];
 		if (!folder) return;
@@ -1382,7 +1401,85 @@ export default function GameContentEditor() {
 											)}
 										</section>
 
-										{/* Variables */}
+										{activeTab === 'unitTypes' && (
+							/* Unit inventory */
+							<section className="mb-7">
+								<h3 className="text-sm font-medium text-slate-300 mb-2">Inventory</h3>
+								<div className="flex items-center gap-3 mb-3">
+									<div>
+										<label className="block text-xs text-slate-500 mb-1">Inventory slots</label>
+										<input
+											type="number"
+											min="0"
+											max="9"
+											value={draft.inventorySize ?? 1}
+											onChange={(e) => {
+												const value = Math.min(9, Math.max(0, Number(e.target.value) || 0));
+												setDraft((d) => ({ ...d, inventorySize: value }));
+											}}
+											className="w-24 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+										/>
+									</div>
+									<p className="text-xs text-slate-600 max-w-[20rem] mt-4">
+										Maximum 9 slots. Default items below are added to this unit automatically.
+									</p>
+								</div>
+
+								<div className="space-y-2">
+									{(draft.defaultItems || []).map((entry, index) => (
+										<div key={`${entry.key || 'item'}-${index}`} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+											<span className="text-xs text-slate-500 w-5 shrink-0">{index + 1}</span>
+											<select
+												value={entry.key || ''}
+												onChange={(e) => {
+													const itemKey = e.target.value;
+													const item = itemTypes[itemKey];
+													if (!item) return;
+													setDraft((d) => {
+														const next = [...(d.defaultItems || [])];
+														next[index] = { key: itemKey, value: item.name || itemKey, name: item.name || itemKey };
+														return { ...d, defaultItems: next };
+													});
+												}}
+												className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm"
+											>
+												<option value="" disabled>Choose an item...</option>
+												{Object.entries(itemTypes)
+													.sort((a, b) => (a[1]?.name || '').localeCompare(b[1]?.name || ''))
+													.map(([itemKey, item]) => (
+														<option key={itemKey} value={itemKey}>
+															{item?.name || itemKey}
+														</option>
+													))}
+											</select>
+											<span className="text-xs text-slate-600 font-mono truncate max-w-[10rem]">{entry.key}</span>
+											<button onClick={() => removeDefaultItem(index)} className="text-slate-600 hover:text-red-400 ml-1">
+												<X size={14} />
+											</button>
+										</div>
+									))}
+								</div>
+								<select
+									onChange={(e) => {
+									addDefaultItem(e.target.value);
+									e.target.value = '';
+								}}
+									defaultValue=""
+									className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-amber-500"
+								>
+									<option value="" disabled>+ Add an item...</option>
+									{Object.entries(itemTypes)
+										.sort((a, b) => (a[1]?.name || '').localeCompare(b[1]?.name || ''))
+										.map(([itemKey, item]) => (
+											<option key={itemKey} value={itemKey}>
+												{item?.name || itemKey}
+											</option>
+										))}
+									</select>
+							</section>
+						)}
+
+						{/* Variables */}
 										<section className="mb-7">
 											<h3 className="text-sm font-medium text-slate-300 mb-2">Variables</h3>
 											<div className="space-y-2">
@@ -1568,9 +1665,7 @@ export default function GameContentEditor() {
 														const rows = draft.cellSheet.rowCount || 1;
 														const hasSprite = draft.cellSheet.url && spriteNatural;
 
-														// The body dimensions are the authoritative collision bounds.
-										// Render the sprite frame at exactly the body's dimensions so
-										// intentional stretching/squashing is visible in the editor.
+										// why the hell are my indents going here
 										const containerW = Math.max(tileCss * 2, bodyCssW + tileCss);
 														const containerH = Math.max(tileCss * 2, bodyCssH + tileCss);
 
@@ -1627,7 +1722,6 @@ export default function GameContentEditor() {
 												</div>
 											)}
 										</section>
-
 
 										{/* Advanced raw JSON */}
 										<details className="mb-4">
