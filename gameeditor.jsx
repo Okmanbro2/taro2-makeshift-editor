@@ -254,7 +254,7 @@ export default function GameContentEditor() {
 		reader.onload = (evt) => {
 			try {
 				const parsed = JSON.parse(evt.target.result);
-				if (!parsed?.data) throw new Error("This doesn't look like a game.json — no top-level \"data\" field found.");
+				if (!parsed?.data) throw new Error("This doesn't look like a game.json - no top-level \"data\" field found.");
 				normalizeFolders(parsed);
 				setGameData(parsed);
 				setSelectedKey(null);
@@ -419,7 +419,7 @@ export default function GameContentEditor() {
 	function removeBody(name) {
 		const remaining = Object.keys(draft.bodies).filter((k) => k !== name);
 		if (remaining.length === 0) {
-			alert("Can't remove the last body — every unit/item/projectile needs at least one.");
+			alert("Can't remove the last body - every unit/item/projectile needs at least one.");
 			return;
 		}
 		setDraft((d) => {
@@ -647,7 +647,7 @@ export default function GameContentEditor() {
 		if (!node) return;
 		if (
 			!window.confirm(
-				`Delete the "${node.folderName}" group? Anything inside it (sub-groups, scripts) moves up to its parent group — nothing inside it gets deleted.`
+				`Delete the "${node.folderName}" group? Anything inside it (sub-groups, scripts) moves up to its parent group - nothing inside it gets deleted.`
 			)
 		)
 			return;
@@ -810,7 +810,7 @@ export default function GameContentEditor() {
 		if (!folder) return;
 		if (
 			!window.confirm(
-				`Delete the "${folder.name}" group? Anything inside it (sub-groups, units, items) moves up to its parent group — nothing inside it gets deleted.`
+				`Delete the "${folder.name}" group? Anything inside it (sub-groups, units, items) moves up to its parent group - nothing inside it gets deleted.`
 			)
 		)
 			return;
@@ -1577,12 +1577,12 @@ export default function GameContentEditor() {
 											)}
 											{draft.cellSheet.url && !assetBaseUrl && !/^https?:\/\//i.test(draft.cellSheet.url) && (
 												<p className="text-xs text-amber-500/80 mt-1.5">
-													This is a relative path ({draft.cellSheet.url}) — set the "Asset base URL" at the top of the
+													This is a relative path ({draft.cellSheet.url}) - set the "Asset base URL" at the top of the
 													page (your game server's address) so previews can actually load it.
 												</p>
 											)}
 											<p className="text-xs text-slate-600 mt-2">
-												Columns/rows should match how many distinct frames are actually laid out in the image — a
+												Columns/rows should match how many distinct frames are actually laid out in the image - a
 												mismatch here is what causes animations to silently freeze on one frame in-game.
 											</p>
 										</section>
@@ -1663,9 +1663,9 @@ export default function GameContentEditor() {
 
 														const cols = draft.cellSheet.columnCount || 1;
 														const rows = draft.cellSheet.rowCount || 1;
-														const hasSprite = draft.cellSheet.url && spriteNatural;
+														const hasSprite = !!draft.cellSheet.url;
 
-										// why the hell are my indents going here
+										// why are my indents over here github wtfv
 										const containerW = Math.max(tileCss * 2, bodyCssW + tileCss);
 														const containerH = Math.max(tileCss * 2, bodyCssH + tileCss);
 
@@ -1682,23 +1682,35 @@ export default function GameContentEditor() {
 																	}}
 																>
 																	{hasSprite && (
+														<div
+															className="absolute overflow-hidden"
+															style={{
+																width: bodyCssW,
+																height: bodyCssH,
+																left: '50%',
+																top: '50%',
+																transform: 'translate(-50%, -50%)',
+																imageRendering: 'pixelated',
+															}}
+															>
+															<img
+																src={resolveAssetUrl(draft.cellSheet.url)}
+																alt="body preview"
+																draggable={false}
+																style={{
+																	display: 'block',
+																	width: `${bodyCssW * cols}px`,
+																	height: `${bodyCssH * rows}px`,
+																	maxWidth: 'none',
+																	maxHeight: 'none',
+																	imageRendering: 'pixelated',
+																}}
+															/>
+															</div>
+													)}
+
 																		<div
-																			className="absolute"
-																			style={{
-																				width: bodyCssW,
-																				height: bodyCssH,
-																				left: '50%',
-																				top: '50%',
-																				transform: 'translate(-50%, -50%)',
-																				backgroundImage: `url(${resolveAssetUrl(draft.cellSheet.url)})`,
-																				backgroundPosition: '0px 0px',
-																				backgroundSize: `${bodyCssW * cols}px ${bodyCssH * rows}px`,
-																				backgroundRepeat: 'no-repeat',
-																				imageRendering: 'pixelated',
-																			}}
-																		/>
-																	)}
-																	<div
+
 																		className={`absolute border flex items-center justify-center ${
 																			hasSprite ? 'border-emerald-400' : 'bg-emerald-500/40 border-emerald-400'
 																		}`}
@@ -1818,7 +1830,7 @@ export default function GameContentEditor() {
 										</div>
 
 										<p className="text-xs text-slate-600 mb-4">
-											DataType: <span className="font-mono text-slate-400">{activeGroupDef.dataType}</span> — renaming this
+											DataType: <span className="font-mono text-slate-400">{activeGroupDef.dataType}</span> - renaming this
 											group won't update any scripts that already reference it by name.
 										</p>
 
@@ -2034,7 +2046,7 @@ export default function GameContentEditor() {
 										/>
 										{scriptBodyError && <p className="text-xs text-red-400 mt-1">{scriptBodyError}</p>}
 										<p className="text-xs text-slate-600 mt-2">
-											Same idea as the "Advanced" box on units/items/projectiles — this is the raw script logic, edited
+											Same idea as the "Advanced" box on units/items/projectiles - this is the raw script logic, edited
 											as JSON rather than through a visual builder.
 										</p>
 									</div>
