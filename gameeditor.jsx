@@ -16,7 +16,7 @@ const GROUP_TABS = [
 	{ key: 'itemTypeGroups', label: 'Item Type Groups', dataType: 'itemTypeGroup', collection: 'itemTypes' },
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
-const TILE_PX = 64; 
+const TILE_PX = 64; // 1 tile = 64x64 in-game pixels, used as the reference scale for the body size preview
 
 function generateKey() {
 	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -29,6 +29,10 @@ function deepClone(obj) {
 	return obj ? JSON.parse(JSON.stringify(obj)) : obj;
 }
 
+// ensures every unit/item/projectile has a folders[] placement record (defaulting to that tab's root if missing), and
+// that the three root folder nodes exist
+// this lets the rest of the app assume every entity is always "filed" somewhere,
+// instead of special-casing "this entity predates the folders feature"
 function normalizeFolders(parsed) {
 	if (!parsed.data.folders) parsed.data.folders = {};
 	const folders = parsed.data.folders;
@@ -51,18 +55,21 @@ function normalizeFolders(parsed) {
 	return parsed;
 }
 
+// is `candidateId` the same as `folderId`, or nested somewhere inside it?
+// used to stop a group from being moved into its own descendant
 function isSelfOrDescendant(folders, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
 	while (cur != null) {
 		if (cur === folderId) return true;
-		if (seen.has(cur)) return false; 
+		if (seen.has(cur)) return false; // guard against any pre-existing cycle
 		seen.add(cur);
 		cur = folders[cur]?.parent;
 	}
 	return false;
 }
 
+// same idea above
 function isSelfOrDescendantScript(scripts, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
@@ -96,7 +103,7 @@ export default function GameContentEditor() {
 	const [activeTab, setActiveTab] = useState('unitTypes');
 	const [selectedKey, setSelectedKey] = useState(null);
 	const [selectedFolderId, setSelectedFolderId] = useState(null);
-	const [collapsed, setCollapsed] = useState({}); 
+	const [collapsed, setCollapsed] = useState({}); // folderId -> bool, UI-only
 	const [selectedScriptFolderId, setSelectedScriptFolderId] = useState(null);
 	const [scriptCollapsed, setScriptCollapsed] = useState({});
 	const [scriptDraft, setScriptDraft] = useState(null);
@@ -113,7 +120,7 @@ export default function GameContentEditor() {
 	const [gridPreview, setGridPreview] = useState({ cols: 1, rows: 1 });
 	const [selectedBodyName, setSelectedBodyName] = useState('default');
 	const [selectedEntityScriptKey, setSelectedEntityScriptKey] = useState('');
-	const [spriteNatural, setSpriteNatural] = useState(null); 
+	const [spriteNatural, setSpriteNatural] = useState(null); // {w, h} of the currently loaded sprite sheet image
 	const [assetBaseUrl, setAssetBaseUrl] = useState(() => localStorage.getItem('editorAssetBaseUrl') || '');
 	const fileInputRef = useRef(null);
 
@@ -122,6 +129,7 @@ export default function GameContentEditor() {
 		localStorage.setItem('editorAssetBaseUrl', value);
 	}
 
+	// sprite urls
 	function resolveAssetUrl(url) {
 		if (!url) return '';
 		if (/^https?:\/\//i.test(url)) return url;
@@ -133,8 +141,8 @@ export default function GameContentEditor() {
 	const activeTabDef = ENTITY_TABS.find((t) => t.key === activeTab);
 	const categoryMap = gameData?.data?.[activeTab] || {};
 	const itemTypes = gameData?.data?.itemTypes || {};
-	const playerAttributeTypes = attributeTypes;
 	const attributeTypes = gameData?.data?.attributeTypes || {};
+	const playerAttributeTypes = attributeTypes;
 	const folders = gameData?.data?.folders || {};
 
 	const isGroupTab = GROUP_TABS.some((t) => t.key === activeTab);
@@ -149,6 +157,7 @@ export default function GameContentEditor() {
 		return entries.filter(([k, v]) => (v?.name || '').toLowerCase().includes(q) || k.toLowerCase().includes(q));
 	}, [categoryMap, search]);
 
+	// folder tree
 	const tree = useMemo(() => {
 		if (!isEntityTab || !gameData) return [];
 		function build(parentId) {
@@ -186,6 +195,7 @@ export default function GameContentEditor() {
 	const isScriptsTab = activeTab === 'globalScripts';
 	const scriptsCollection = gameData?.data?.scripts || {};
 
+	// search and rendering of folders
 	const scriptSearchResults = useMemo(() => {
 		if (!isScriptsTab || !search.trim()) return [];
 		const q = search.toLowerCase();
@@ -230,6 +240,7 @@ export default function GameContentEditor() {
 	const isDialoguesTab = activeTab === 'dialogues';
 	const dialoguesCollection = gameData?.data?.dialogues || {};
 
+	// dialogue
 	const pickableScripts = useMemo(
 		() =>
 			Object.entries(scriptsCollection)
@@ -256,7 +267,7 @@ export default function GameContentEditor() {
 		reader.onload = (evt) => {
 			try {
 				const parsed = JSON.parse(evt.target.result);
-				if (!parsed?.data) throw new Error("This doesn't look like a game.json — no top-level \"data\" field found.");
+				if (!parsed?.data) throw new Error("This doesn't look like a game.json - no top-level \"data\" field found.");
 				normalizeFolders(parsed);
 				setGameData(parsed);
 				setSelectedKey(null);
@@ -440,7 +451,7 @@ export default function GameContentEditor() {
 	function removeBody(name) {
 		const remaining = Object.keys(draft.bodies).filter((k) => k !== name);
 		if (remaining.length === 0) {
-			alert("Can't remove the last body — every unit/item/projectile needs at least one.");
+			alert("Can't remove the last body - every unit/item/projectile needs at least one.");
 			return;
 		}
 		setDraft((d) => {
@@ -768,7 +779,7 @@ export default function GameContentEditor() {
 		if (!node) return;
 		if (
 			!window.confirm(
-				`Delete the "${node.folderName}" group? Anything inside it (sub-groups, scripts) moves up to its parent group — nothing inside it gets deleted.`
+				`Delete the "${node.folderName}" group? Anything inside it (sub-groups, scripts) moves up to its parent group - nothing inside it gets deleted.`
 			)
 		)
 			return;
@@ -813,7 +824,7 @@ export default function GameContentEditor() {
 		});
 		setSavedMsg('');
 	}
-
+	
 	function startNewDialogue() {
 		const id = generateKey();
 		setSelectedKey(id);
@@ -926,12 +937,13 @@ export default function GameContentEditor() {
 		});
 	}
 
+	// removing folders
 	function deleteFolder(id) {
 		const folder = folders[id];
 		if (!folder) return;
 		if (
 			!window.confirm(
-				`Delete the "${folder.name}" group? Anything inside it (sub-groups, units, items) moves up to its parent group — nothing inside it gets deleted.`
+				`Delete the "${folder.name}" group? Anything inside it (sub-groups, units, items) moves up to its parent group - nothing inside it gets deleted.`
 			)
 		)
 			return;
@@ -1600,6 +1612,7 @@ export default function GameContentEditor() {
 							</section>
 						)}
 
+
 						{activeTab === 'itemTypes' && (
 							<section className="mb-7">
 								<h3 className="text-sm font-medium text-slate-300 mb-2">Item details</h3>
@@ -1691,7 +1704,9 @@ export default function GameContentEditor() {
 										</div>
 								</div>
 
-								<div className="mt-4 p-2.5 rounded-md border border-slate-800 bg-slate-900/50 text-xs text-slate-600">The item schema does not currently expose a separate <span className="font-mono">cooldown</span> field in this game's data, so "Use delay / cooldown" edits <span className="font-mono">delayBeforeUse</span>.</div>
+								</div>
+
+							<div className="mt-4 p-2.5 rounded-md border border-slate-800 bg-slate-900/50 text-xs text-slate-600">The item schema does not currently expose a separate <span className="font-mono">cooldown</span> field in this game's data, so "Use delay / cooldown" edits <span className="font-mono">delayBeforeUse</span>.</div>
 							</section>
 						)}
 
@@ -1823,12 +1838,12 @@ export default function GameContentEditor() {
 											)}
 											{draft.cellSheet.url && !assetBaseUrl && !/^https?:\/\//i.test(draft.cellSheet.url) && (
 												<p className="text-xs text-amber-500/80 mt-1.5">
-													This is a relative path ({draft.cellSheet.url}) — set the "Asset base URL" at the top of the
+													This is a relative path ({draft.cellSheet.url}) - set the "Asset base URL" at the top of the
 													page (your game server's address) so previews can actually load it.
 												</p>
 											)}
 											<p className="text-xs text-slate-600 mt-2">
-												Columns/rows should match how many distinct frames are actually laid out in the image — a
+												Columns/rows should match how many distinct frames are actually laid out in the image - a
 												mismatch here is what causes animations to silently freeze on one frame in-game.
 											</p>
 										</section>
@@ -1910,8 +1925,8 @@ export default function GameContentEditor() {
 														const cols = draft.cellSheet.columnCount || 1;
 														const rows = draft.cellSheet.rowCount || 1;
 														const hasSprite = !!draft.cellSheet.url;
-													
-										// didnt bother to reindent, github wtfv
+
+										// don't know why it keeps doing this
 										const containerW = Math.max(tileCss * 2, bodyCssW + tileCss);
 														const containerH = Math.max(tileCss * 2, bodyCssH + tileCss);
 
@@ -1954,7 +1969,7 @@ export default function GameContentEditor() {
 															/>
 															</div>
 													)}
-
+													
 																		<div
 
 																		className={`absolute border flex items-center justify-center ${
@@ -1980,6 +1995,7 @@ export default function GameContentEditor() {
 												</div>
 											)}
 										</section>
+
 
 										{/* Advanced raw JSON */}
 										<details className="mb-4">
@@ -2076,7 +2092,7 @@ export default function GameContentEditor() {
 										</div>
 
 										<p className="text-xs text-slate-600 mb-4">
-											DataType: <span className="font-mono text-slate-400">{activeGroupDef.dataType}</span> — renaming this
+											DataType: <span className="font-mono text-slate-400">{activeGroupDef.dataType}</span> - renaming this
 											group won't update any scripts that already reference it by name.
 										</p>
 
@@ -2292,7 +2308,7 @@ export default function GameContentEditor() {
 										/>
 										{scriptBodyError && <p className="text-xs text-red-400 mt-1">{scriptBodyError}</p>}
 										<p className="text-xs text-slate-600 mt-2">
-											Same idea as the "Advanced" box on units/items/projectiles — this is the raw script logic, edited
+											Same idea as the "Advanced" box on units/items/projectiles - this is the raw script logic, edited
 											as JSON rather than through a visual builder.
 										</p>
 									</div>
