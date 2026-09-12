@@ -288,7 +288,7 @@ export default function GameContentEditor() {
 			name: name || '',
 			attributes: deepClone(attributes) || {},
 			variables: deepClone(variables) || {},
-			cellSheet: deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 },
+			cellSheet: { ...(deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 }), columnCount: Math.max(1, Number(cellSheet?.columnCount) || 1), rowCount: Math.max(1, Number(cellSheet?.rowCount) || 1) },
 			bodies: clonedBodies,
 			...(activeTab === 'unitTypes'
 				? {
@@ -297,7 +297,8 @@ export default function GameContentEditor() {
 				}
 				: {}),
 			scripts: deepClone(scripts) || {},
-			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], controls: deepClone(controls) || {}, projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
+			controls: deepClone(controls) || {},
+			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
 			costUnitAttributes: deepClone(entity.cost?.unitAttributes) || {},
 			costPlayerAttributes: deepClone(entity.cost?.playerAttributes) || {},
@@ -321,9 +322,20 @@ export default function GameContentEditor() {
 	}
 
 	function startNew(baseKey) {
+		const defaultUnitControls = {
+			movementMethod: 'velocity',
+			movementControlScheme: 'wasd',
+			movementType: 'wasd',
+			mouseBehaviour: { rotateToFaceMouseCursor: true, flipSpriteHorizontallyWRTMouse: false },
+			absoluteRotation: false,
+			clientPredictedMovement: true,
+			permittedInventorySlots: [],
+			unitAbilities: {},
+			abilities: {},
+		};
 		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
 		const newKey = generateKey();
-		const { id: _oldId, name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
+		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setSelectedKey(newKey);
 		setDraft({
@@ -331,13 +343,14 @@ export default function GameContentEditor() {
 			name: baseKey ? `${name || 'Unnamed'} Copy` : 'New ' + ENTITY_TABS.find((t) => t.key === activeTab)?.label.slice(0, -1),
 			attributes: deepClone(attributes) || {},
 			variables: deepClone(variables) || {},
-			cellSheet: deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 },
+			cellSheet: { ...(deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 }), columnCount: Math.max(1, Number(cellSheet?.columnCount) || 1), rowCount: Math.max(1, Number(cellSheet?.rowCount) || 1) },
 			bodies: clonedBodies,
 			scripts: deepClone(scripts) || {},
+			controls: activeTab === 'unitTypes' ? (deepClone(controls) || defaultUnitControls) : (deepClone(controls) || {}),
 			...(activeTab === 'unitTypes'
 				? { defaultItems: deepClone(defaultItems) || [], inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1 }
 				: {}),
-			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], controls: deepClone(controls) || {}, projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
+			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
 			costUnitAttributes: deepClone(base.cost?.unitAttributes) || {},
 			costPlayerAttributes: deepClone(base.cost?.playerAttributes) || {},
@@ -564,20 +577,26 @@ export default function GameContentEditor() {
 			...(draft.damageUnitAttributes ? { unitAttributes: draft.damageUnitAttributes } : {}),
 			...(draft.damagePlayerAttributes ? { playerAttributes: draft.damagePlayerAttributes } : {}),
 		};
+		const finalCellSheet = {
+			...(draft.cellSheet || {}),
+			columnCount: Math.max(1, Number(draft.cellSheet?.columnCount) || 1),
+			rowCount: Math.max(1, Number(draft.cellSheet?.rowCount) || 1),
+		};
 		const finalEntity = {
 			...restParsed,
 			id: draft.key,
 			name: draft.name,
 			attributes: draft.attributes,
 			variables: draft.variables,
-			cellSheet: draft.cellSheet,
+			cellSheet: finalCellSheet,
 			bodies: draft.bodies,
+			controls: deepClone(draft.controls) || {},
 			scripts: Object.fromEntries(Object.entries(draft.scripts || {}).map(([key, value]) => {
 				const { _editorBodyText, ...cleanScript } = value || {};
 				return [key, cleanScript];
 			})),
 			...(activeTab === 'itemTypes' ? { cost: finalCost, damage: finalDamage } : {}),
-			...(activeTab === 'itemTypes' ? { type: draft.type || '', delayBeforeUse: Number(draft.delayBeforeUse) || 0, quantity: draft.quantity ?? null, maxQuantity: draft.maxQuantity ?? null, inventoryImage: draft.inventoryImage || '', description: draft.description || '', fireRate: Number(draft.fireRate) || 0, reloadRate: Number(draft.reloadRate) || 0, isStackable: !!draft.isStackable, isPurchasable: !!draft.isPurchasable, carriedBy: deepClone(draft.carriedBy) || [], canBeUsedBy: deepClone(draft.canBeUsedBy) || [], controls: deepClone(draft.controls) || {}, projectileType: draft.projectileType || '' } : {}),
+			...(activeTab === 'itemTypes' ? { type: draft.type || '', delayBeforeUse: Number(draft.delayBeforeUse) || 0, quantity: draft.quantity ?? null, maxQuantity: draft.maxQuantity ?? null, inventoryImage: draft.inventoryImage || '', description: draft.description || '', fireRate: Number(draft.fireRate) || 0, reloadRate: Number(draft.reloadRate) || 0, isStackable: !!draft.isStackable, isPurchasable: !!draft.isPurchasable, carriedBy: deepClone(draft.carriedBy) || [], canBeUsedBy: deepClone(draft.canBeUsedBy) || [], projectileType: draft.projectileType || '' } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: draft.lifeSpan ?? null } : {}),
 		};
 		if (activeTab === 'unitTypes') {
