@@ -141,8 +141,8 @@ export default function GameContentEditor() {
 	const activeTabDef = ENTITY_TABS.find((t) => t.key === activeTab);
 	const categoryMap = gameData?.data?.[activeTab] || {};
 	const itemTypes = gameData?.data?.itemTypes || {};
-	const playerAttributeTypes = attributeTypes;
 	const attributeTypes = gameData?.data?.attributeTypes || {};
+	const playerAttributeTypes = attributeTypes;
 	const folders = gameData?.data?.folders || {};
 
 	const isGroupTab = GROUP_TABS.some((t) => t.key === activeTab);
@@ -2306,8 +2306,7 @@ export default function GameContentEditor() {
 										/>
 										{scriptBodyError && <p className="text-xs text-red-400 mt-1">{scriptBodyError}</p>}
 										<p className="text-xs text-slate-600 mt-2">
-											Same idea as the "Advanced" box on units/items/projectiles - this is the raw script logic, edited
-											as JSON rather than through a visual builder.
+											Same idea as the "Advanced" box on units/items/projectiles. If you can understand this then you can basically function without the visual editor.
 										</p>
 									</div>
 								)}
