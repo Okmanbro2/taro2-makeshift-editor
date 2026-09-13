@@ -11,6 +11,7 @@ const REFERENCE_TABS = [
 	{ key: 'attributeTypes', label: 'Attributes' },
 	{ key: 'variables', label: 'Variables' },
 	{ key: 'sounds', label: 'Sounds' },
+	{ key: 'playerTypes', label: 'Player Types' },
 ];
 const GROUP_TABS = [
 	{ key: 'unitTypeGroups', label: 'Unit Type Groups', dataType: 'unitTypeGroup', collection: 'unitTypes' },
@@ -113,6 +114,7 @@ function flattenFolderOptions(folders, rootId) {
 
 export default function GameContentEditor() {
 	const [gameData, setGameData] = useState(null);
+	const [editingPlayerTypeKey, setEditingPlayerTypeKey] = useState(null);
 	const [fileName, setFileName] = useState('');
 	const [fileError, setFileError] = useState('');
 	const [activeTab, setActiveTab] = useState('unitTypes');
@@ -161,6 +163,7 @@ export default function GameContentEditor() {
 	const attributeTypes = gameData?.data?.attributeTypes || {};
 	const playerAttributeTypes = attributeTypes;
 	const soundTypes = gameData?.data?.sound || {};
+	const playerTypes = gameData?.data?.playerTypes || {};
 	const folders = gameData?.data?.folders || {};
 
 	const isGroupTab = GROUP_TABS.some((t) => t.key === activeTab);
@@ -1136,6 +1139,112 @@ export default function GameContentEditor() {
 		});
 	}
 
+	// player types aka teams
+	function addPlayerType() {
+		const name = prompt('New team/player type name:');
+		if (!name) return;
+		const key = generateKey();
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.playerTypes) next.data.playerTypes = {};
+			next.data.playerTypes[key] = {
+				name,
+				color: '#ffffff',
+				showNameLabel: true,
+				hideChatBubble: false,
+				hideChatDistance: 0,
+				attributes: {},
+				variables: {},
+				relationships: {},
+			};
+			return next;
+		});
+		setEditingPlayerTypeKey(key);
+	}
+
+	function updatePlayerTypeField(key, field, value) {
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			next.data.playerTypes[key] = { ...next.data.playerTypes[key], [field]: value };
+			return next;
+		});
+	}
+
+	function deletePlayerType(key) {
+		if (!window.confirm('Delete this player type? Any relationships other teams have pointing to it will also be removed.')) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			delete next.data.playerTypes[key];
+			Object.values(next.data.playerTypes || {}).forEach((pt) => {
+				if (pt.relationships) delete pt.relationships[key];
+			});
+			return next;
+		});
+		if (editingPlayerTypeKey === key) setEditingPlayerTypeKey(null);
+	}
+
+	function updatePlayerTypeRelationship(key, otherKey, value) {
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			const pt = next.data.playerTypes[key];
+			pt.relationships = { ...(pt.relationships || {}), [otherKey]: value };
+			return next;
+		});
+	}
+
+	function addPlayerTypeAttribute(key, attrKey) {
+		if (!attrKey) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			const pt = next.data.playerTypes[key];
+			const source = next.data.attributeTypes[attrKey] || {};
+			pt.attributes = { ...(pt.attributes || {}), [attrKey]: { value: source.value ?? 0, min: source.min ?? 0, max: source.max ?? 100 } };
+			return next;
+		});
+	}
+
+	function removePlayerTypeAttribute(key, attrKey) {
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			const pt = next.data.playerTypes[key];
+			const attrs = { ...(pt.attributes || {}) };
+			delete attrs[attrKey];
+			pt.attributes = attrs;
+			return next;
+		});
+	}
+
+	function updatePlayerTypeAttributeField(key, attrKey, field, value) {
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			const pt = next.data.playerTypes[key];
+			pt.attributes[attrKey] = { ...pt.attributes[attrKey], [field]: value };
+			return next;
+		});
+	}
+
+	function addPlayerTypeVariable(key, varName) {
+		if (!varName) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			const pt = next.data.playerTypes[key];
+			const source = (next.data.variables || {})[varName] || {};
+			pt.variables = { ...(pt.variables || {}), [varName]: { default: source.default ?? '', dataType: source.dataType || 'string' } };
+			return next;
+		});
+	}
+
+	function removePlayerTypeVariable(key, varName) {
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			const pt = next.data.playerTypes[key];
+			const vars = { ...(pt.variables || {}) };
+			delete vars[varName];
+			pt.variables = vars;
+			return next;
+		});
+	}
+
 	function addGlobalVariable() {
 		const name = prompt('New global variable name:');
 		if (!name) return;
@@ -1194,17 +1303,17 @@ export default function GameContentEditor() {
 						{node.name || '(unnamed group)'}
 					</button>
 					<div className="hidden group-hover:flex items-center gap-1 shrink-0">
-						<button title="New sub-group" onClick={() => addFolder(node.id)} className="text-slate-500 hover:text-amber-400">
+						<button title="New sub-group" onClick={() => addFolder(node.id)} className="text-slate-500 hover:text-[#1a56da]">
 							<FolderPlus size={13} />
 						</button>
-						<button title="Rename" onClick={() => renameFolder(node.id)} className="text-slate-500 hover:text-amber-400">
+						<button title="Rename" onClick={() => renameFolder(node.id)} className="text-slate-500 hover:text-[#1a56da]">
 							<Pencil size={13} />
 						</button>
 						<select
 							title="Move to another group"
 							value=""
 							onChange={(e) => e.target.value && moveFolder(node.id, e.target.value)}
-							className="bg-slate-950 border border-slate-800 rounded text-xs text-slate-500 max-w-[90px] focus:outline-none"
+							className="bg-[#262e36] border border-slate-800 rounded text-xs text-slate-500 max-w-[90px] focus:outline-none"
 						>
 							<option value="" disabled>
 								Move to...
@@ -1266,17 +1375,17 @@ export default function GameContentEditor() {
 						{node.name || '(unnamed group)'}
 					</button>
 					<div className="hidden group-hover:flex items-center gap-1 shrink-0">
-						<button title="New sub-group" onClick={() => addScriptFolder(node.id)} className="text-slate-500 hover:text-amber-400">
+						<button title="New sub-group" onClick={() => addScriptFolder(node.id)} className="text-slate-500 hover:text-[#1a56da]">
 							<FolderPlus size={13} />
 						</button>
-						<button title="Rename" onClick={() => renameScriptFolder(node.id)} className="text-slate-500 hover:text-amber-400">
+						<button title="Rename" onClick={() => renameScriptFolder(node.id)} className="text-slate-500 hover:text-[#1a56da]">
 							<Pencil size={13} />
 						</button>
 						<select
 							title="Move to another group"
 							value=""
 							onChange={(e) => e.target.value !== '' && moveScriptFolder(node.id, e.target.value === '__top__' ? null : e.target.value)}
-							className="bg-slate-950 border border-slate-800 rounded text-xs text-slate-500 max-w-[90px] focus:outline-none"
+							className="bg-[#262e36] border border-slate-800 rounded text-xs text-slate-500 max-w-[90px] focus:outline-none"
 						>
 							<option value="" disabled>
 								Move to...
@@ -1319,10 +1428,10 @@ export default function GameContentEditor() {
 	}
 
 	return (
-		<div className="min-h-screen bg-slate-950 text-slate-200 font-sans">
+		<div className="min-h-screen bg-[#262e36] text-slate-200 font-sans">
 			<header className="border-b border-slate-800 bg-slate-900/60 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
 				<div>
-					<h1 className="text-lg font-semibold text-amber-400 tracking-tight">Content Editor</h1>
+					<h1 className="text-lg font-semibold text-[#1a56da] tracking-tight">Content Editor</h1>
 					<p className="text-xs text-slate-500 mt-0.5">Create and edit units, items, and projectiles outside the live editor</p>
 				</div>
 				<div className="flex items-center gap-2">
@@ -1336,7 +1445,7 @@ export default function GameContentEditor() {
 								onChange={(e) => updateAssetBaseUrl(e.target.value)}
 								placeholder="https://raw.githubusercontent.com/user/repo/main"
 								title="Where images actually live, e.g. https://raw.githubusercontent.com/user/repo/main or your own game server's URL - not a github.com/.../tree/... page"
-								className="hidden md:block w-64 bg-slate-950 border border-slate-800 rounded-md px-2 py-1.5 text-xs placeholder-slate-700 focus:outline-none focus:border-amber-500 mr-1"
+								className="hidden md:block w-64 bg-[#262e36] border border-slate-800 rounded-md px-2 py-1.5 text-xs placeholder-slate-700 focus:outline-none focus:border-[#1a56da] mr-1"
 							/>
 							<span className="text-xs text-slate-500 mr-2 hidden sm:inline">{fileName}</span>
 						</>
@@ -1351,7 +1460,7 @@ export default function GameContentEditor() {
 					{gameData && (
 						<button
 							onClick={downloadJson}
-							className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+							className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"
 						>
 							<Download size={14} /> Download
 						</button>
@@ -1392,7 +1501,7 @@ export default function GameContentEditor() {
 								}}
 								className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 									activeTab === t.key
-										? 'border-amber-400 text-amber-400 bg-slate-900'
+										? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
 										: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
 								}`}
 							>
@@ -1413,7 +1522,7 @@ export default function GameContentEditor() {
 								}}
 								className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 									activeTab === t.key
-										? 'border-amber-400 text-amber-400 bg-slate-900'
+										? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
 										: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
 								}`}
 							>
@@ -1432,7 +1541,7 @@ export default function GameContentEditor() {
 								}}
 								className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 									activeTab === t.key
-										? 'border-amber-400 text-amber-400 bg-slate-900'
+										? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
 										: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
 								}`}
 							>
@@ -1453,7 +1562,7 @@ export default function GameContentEditor() {
 							}}
 							className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 								activeTab === 'globalScripts'
-									? 'border-amber-400 text-amber-400 bg-slate-900'
+									? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
 									: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
 							}`}
 						>
@@ -1471,7 +1580,7 @@ export default function GameContentEditor() {
 							}}
 							className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 								activeTab === 'dialogues'
-									? 'border-amber-400 text-amber-400 bg-slate-900'
+									? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
 									: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
 							}`}
 						>
@@ -1491,20 +1600,20 @@ export default function GameContentEditor() {
 											value={search}
 											onChange={(e) => setSearch(e.target.value)}
 											placeholder="Search..."
-											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-amber-500"
+											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-[#1a56da]"
 										/>
 									</div>
 									<div className="flex gap-1.5 mt-2">
 										<button
 											onClick={() => setShowNewModal(true)}
-											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 										>
 											<Plus size={14} /> New {ENTITY_TABS.find((t) => t.key === activeTab)?.label.slice(0, -1)}
 										</button>
 										<button
 											title="New group"
 											onClick={() => addFolder(selectedFolderId || activeTabDef.root)}
-											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-slate-700 text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-slate-700 text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 										>
 											<FolderPlus size={14} />
 										</button>
@@ -1573,10 +1682,10 @@ export default function GameContentEditor() {
 												<input
 													value={draft.name}
 													onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-amber-500 focus:outline-none px-0.5"
+													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-[#1a56da] focus:outline-none px-0.5"
 												/>
 												<div className="text-xs text-slate-600 font-mono mt-1">
-													{draft.key} {draft.isNew && <span className="text-amber-500 ml-1">(new, not saved yet)</span>}
+													{draft.key} {draft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}
 												</div>
 											</div>
 											<div className="flex gap-2">
@@ -1590,7 +1699,7 @@ export default function GameContentEditor() {
 												)}
 												<button
 													onClick={saveDraft}
-													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"
 												>
 													<Save size={13} /> Save to working copy
 												</button>
@@ -1602,7 +1711,7 @@ export default function GameContentEditor() {
 											<select
 												value={draft.folderId}
 												onChange={(e) => setDraft((d) => ({ ...d, folderId: e.target.value }))}
-												className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-amber-500"
+												className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]"
 											>
 												{folderOptions.map((f) => (
 													<option key={f.id} value={f.id}>
@@ -1630,21 +1739,21 @@ export default function GameContentEditor() {
 															type="number"
 															value={attr.value}
 															onChange={(e) => updateAttributeField(attrKey, 'value', Number(e.target.value))}
-															className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+															className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 														/>
 														<label className="text-xs text-slate-500">min</label>
 														<input
 															type="number"
 															value={attr.min}
 															onChange={(e) => updateAttributeField(attrKey, 'min', Number(e.target.value))}
-															className="w-14 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+															className="w-14 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 														/>
 														<label className="text-xs text-slate-500">max</label>
 														<input
 															type="number"
 															value={attr.max}
 															onChange={(e) => updateAttributeField(attrKey, 'max', Number(e.target.value))}
-															className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+															className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 														/>
 														<button onClick={() => removeAttribute(attrKey)} className="text-slate-600 hover:text-red-400 ml-1">
 															<X size={14} />
@@ -1659,7 +1768,7 @@ export default function GameContentEditor() {
 														e.target.value = '';
 													}}
 													defaultValue=""
-													className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-amber-500"
+													className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-[#1a56da]"
 												>
 													<option value="" disabled>+ Attach an existing attribute...</option>
 													{unusedAttributeKeys.map((k) => (
@@ -1709,7 +1818,7 @@ export default function GameContentEditor() {
 														return { ...d, defaultItems: next };
 													});
 												}}
-												className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm"
+												className="flex-1 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm"
 											>
 												<option value="" disabled>Choose an item...</option>
 												{Object.entries(itemTypes)
@@ -1733,7 +1842,7 @@ export default function GameContentEditor() {
 									e.target.value = '';
 								}}
 									defaultValue=""
-									className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-amber-500"
+									className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-[#1a56da]"
 								>
 									<option value="" disabled>+ Add an item...</option>
 									{Object.entries(itemTypes)
@@ -1825,16 +1934,16 @@ export default function GameContentEditor() {
 										<h4 className="text-xs font-medium text-slate-400 mb-2">Cost</h4>
 										<div className="space-y-2">
 											<div><label className="block text-[11px] text-slate-600 mb-1">Item quantity</label><input type="number" min="0" value={draft.cost?.quantity ?? 0} onChange={(e)=>updateDraftNestedField('cost','quantity',Math.max(0,Number(e.target.value)||0))} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" /></div>
-											<div><label className="block text-[11px] text-slate-600 mb-1">Unit attributes</label>{Object.entries(draft.costUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costUnitAttributes',k,Number(e.target.value)||0)} className="w-20 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costUnitAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costUnitAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
-											<div><label className="block text-[11px] text-slate-600 mb-1">Player attributes</label>{Object.entries(draft.costPlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costPlayerAttributes',k,Number(e.target.value)||0)} className="w-20 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costPlayerAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costPlayerAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costPlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-slate-600 mb-1">Unit attributes</label>{Object.entries(draft.costUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costUnitAttributes',k,Number(e.target.value)||0)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costUnitAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costUnitAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-slate-600 mb-1">Player attributes</label>{Object.entries(draft.costPlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costPlayerAttributes',k,Number(e.target.value)||0)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costPlayerAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costPlayerAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costPlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
 										</div>
 									</div>
 
 									<div>
 										<h4 className="text-xs font-medium text-slate-400 mb-2">Damage</h4>
 										<div className="space-y-2">
-											<div><label className="block text-[11px] text-slate-600 mb-1">Unit attributes</label>{Object.entries(draft.damageUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damageUnitAttributes',k,e.target.value)} className="w-20 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damageUnitAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damageUnitAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damageUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
-											<div><label className="block text-[11px] text-slate-600 mb-1">Player attributes</label>{Object.entries(draft.damagePlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damagePlayerAttributes',k,e.target.value)} className="w-20 bg-slate-950 border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damagePlayerAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damagePlayerAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damagePlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-slate-600 mb-1">Unit attributes</label>{Object.entries(draft.damageUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damageUnitAttributes',k,e.target.value)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damageUnitAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damageUnitAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damageUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-slate-600 mb-1">Player attributes</label>{Object.entries(draft.damagePlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damagePlayerAttributes',k,e.target.value)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damagePlayerAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damagePlayerAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damagePlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
 											<div><label className="block text-[11px] text-slate-600 mb-1">Who can be hit</label><div className="flex flex-wrap gap-x-3 gap-y-1">{[['hostile','Hostile players'],['neutral','Neutral players'],['friendly','Friendly players'],['other','Everyone except holder']].map(([id,label])=><label key={id} className="text-xs text-slate-300 flex items-center gap-1"><input type="checkbox" checked={(draft.damage?.targetsAffected||[]).includes(id)} onChange={()=>toggleDamageTarget(id)} /> {label}</label>)}</div><p className="text-[11px] text-slate-600 mt-1">The editor stores these in the item's targetsAffected list.</p></div>
 										</div>
 								</div>
@@ -1850,8 +1959,8 @@ export default function GameContentEditor() {
 									return (
 										<div key={eventName} className="mb-3 p-2.5 bg-slate-900 border border-slate-800 rounded-md">
 											<div className="text-xs text-slate-400 mb-2">{label}</div>
-											{selectedKeys.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">{selectedKeys.map((soundKey) => <div key={soundKey} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-xs"><span className="truncate max-w-[15rem]">{selectedSounds[soundKey]?.name || soundTypes[soundKey]?.name || soundKey}</span><button onClick={() => removeItemEffectSound(eventName, soundKey)} className="text-slate-500 hover:text-red-400"><X size={12} /></button></div>)}</div>}
-											<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) updateItemEffectSound(eventName,key,true); e.target.value=''; }} className="w-full bg-slate-950 border border-dashed border-slate-700 rounded px-2 py-1.5 text-xs"><option value="" disabled>+ Add a sound...</option>{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).filter(([key])=>!selectedKeys.includes(key)).map(([key,sound])=><option key={key} value={key}>{sound?.name || key}</option>)}</select>
+											{selectedKeys.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">{selectedKeys.map((soundKey) => <div key={soundKey} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#262e36] border border-slate-800 text-xs"><span className="truncate max-w-[15rem]">{selectedSounds[soundKey]?.name || soundTypes[soundKey]?.name || soundKey}</span><button onClick={() => removeItemEffectSound(eventName, soundKey)} className="text-slate-500 hover:text-red-400"><X size={12} /></button></div>)}</div>}
+											<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) updateItemEffectSound(eventName,key,true); e.target.value=''; }} className="w-full bg-[#262e36] border border-dashed border-slate-700 rounded px-2 py-1.5 text-xs"><option value="" disabled>+ Add a sound...</option>{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).filter(([key])=>!selectedKeys.includes(key)).map(([key,sound])=><option key={key} value={key}>{sound?.name || key}</option>)}</select>
 										</div>
 									);
 								})}
@@ -1884,7 +1993,7 @@ export default function GameContentEditor() {
 									{selectedEntityScriptKey && draft.scripts?.[selectedEntityScriptKey] && (() => {
 										const script = draft.scripts[selectedEntityScriptKey];
 										const raw = script._editorBodyText ?? JSON.stringify((({ _editorBodyText, ...body }) => body)(script), null, 2);
-										return <div className="bg-slate-900 border border-slate-800 rounded-md p-2.5"><div className="text-xs text-slate-500 mb-2">{script.name || selectedEntityScriptKey}</div><textarea value={raw} onChange={(e)=>updateEntityScriptBody(selectedEntityScriptKey,e.target.value)} spellCheck={false} rows={18} className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500" /><button onClick={()=>saveEntityScriptBody(selectedEntityScriptKey)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-800 text-sm hover:bg-slate-700"><Save size={13}/> Apply script JSON</button></div>;
+										return <div className="bg-slate-900 border border-slate-800 rounded-md p-2.5"><div className="text-xs text-slate-500 mb-2">{script.name || selectedEntityScriptKey}</div><textarea value={raw} onChange={(e)=>updateEntityScriptBody(selectedEntityScriptKey,e.target.value)} spellCheck={false} rows={18} className="w-full bg-[#262e36] border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-[#1a56da]" /><button onClick={()=>saveEntityScriptBody(selectedEntityScriptKey)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-800 text-sm hover:bg-slate-700"><Save size={13}/> Apply script JSON</button></div>;
 									})()}
 								</div>
 							)}
@@ -1900,7 +2009,7 @@ export default function GameContentEditor() {
 														<select
 															value={v.dataType || 'string'}
 															onChange={(e) => updateVariableField(varName, 'dataType', e.target.value)}
-															className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs"
+															className="bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-xs"
 														>
 															<option value="string">string</option>
 															<option value="number">number</option>
@@ -1912,7 +2021,7 @@ export default function GameContentEditor() {
 															value={v.default ?? ''}
 															onChange={(e) => updateVariableField(varName, 'default', e.target.value)}
 															placeholder="default value"
-															className="w-28 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+															className="w-28 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 														/>
 														<button onClick={() => removeVariable(varName)} className="text-slate-600 hover:text-red-400 ml-1">
 															<X size={14} />
@@ -1922,7 +2031,7 @@ export default function GameContentEditor() {
 											</div>
 											<button
 												onClick={addVariable}
-												className="mt-2 flex items-center gap-1.5 text-sm text-slate-400 hover:text-amber-400 transition-colors"
+												className="mt-2 flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#1a56da] transition-colors"
 											>
 												<Plus size={13} /> Add variable
 											</button>
@@ -1935,7 +2044,7 @@ export default function GameContentEditor() {
 												value={draft.cellSheet.url || ''}
 												onChange={(e) => updateCellSheetField('url', e.target.value)}
 												placeholder="Image URL"
-												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm mb-2 focus:outline-none focus:border-amber-500"
+												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm mb-2 focus:outline-none focus:border-[#1a56da]"
 											/>
 											<div className="flex gap-4 mb-3">
 												<div>
@@ -1979,7 +2088,7 @@ export default function GameContentEditor() {
 														}}
 													>
 														{Array.from({ length: gridPreview.cols * gridPreview.rows }).map((_, i) => (
-															<div key={i} className="border border-amber-400/60" />
+															<div key={i} className="border border-[#1a56da]/60" />
 														))}
 													</div>
 												</div>
@@ -1987,7 +2096,7 @@ export default function GameContentEditor() {
 												<p className="text-xs text-slate-600">Add an image URL to preview the grid slicing.</p>
 											)}
 											{draft.cellSheet.url && !assetBaseUrl && !/^https?:\/\//i.test(draft.cellSheet.url) && (
-												<p className="text-xs text-amber-500/80 mt-1.5">
+												<p className="text-xs text-[#1a56da]/80 mt-1.5">
 													This is a relative path ({draft.cellSheet.url}) - set the "Asset base URL" at the top of the
 													page (your game server's address) so previews can actually load it.
 												</p>
@@ -2008,7 +2117,7 @@ export default function GameContentEditor() {
 														onClick={() => setSelectedBodyName(bodyName)}
 														className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs cursor-pointer border ${
 															selectedBodyName === bodyName
-																? 'bg-amber-500 border-amber-500 text-slate-950 font-medium'
+																? 'bg-[#1a56da] border-[#1a56da] text-[#262e36] font-medium'
 																: 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
 														}`}
 													>
@@ -2026,7 +2135,7 @@ export default function GameContentEditor() {
 												))}
 												<button
 													onClick={addBody}
-													className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-dashed border-slate-700 text-slate-500 hover:border-amber-500 hover:text-amber-400 transition-colors"
+													className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-dashed border-slate-700 text-slate-500 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 												>
 													<Plus size={11} /> body
 												</button>
@@ -2157,7 +2266,7 @@ export default function GameContentEditor() {
 												onChange={(e) => setAdvancedText(e.target.value)}
 												spellCheck={false}
 												rows={14}
-												className="w-full mt-2 bg-slate-900 border border-slate-800 rounded-md p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500"
+												className="w-full mt-2 bg-slate-900 border border-slate-800 rounded-md p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-[#1a56da]"
 											/>
 											{advancedError && <p className="text-xs text-red-400 mt-1">{advancedError}</p>}
 										</details>
@@ -2176,12 +2285,12 @@ export default function GameContentEditor() {
 											value={search}
 											onChange={(e) => setSearch(e.target.value)}
 											placeholder="Search..."
-											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-amber-500"
+											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-[#1a56da]"
 										/>
 									</div>
 									<button
 										onClick={startNewGroup}
-										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 									>
 										<Plus size={14} /> New group
 									</button>
@@ -2219,9 +2328,9 @@ export default function GameContentEditor() {
 												<input
 													value={groupDraft.key}
 													onChange={(e) => setGroupDraft((d) => ({ ...d, key: e.target.value }))}
-													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-amber-500 focus:outline-none px-0.5 w-full"
+													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
 												/>
-												{groupDraft.isNew && <span className="text-xs text-amber-500">(new, not saved yet)</span>}
+												{groupDraft.isNew && <span className="text-xs text-[#1a56da]">(new, not saved yet)</span>}
 											</div>
 											<div className="flex gap-2 ml-4">
 												{!groupDraft.isNew && (
@@ -2234,7 +2343,7 @@ export default function GameContentEditor() {
 												)}
 												<button
 													onClick={saveGroupDraft}
-													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"
 												>
 													<Save size={13} /> Save to working copy
 												</button>
@@ -2264,14 +2373,14 @@ export default function GameContentEditor() {
 														type="number"
 														value={entry.probability ?? 0}
 														onChange={(e) => updateGroupMemberField(id, 'probability', Number(e.target.value))}
-														className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+														className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 													/>
 													<label className="text-xs text-slate-500">quantity</label>
 													<input
 														type="number"
 														value={entry.quantity ?? 1}
 														onChange={(e) => updateGroupMemberField(id, 'quantity', Number(e.target.value))}
-														className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+														className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 													/>
 													<button onClick={() => removeGroupMember(id)} className="text-slate-600 hover:text-red-400 ml-1">
 														<X size={14} />
@@ -2285,7 +2394,7 @@ export default function GameContentEditor() {
 												e.target.value = '';
 											}}
 											defaultValue=""
-											className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-amber-500"
+											className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-[#1a56da]"
 										>
 											<option value="" disabled>
 												+ Add {activeGroupDef.collection === 'unitTypes' ? 'a unit' : 'an item'}...
@@ -2314,20 +2423,20 @@ export default function GameContentEditor() {
 											value={search}
 											onChange={(e) => setSearch(e.target.value)}
 											placeholder="Search..."
-											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-amber-500"
+											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-[#1a56da]"
 										/>
 									</div>
 									<div className="flex gap-1.5 mt-2">
 										<button
 											onClick={() => startNewScript(selectedScriptFolderId)}
-											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 										>
 											<Plus size={14} /> New script
 										</button>
 										<button
 											title="New group"
 											onClick={() => addScriptFolder(selectedScriptFolderId)}
-											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-slate-700 text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-slate-700 text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 										>
 											<FolderPlus size={14} />
 										</button>
@@ -2401,10 +2510,10 @@ export default function GameContentEditor() {
 												<input
 													value={scriptDraft.name}
 													onChange={(e) => setScriptDraft((d) => ({ ...d, name: e.target.value }))}
-													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-amber-500 focus:outline-none px-0.5 w-full"
+													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
 												/>
 												<div className="text-xs text-slate-600 font-mono mt-1">
-													{scriptDraft.key} {scriptDraft.isNew && <span className="text-amber-500 ml-1">(new, not saved yet)</span>}
+													{scriptDraft.key} {scriptDraft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}
 												</div>
 											</div>
 											<div className="flex gap-2 ml-4">
@@ -2418,7 +2527,7 @@ export default function GameContentEditor() {
 												)}
 												<button
 													onClick={saveScriptDraft}
-													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"
 												>
 													<Save size={13} /> Save to working copy
 												</button>
@@ -2432,7 +2541,7 @@ export default function GameContentEditor() {
 												onChange={(e) =>
 													setScriptDraft((d) => ({ ...d, parentId: e.target.value === '__top__' ? null : e.target.value }))
 												}
-												className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-amber-500"
+												className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]"
 											>
 												{scriptFolderOptions.map((f) => (
 													<option key={f.id ?? '__top__'} value={f.id ?? '__top__'}>
@@ -2454,7 +2563,7 @@ export default function GameContentEditor() {
 											onChange={(e) => setScriptDraft((d) => ({ ...d, bodyText: e.target.value }))}
 											spellCheck={false}
 											rows={22}
-											className="w-full bg-slate-900 border border-slate-800 rounded-md p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-amber-500"
+											className="w-full bg-slate-900 border border-slate-800 rounded-md p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-[#1a56da]"
 										/>
 										{scriptBodyError && <p className="text-xs text-red-400 mt-1">{scriptBodyError}</p>}
 										<p className="text-xs text-slate-600 mt-2">
@@ -2476,12 +2585,12 @@ export default function GameContentEditor() {
 											value={search}
 											onChange={(e) => setSearch(e.target.value)}
 											placeholder="Search..."
-											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-amber-500"
+											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-[#1a56da]"
 										/>
 									</div>
 									<button
 										onClick={startNewDialogue}
-										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 									>
 										<Plus size={14} /> New dialogue
 									</button>
@@ -2519,11 +2628,11 @@ export default function GameContentEditor() {
 												<input
 													value={dialogueDraft.name}
 													onChange={(e) => updateDialogueField('name', e.target.value)}
-													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-amber-500 focus:outline-none px-0.5 w-full"
+													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
 												/>
 												<div className="text-xs text-slate-600 font-mono mt-1">
 													{dialogueDraft.key}{' '}
-													{dialogueDraft.isNew && <span className="text-amber-500 ml-1">(new, not saved yet)</span>}
+													{dialogueDraft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}
 												</div>
 											</div>
 											<div className="flex gap-2 ml-4">
@@ -2537,7 +2646,7 @@ export default function GameContentEditor() {
 												)}
 												<button
 													onClick={saveDialogueDraft}
-													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"
+													className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"
 												>
 													<Save size={13} /> Save to working copy
 												</button>
@@ -2555,7 +2664,7 @@ export default function GameContentEditor() {
 											<input
 												value={dialogueDraft.dialogueTitle}
 												onChange={(e) => updateDialogueField('dialogueTitle', e.target.value)}
-												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
 											/>
 										</div>
 
@@ -2565,7 +2674,7 @@ export default function GameContentEditor() {
 												value={dialogueDraft.message}
 												onChange={(e) => updateDialogueField('message', e.target.value)}
 												rows={4}
-												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
 											/>
 											<p className="text-xs text-slate-600 mt-1">Supports basic HTML like {'<br>'} for line breaks.</p>
 										</div>
@@ -2576,7 +2685,7 @@ export default function GameContentEditor() {
 												<input
 													value={dialogueDraft.image}
 													onChange={(e) => updateDialogueField('image', e.target.value)}
-													className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+													className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
 												/>
 											</div>
 											<div>
@@ -2586,7 +2695,7 @@ export default function GameContentEditor() {
 													min="0"
 													value={dialogueDraft.letterPrintSpeed}
 													onChange={(e) => updateDialogueField('letterPrintSpeed', e.target.value)}
-													className="w-28 bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+													className="w-28 bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
 												/>
 												<p className="text-xs text-slate-600 mt-1">0 = instant</p>
 											</div>
@@ -2611,19 +2720,19 @@ export default function GameContentEditor() {
 															value={opt.name}
 															onChange={(e) => updateDialogueOption(i, 'name', e.target.value)}
 															placeholder="Button label"
-															className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm"
+															className="flex-1 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm"
 														/>
 														<button
 															onClick={() => moveDialogueOption(i, -1)}
 															disabled={i === 0}
-															className="text-slate-500 hover:text-amber-400 disabled:opacity-30 disabled:hover:text-slate-500"
+															className="text-slate-500 hover:text-[#1a56da] disabled:opacity-30 disabled:hover:text-slate-500"
 														>
 															<ChevronRight size={13} className="-rotate-90" />
 														</button>
 														<button
 															onClick={() => moveDialogueOption(i, 1)}
 															disabled={i === dialogueDraft.options.length - 1}
-															className="text-slate-500 hover:text-amber-400 disabled:opacity-30 disabled:hover:text-slate-500"
+															className="text-slate-500 hover:text-[#1a56da] disabled:opacity-30 disabled:hover:text-slate-500"
 														>
 															<ChevronRight size={13} className="rotate-90" />
 														</button>
@@ -2637,7 +2746,7 @@ export default function GameContentEditor() {
 															<select
 																value={opt.scriptName || ''}
 																onChange={(e) => updateDialogueOption(i, 'scriptName', e.target.value)}
-																className="w-full bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs"
+																className="w-full bg-[#262e36] border border-slate-800 rounded px-1.5 py-1 text-xs"
 															>
 																<option value="">(none)</option>
 																{pickableScripts.map(([sk, sv]) => (
@@ -2652,7 +2761,7 @@ export default function GameContentEditor() {
 															<select
 																value={opt.followUpDialogue || ''}
 																onChange={(e) => updateDialogueOption(i, 'followUpDialogue', e.target.value)}
-																className="w-full bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-xs"
+																className="w-full bg-[#262e36] border border-slate-800 rounded px-1.5 py-1 text-xs"
 															>
 																<option value="">(none - closes dialogue)</option>
 																{Object.entries(dialoguesCollection).map(([dk, dv]) => (
@@ -2668,7 +2777,7 @@ export default function GameContentEditor() {
 										</div>
 										<button
 											onClick={addDialogueOption}
-											className="mt-2 flex items-center gap-1.5 text-sm text-slate-400 hover:text-amber-400 transition-colors"
+											className="mt-2 flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#1a56da] transition-colors"
 										>
 											<Plus size={13} /> Add option
 										</button>
@@ -2682,7 +2791,7 @@ export default function GameContentEditor() {
 								<h2 className="text-base font-medium">Attribute types</h2>
 								<button
 									onClick={addAttributeType}
-									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 								>
 									<Plus size={14} /> New attribute type
 								</button>
@@ -2700,21 +2809,21 @@ export default function GameContentEditor() {
 											type="number"
 											value={attr.value ?? 0}
 											onChange={(e) => updateAttributeType(key, 'value', Number(e.target.value))}
-											className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+											className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 										/>
 										<label className="text-xs text-slate-500">min</label>
 										<input
 											type="number"
 											value={attr.min ?? 0}
 											onChange={(e) => updateAttributeType(key, 'min', Number(e.target.value))}
-											className="w-14 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+											className="w-14 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 										/>
 										<label className="text-xs text-slate-500">max</label>
 										<input
 											type="number"
 											value={attr.max ?? 100}
 											onChange={(e) => updateAttributeType(key, 'max', Number(e.target.value))}
-											className="w-16 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+											className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 										/>
 									</div>
 								))}
@@ -2731,28 +2840,67 @@ export default function GameContentEditor() {
 										<h2 className="text-base font-medium">Global sounds</h2>
 										<p className="text-xs text-slate-600 mt-1">Edit the game's global <span className="font-mono">data.sound</span> library. Changes here are available to the item sound assigner.</p>
 									</div>
-									<button onClick={addGlobalSound} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"><Plus size={14} /> New sound</button>
+									<button onClick={addGlobalSound} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"><Plus size={14} /> New sound</button>
 								</div>
 								<div className="space-y-2">
 									{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([key,sound]) => (
 										<div key={key} className="bg-slate-900 border border-slate-800 rounded-md p-3">
 											<div className="flex items-center gap-2 mb-2">
-												<input value={sound?.name || ''} onChange={(e)=>updateGlobalSound(key,'name',e.target.value)} placeholder="Sound name" className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
+												<input value={sound?.name || ''} onChange={(e)=>updateGlobalSound(key,'name',e.target.value)} placeholder="Sound name" className="flex-1 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm" />
 												<label className="text-xs text-slate-600">volume</label>
-												<input type="number" min="0" max="100" value={sound?.volume ?? 100} onChange={(e)=>updateGlobalSound(key,'volume',Math.max(0,Math.min(100,Number(e.target.value)||0)))} className="w-20 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
+												<input type="number" min="0" max="100" value={sound?.volume ?? 100} onChange={(e)=>updateGlobalSound(key,'volume',Math.max(0,Math.min(100,Number(e.target.value)||0)))} className="w-20 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm" />
 												<label className="text-xs text-slate-600">pitch %</label>
-												<input type="number" min="0" max="100" step="1" value={Math.round((Number(sound?.pitchRandomization ?? 0.1) || 0) * 100)} onChange={(e)=>updateGlobalSound(key,'pitchRandomization',Math.max(0,Math.min(1,Number(e.target.value)||0))/100)} className="w-20 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" title="Random pitch variation applied by the game. 0% keeps the sound at its original pitch." />
-												<button onClick={() => previewGlobalSound(key)} disabled={!sound?.file} title={previewingSoundKey === key ? 'Stop preview' : 'Play preview'} className="text-slate-400 hover:text-amber-400 disabled:opacity-30 disabled:cursor-not-allowed">
+												<input type="number" min="0" max="100" step="1" value={Math.round((Number(sound?.pitchRandomization ?? 0.1) || 0) * 100)} onChange={(e)=>updateGlobalSound(key,'pitchRandomization',Math.max(0,Math.min(1,Number(e.target.value)||0))/100)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm" title="Random pitch variation applied by the game. 0% keeps the sound at its original pitch." />
+												<button onClick={() => previewGlobalSound(key)} disabled={!sound?.file} title={previewingSoundKey === key ? 'Stop preview' : 'Play preview'} className="text-slate-400 hover:text-[#1a56da] disabled:opacity-30 disabled:cursor-not-allowed">
 													{previewingSoundKey === key ? <Square size={14}/> : <Play size={14}/>}
 												</button>
 												<button onClick={()=>deleteGlobalSound(key)} className="text-slate-500 hover:text-red-400" title="Delete sound"><Trash2 size={14}/></button>
 											</div>
-											<input value={sound?.file || ''} onChange={(e)=>updateGlobalSound(key,'file',e.target.value)} placeholder="https://.../sound.ogg or /assets/audio/..." className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
+											<input value={sound?.file || ''} onChange={(e)=>updateGlobalSound(key,'file',e.target.value)} placeholder="https://.../sound.ogg or /assets/audio/..." className="w-full bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm" />
 											<div className="text-[11px] text-slate-600 mt-1.5 font-mono truncate">{key}</div>
 										</div>
 									))}
 								</div>
 								{Object.keys(soundTypes).length === 0 && <div className="text-sm text-slate-600 text-center py-8">No sounds yet.</div>}
+							</div>
+						</div>
+					) : activeTab === 'playerTypes' ? (
+						<div className="flex-1 overflow-y-auto p-6">
+							<div className="max-w-3xl">
+								<div className="flex items-center justify-between mb-4">
+									<div>
+										<h2 className="text-base font-medium">Player Types</h2>
+										<p className="text-xs text-slate-600 mt-1">Teams players get assigned to - controls diplomacy, name label/chat visibility, and any attributes or variables carried on the player itself rather than their unit.</p>
+									</div>
+									<button onClick={addPlayerType} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-white text-sm font-medium hover:opacity-90 transition-colors"><Plus size={14} /> Add New</button>
+								</div>
+								<div className="border border-slate-800 rounded-md overflow-hidden">
+									<div className="grid grid-cols-[1fr_100px_80px] gap-2 px-3 py-2 bg-slate-900 text-xs uppercase tracking-wide text-slate-500 border-b border-slate-800">
+										<div>Name</div>
+										<div>Color</div>
+										<div className="text-right">Action</div>
+									</div>
+									{Object.entries(playerTypes).map(([key, pt]) => (
+										<div
+											key={key}
+											onClick={() => setEditingPlayerTypeKey(key)}
+											className="grid grid-cols-[1fr_100px_80px] gap-2 px-3 py-2.5 border-b border-slate-800 last:border-b-0 hover:bg-slate-900/60 cursor-pointer items-center"
+										>
+											<div className="text-sm truncate">{pt.name || key}</div>
+											<div><div className="w-6 h-6 rounded border border-slate-700" style={{ background: pt.color || '#ffffff' }} /></div>
+											<div className="text-right">
+												<button
+													onClick={(e) => { e.stopPropagation(); deletePlayerType(key); }}
+													className="p-1.5 rounded-md bg-red-500/90 hover:bg-red-500 text-white"
+													title="Delete"
+												>
+													<Trash2 size={13} />
+												</button>
+											</div>
+										</div>
+									))}
+									{Object.keys(playerTypes).length === 0 && <div className="text-sm text-slate-600 text-center py-8">No player types yet.</div>}
+								</div>
 							</div>
 						</div>
 					) : (
@@ -2761,7 +2909,7 @@ export default function GameContentEditor() {
 								<h2 className="text-base font-medium">Global variables</h2>
 								<button
 									onClick={addGlobalVariable}
-									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-amber-500 hover:text-amber-400 transition-colors"
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 								>
 									<Plus size={14} /> New variable
 								</button>
@@ -2773,7 +2921,7 @@ export default function GameContentEditor() {
 										<select
 											value={v.dataType || 'string'}
 											onChange={(e) => updateGlobalVariable(name, 'dataType', e.target.value)}
-											className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs"
+											className="bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-xs"
 										>
 											<option value="string">string</option>
 											<option value="number">number</option>
@@ -2783,7 +2931,7 @@ export default function GameContentEditor() {
 											value={v.default ?? ''}
 											onChange={(e) => updateGlobalVariable(name, 'default', e.target.value)}
 											placeholder="default value"
-											className="w-32 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+											className="w-32 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
 										/>
 									</div>
 								))}
@@ -2796,6 +2944,163 @@ export default function GameContentEditor() {
 				</div>
 			)}
 
+			{editingPlayerTypeKey && playerTypes[editingPlayerTypeKey] && (() => {
+				const pt = playerTypes[editingPlayerTypeKey];
+				const key = editingPlayerTypeKey;
+				const usedAttrKeys = new Set(Object.keys(pt.attributes || {}));
+				const unusedAttrKeys = Object.keys(attributeTypes).filter((k) => !usedAttrKeys.has(k));
+				const usedVarNames = new Set(Object.keys(pt.variables || {}));
+				const unusedVarNames = Object.keys(gameData?.data?.variables || {}).filter((n) => !usedVarNames.has(n));
+				const otherTypeEntries = Object.entries(playerTypes).filter(([k]) => k !== key);
+
+				function ToggleField({ label, field }) {
+					const value = pt[field] !== false; // treat missing as true, matching engine default for showNameLabel; hideChatBubble defaults to false either way
+					return (
+						<div className="mb-4">
+							<label className="text-sm text-slate-400 block mb-1.5">{label}</label>
+							<div className="flex rounded-md overflow-hidden border border-slate-700">
+								<button
+									onClick={() => updatePlayerTypeField(key, field, field === 'showNameLabel' ? true : true)}
+									className={`flex-1 py-2 text-sm font-medium transition-colors ${value ? 'bg-[#1a56da] text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
+								>
+									True
+								</button>
+								<button
+									onClick={() => updatePlayerTypeField(key, field, false)}
+									className={`flex-1 py-2 text-sm font-medium transition-colors ${!value ? 'bg-[#1a56da] text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
+								>
+									False
+								</button>
+							</div>
+						</div>
+					);
+				}
+
+				return (
+					<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-20 px-4">
+						<div className="bg-slate-900 border border-slate-700 rounded-lg p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto">
+							<div className="flex items-center justify-between mb-4">
+								<h3 className="font-medium text-base">Player Types</h3>
+								<button onClick={() => setEditingPlayerTypeKey(null)} className="text-slate-500 hover:text-slate-300">
+									<X size={18} />
+								</button>
+							</div>
+
+							<div className="mb-4">
+								<label className="text-sm text-slate-400 block mb-1.5">Name</label>
+								<input
+									value={pt.name || ''}
+									onChange={(e) => updatePlayerTypeField(key, 'name', e.target.value)}
+									className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1a56da]"
+								/>
+							</div>
+
+							<div className="mb-4">
+								<label className="text-sm text-slate-400 block mb-1.5">Color</label>
+								<div className="flex gap-2">
+									<input
+										value={pt.color || ''}
+										onChange={(e) => updatePlayerTypeField(key, 'color', e.target.value)}
+										placeholder="white or #rrggbb"
+										className="flex-1 bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1a56da]"
+									/>
+									<input
+										type="color"
+										value={/^#[0-9a-fA-F]{6}$/.test(pt.color || '') ? pt.color : '#ffffff'}
+										onChange={(e) => updatePlayerTypeField(key, 'color', e.target.value)}
+										className="w-10 h-10 rounded-md border border-slate-700 bg-slate-950 cursor-pointer p-0.5"
+										title="Pick a color"
+									/>
+								</div>
+							</div>
+
+							<ToggleField label="Show name label" field="showNameLabel" />
+							<ToggleField label="Hide Chat Bubble" field="hideChatBubble" />
+
+							<div className="mb-4">
+								<label className="text-sm text-slate-400 block mb-1.5">Hide Chat Distance</label>
+								<input
+									type="number"
+									value={pt.hideChatDistance ?? 0}
+									onChange={(e) => updatePlayerTypeField(key, 'hideChatDistance', Number(e.target.value))}
+									className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1a56da]"
+								/>
+								<p className="text-[11px] text-slate-600 mt-1">Distance beyond which this team's chat bubbles are hidden from other players. 0 means no distance limit.</p>
+							</div>
+
+							<div className="mb-4">
+								<label className="text-sm text-slate-400 block mb-1.5">Attributes</label>
+								<div className="space-y-2 mb-2">
+									{Object.entries(pt.attributes || {}).map(([attrKey, attr]) => (
+										<div key={attrKey} className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
+											<span className="text-sm flex-1 truncate">{attributeTypes[attrKey]?.name || attrKey}</span>
+											<label className="text-xs text-slate-500">value</label>
+											<input type="number" value={attr.value ?? 0} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'value', Number(e.target.value))} className="w-16 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-sm" />
+											<button onClick={() => removePlayerTypeAttribute(key, attrKey)} className="text-slate-600 hover:text-red-400 ml-1"><X size={14} /></button>
+										</div>
+									))}
+								</div>
+								<select
+									onChange={(e) => { addPlayerTypeAttribute(key, e.target.value); e.target.value = ''; }}
+									defaultValue=""
+									className="w-full bg-slate-950 border border-dashed border-slate-700 rounded-md px-2.5 py-1.5 text-sm text-slate-500 focus:outline-none focus:border-[#1a56da]"
+								>
+									<option value="" disabled>add attributes</option>
+									{unusedAttrKeys.map((k) => (
+										<option key={k} value={k}>{attributeTypes[k]?.name || k}</option>
+									))}
+								</select>
+							</div>
+
+							<div className="mb-4">
+								<label className="text-sm text-slate-400 block mb-1.5">Variables</label>
+								<div className="space-y-2 mb-2">
+									{Object.entries(pt.variables || {}).map(([varName, v]) => (
+										<div key={varName} className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
+											<span className="text-sm flex-1 truncate">{varName}</span>
+											<button onClick={() => removePlayerTypeVariable(key, varName)} className="text-slate-600 hover:text-red-400 ml-1"><X size={14} /></button>
+										</div>
+									))}
+								</div>
+								<select
+									onChange={(e) => { addPlayerTypeVariable(key, e.target.value); e.target.value = ''; }}
+									defaultValue=""
+									className="w-full bg-slate-950 border border-dashed border-slate-700 rounded-md px-2.5 py-1.5 text-sm text-slate-500 focus:outline-none focus:border-[#1a56da]"
+								>
+									<option value="" disabled>add variables</option>
+									{unusedVarNames.map((n) => (
+										<option key={n} value={n}>{n}</option>
+									))}
+								</select>
+							</div>
+
+							{otherTypeEntries.length > 0 && (
+								<div>
+									<h4 className="text-sm text-slate-400 mb-1">Diplomacy</h4>
+									<p className="text-[11px] text-slate-600 mb-2">How other teams are treated by this team. Hostile, Neutral, or Friendly. Everything seen in game.json &amp; engine.</p>
+									<div className="space-y-1.5">
+										{otherTypeEntries.map(([otherKey, otherPt]) => (
+											<div key={otherKey} className="flex items-center justify-between gap-3 bg-slate-950 border border-slate-800 rounded-md px-3 py-1.5">
+												<span className="text-sm truncate">{otherPt.name || otherKey}</span>
+												<select
+													value={(pt.relationships || {})[otherKey] || 'neutral'}
+													onChange={(e) => updatePlayerTypeRelationship(key, otherKey, e.target.value)}
+													className="bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]"
+												>
+													<option value="hostile">Hostile</option>
+													<option value="neutral">Neutral</option>
+													<option value="friendly">Friendly</option>
+												</select>
+											</div>
+										))}
+									</div>
+								</div>
+							)}
+						</div>
+					</div>
+				);
+			})()}
+
 			{showNewModal && (
 				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-20 px-4">
 					<div className="bg-slate-900 border border-slate-700 rounded-lg p-5 w-full max-w-sm">
@@ -2807,7 +3112,7 @@ export default function GameContentEditor() {
 						</div>
 						<button
 							onClick={() => startNew(null)}
-							className="w-full text-left px-3 py-2 rounded-md border border-slate-700 hover:border-amber-500 hover:bg-slate-800/50 mb-3 text-sm transition-colors"
+							className="w-full text-left px-3 py-2 rounded-md border border-slate-700 hover:border-[#1a56da] hover:bg-slate-800/50 mb-3 text-sm transition-colors"
 						>
 							Start from blank
 						</button>
@@ -2816,7 +3121,7 @@ export default function GameContentEditor() {
 							<select
 								value={cloneFrom}
 								onChange={(e) => setCloneFrom(e.target.value)}
-								className="flex-1 bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm"
+								className="flex-1 bg-[#262e36] border border-slate-700 rounded-md px-2 py-1.5 text-sm"
 							>
 								<option value="">Choose...</option>
 								{Object.entries(categoryMap).map(([k, v]) => (
@@ -2826,7 +3131,7 @@ export default function GameContentEditor() {
 							<button
 								onClick={() => cloneFrom && startNew(cloneFrom)}
 								disabled={!cloneFrom}
-								className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-400 transition-colors"
+								className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#1a56da] transition-colors"
 							>
 								<Copy size={13} /> Clone
 							</button>
