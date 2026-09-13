@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil } from 'lucide-react';
+import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square } from 'lucide-react';
 
 const ENTITY_TABS = [
 	{ key: 'unitTypes', label: 'Units', folderType: 'unit', root: 'units' },
@@ -137,7 +137,9 @@ export default function GameContentEditor() {
 	const [selectedEntityScriptKey, setSelectedEntityScriptKey] = useState('');
 	const [spriteNatural, setSpriteNatural] = useState(null); // {w, h} of the currently loaded sprite sheet image
 	const [assetBaseUrl, setAssetBaseUrl] = useState(() => localStorage.getItem('editorAssetBaseUrl') || '');
+	const [previewingSoundKey, setPreviewingSoundKey] = useState(null);
 	const fileInputRef = useRef(null);
+	const soundPreviewAudioRef = useRef(null);
 
 	function updateAssetBaseUrl(value) {
 		setAssetBaseUrl(value);
@@ -601,7 +603,7 @@ export default function GameContentEditor() {
 		setGameData((gd) => {
 			const next = deepClone(gd);
 			if (!next.data.sound) next.data.sound = {};
-			next.data.sound[key] = { name: 'New Sound', file: '', volume: 100 };
+			next.data.sound[key] = { name: 'New Sound', file: '', volume: 100, pitchRandomization: 0.1 };
 			return next;
 		});
 		setSelectedKey(key);
@@ -624,6 +626,50 @@ export default function GameContentEditor() {
 			return next;
 		});
 		if (selectedKey === key) setSelectedKey(null);
+	}
+
+	function previewGlobalSound(key) {
+		const sound = soundTypes[key];
+		if (!sound?.file) {
+			alert('This sound does not have a file URL yet.');
+			return;
+		}
+
+		if (soundPreviewAudioRef.current) {
+			soundPreviewAudioRef.current.pause();
+			soundPreviewAudioRef.current.currentTime = 0;
+			soundPreviewAudioRef.current = null;
+		}
+
+		if (previewingSoundKey === key) {
+			setPreviewingSoundKey(null);
+			return;
+		}
+
+		const audio = new Audio(resolveAssetUrl(sound.file));
+		const variation = Math.max(0, Math.min(1, Number(sound.pitchRandomization ?? 0.1) || 0));
+		audio.volume = Math.max(0, Math.min(1, Number(sound.volume ?? 100) / 100));
+		audio.playbackRate = 1 + (Math.random() * 2 - 1) * variation;
+		audio.addEventListener('ended', () => {
+			if (soundPreviewAudioRef.current === audio) {
+				soundPreviewAudioRef.current = null;
+				setPreviewingSoundKey(null);
+			}
+		});
+		audio.addEventListener('error', () => {
+			if (soundPreviewAudioRef.current === audio) {
+				soundPreviewAudioRef.current = null;
+				setPreviewingSoundKey(null);
+			}
+		});
+		soundPreviewAudioRef.current = audio;
+		setPreviewingSoundKey(key);
+		audio.play().catch(() => {
+			if (soundPreviewAudioRef.current === audio) {
+				soundPreviewAudioRef.current = null;
+				setPreviewingSoundKey(null);
+			}
+		});
 	}
 
 	function saveDraft() {
@@ -2693,10 +2739,15 @@ export default function GameContentEditor() {
 											<div className="flex items-center gap-2 mb-2">
 												<input value={sound?.name || ''} onChange={(e)=>updateGlobalSound(key,'name',e.target.value)} placeholder="Sound name" className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
 												<label className="text-xs text-slate-600">volume</label>
-												<input type="number" min="0" value={sound?.volume ?? 100} onChange={(e)=>updateGlobalSound(key,'volume',Math.max(0,Number(e.target.value)||0))} className="w-24 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
-												<button onClick={()=>deleteGlobalSound(key)} className="text-slate-500 hover:text-red-400"><Trash2 size={14}/></button>
+												<input type="number" min="0" max="100" value={sound?.volume ?? 100} onChange={(e)=>updateGlobalSound(key,'volume',Math.max(0,Math.min(100,Number(e.target.value)||0)))} className="w-20 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
+												<label className="text-xs text-slate-600">pitch %</label>
+												<input type="number" min="0" max="100" step="1" value={Math.round((Number(sound?.pitchRandomization ?? 0.1) || 0) * 100)} onChange={(e)=>updateGlobalSound(key,'pitchRandomization',Math.max(0,Math.min(1,Number(e.target.value)||0))/100)} className="w-20 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" title="Random pitch variation applied by the game. 0% keeps the sound at its original pitch." />
+												<button onClick={() => previewGlobalSound(key)} disabled={!sound?.file} title={previewingSoundKey === key ? 'Stop preview' : 'Play preview'} className="text-slate-400 hover:text-amber-400 disabled:opacity-30 disabled:cursor-not-allowed">
+													{previewingSoundKey === key ? <Square size={14}/> : <Play size={14}/>}
+												</button>
+												<button onClick={()=>deleteGlobalSound(key)} className="text-slate-500 hover:text-red-400" title="Delete sound"><Trash2 size={14}/></button>
 											</div>
-											<input value={sound?.file || ''} onChange={(e)=>updateGlobalSound(key,'file',e.target.value)} placeholder="https://.../sound.ogg" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
+											<input value={sound?.file || ''} onChange={(e)=>updateGlobalSound(key,'file',e.target.value)} placeholder="https://.../sound.ogg or /assets/audio/..." className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
 											<div className="text-[11px] text-slate-600 mt-1.5 font-mono truncate">{key}</div>
 										</div>
 									))}
