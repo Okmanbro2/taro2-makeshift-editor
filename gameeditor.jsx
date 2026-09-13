@@ -148,12 +148,31 @@ export default function GameContentEditor() {
 		localStorage.setItem('editorAssetBaseUrl', value);
 	}
 
-	// sprite urls
+	// sprite/sound urls
 	function resolveAssetUrl(url) {
 		if (!url) return '';
 		if (/^https?:\/\//i.test(url)) return url;
 		if (!assetBaseUrl) return url;
-		return assetBaseUrl.replace(/\/$/, '') + (url.startsWith('/') ? url : '/' + url);
+
+		const base = assetBaseUrl.replace(/\/$/, '');
+		let path = url.startsWith('/') ? url : '/' + url;
+
+		// Avoid a doubled path segment when the configured base URL already ends
+		// in the same folder name the file path starts with - e.g. base
+		// ".../taro2/master/assets" + file "/assets/audio/x.wav" naively
+		// concatenates to ".../assets/assets/audio/x.wav", a 404. Confirmed via
+		// direct request: the doubled path 404s, the de-duplicated one 200s with
+		// the correct audio/wav content-type. This happened because the sound
+		// migration generated paths relative to the repo root (assets/audio/...)
+		// while the base URL here is configured one folder deeper (.../assets),
+		// a convention mismatch sprites apparently didn't hit.
+		const lastBaseSegment = base.split('/').pop();
+		const pathSegments = path.split('/').filter(Boolean);
+		if (lastBaseSegment && pathSegments[0] === lastBaseSegment) {
+			path = '/' + pathSegments.slice(1).join('/');
+		}
+
+		return base + path;
 	}
 
 	const isEntityTab = ENTITY_TABS.some((t) => t.key === activeTab);
