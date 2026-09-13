@@ -10,6 +10,7 @@ const ENTITY_TABS = [
 const REFERENCE_TABS = [
 	{ key: 'attributeTypes', label: 'Attributes' },
 	{ key: 'variables', label: 'Variables' },
+	{ key: 'sounds', label: 'Sounds' },
 ];
 const GROUP_TABS = [
 	{ key: 'unitTypeGroups', label: 'Unit Type Groups', dataType: 'unitTypeGroup', collection: 'unitTypes' },
@@ -157,6 +158,7 @@ export default function GameContentEditor() {
 	const itemTypes = gameData?.data?.itemTypes || {};
 	const attributeTypes = gameData?.data?.attributeTypes || {};
 	const playerAttributeTypes = attributeTypes;
+	const soundTypes = gameData?.data?.sound || {};
 	const folders = gameData?.data?.folders || {};
 
 	const isGroupTab = GROUP_TABS.some((t) => t.key === activeTab);
@@ -295,7 +297,7 @@ export default function GameContentEditor() {
 	}
 
 	function loadDraftFromEntity(key, entity) {
-		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = entity;
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = entity;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setDraft({
 			key,
@@ -304,6 +306,7 @@ export default function GameContentEditor() {
 			variables: deepClone(variables) || {},
 			cellSheet: { ...(deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 }), columnCount: Math.max(1, Number(cellSheet?.columnCount) || 1), rowCount: Math.max(1, Number(cellSheet?.rowCount) || 1) },
 			bodies: clonedBodies,
+			effects: activeTab === 'itemTypes' ? (deepClone(effects) || { use: { sound: {} }, create: { sound: {} }, destroy: { sound: {} } }) : deepClone(effects),
 			...(activeTab === 'unitTypes'
 				? {
 					defaultItems: deepClone(defaultItems) || [],
@@ -349,7 +352,7 @@ export default function GameContentEditor() {
 		};
 		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
 		const newKey = generateKey();
-		const { name, attributes, variables, cellSheet, bodies, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setSelectedKey(newKey);
 		setDraft({
@@ -359,6 +362,7 @@ export default function GameContentEditor() {
 			variables: deepClone(variables) || {},
 			cellSheet: { ...(deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 }), columnCount: Math.max(1, Number(cellSheet?.columnCount) || 1), rowCount: Math.max(1, Number(cellSheet?.rowCount) || 1) },
 			bodies: clonedBodies,
+			effects: activeTab === 'itemTypes' ? (deepClone(effects) || { use: { sound: {} }, create: { sound: {} }, destroy: { sound: {} } }) : deepClone(effects),
 			scripts: deepClone(scripts) || {},
 			controls: activeTab === 'unitTypes' ? (Object.keys(controls || {}).length ? deepClone(controls) : deepClone(DEFAULT_UNIT_CONTROLS)) : (deepClone(controls) || {}),
 			...(activeTab === 'unitTypes'
@@ -572,6 +576,56 @@ export default function GameContentEditor() {
 		}
 	}
 
+	function updateItemEffectSound(eventName, soundKey, enabled) {
+		if (activeTab !== 'itemTypes' || !soundKey) return;
+		setDraft((d) => {
+			const effects = { ...(d.effects || {}) };
+			const effect = { ...(effects[eventName] || {}), sound: { ...((effects[eventName] || {}).sound || {}) } };
+			if (enabled) {
+				const sound = soundTypes[soundKey];
+				if (sound) effect.sound[soundKey] = deepClone(sound);
+			} else {
+				delete effect.sound[soundKey];
+			}
+			effects[eventName] = effect;
+			return { ...d, effects };
+		});
+	}
+
+	function removeItemEffectSound(eventName, soundKey) {
+		updateItemEffectSound(eventName, soundKey, false);
+	}
+
+	function addGlobalSound() {
+		const key = generateKey();
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.sound) next.data.sound = {};
+			next.data.sound[key] = { name: 'New Sound', file: '', volume: 100 };
+			return next;
+		});
+		setSelectedKey(key);
+	}
+
+	function updateGlobalSound(key, field, value) {
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.sound) next.data.sound = {};
+			next.data.sound[key] = { ...(next.data.sound[key] || {}), [field]: value };
+			return next;
+		});
+	}
+
+	function deleteGlobalSound(key) {
+		if (!key || !window.confirm('Remove this sound from the global sound library? Existing item effect entries already containing a copy will not be changed.')) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			delete next.data.sound[key];
+			return next;
+		});
+		if (selectedKey === key) setSelectedKey(null);
+	}
+
 	function saveDraft() {
 		let restParsed;
 		try {
@@ -605,6 +659,7 @@ export default function GameContentEditor() {
 			cellSheet: finalCellSheet,
 			bodies: draft.bodies,
 			controls: deepClone(draft.controls) || {},
+			...(draft.effects !== undefined ? { effects: deepClone(draft.effects) } : {}),
 			scripts: Object.fromEntries(Object.entries(draft.scripts || {}).map(([key, value]) => {
 				const { _editorBodyText, ...cleanScript } = value || {};
 				return [key, cleanScript];
@@ -1740,6 +1795,21 @@ export default function GameContentEditor() {
 
 								</div>
 
+							<div className="mt-5">
+								<h4 className="text-xs font-medium text-slate-400 mb-2">Sounds</h4>
+								<p className="text-[11px] text-slate-600 mb-3">Assign sounds from the global Sounds tab. This game.json uses <span className="font-mono">effects.use.sound</span>, <span className="font-mono">effects.create.sound</span>, and <span className="font-mono">effects.destroy.sound</span>; there are no separate pickup/drop fields in the current schema, so Create/Destroy are presented here as the world-item drop/pickup counterparts.</p>
+								{[['use','Use'],['create','Create / drop into world'],['destroy','Destroy / pick up from world']].map(([eventName,label]) => {
+									const selectedSounds = draft.effects?.[eventName]?.sound || {};
+									const selectedKeys = Object.keys(selectedSounds);
+									return (
+										<div key={eventName} className="mb-3 p-2.5 bg-slate-900 border border-slate-800 rounded-md">
+											<div className="text-xs text-slate-400 mb-2">{label}</div>
+											{selectedKeys.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">{selectedKeys.map((soundKey) => <div key={soundKey} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-xs"><span className="truncate max-w-[15rem]">{selectedSounds[soundKey]?.name || soundTypes[soundKey]?.name || soundKey}</span><button onClick={() => removeItemEffectSound(eventName, soundKey)} className="text-slate-500 hover:text-red-400"><X size={12} /></button></div>)}</div>}
+											<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) updateItemEffectSound(eventName,key,true); e.target.value=''; }} className="w-full bg-slate-950 border border-dashed border-slate-700 rounded px-2 py-1.5 text-xs"><option value="" disabled>+ Add a sound...</option>{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).filter(([key])=>!selectedKeys.includes(key)).map(([key,sound])=><option key={key} value={key}>{sound?.name || key}</option>)}</select>
+										</div>
+									);
+								})}
+							</div>
 							<div className="mt-4 p-2.5 rounded-md border border-slate-800 bg-slate-900/50 text-xs text-slate-600">The item schema does not currently expose a separate <span className="font-mono">cooldown</span> field in this game's data, so "Use delay / cooldown" edits <span className="font-mono">delayBeforeUse</span>.</div>
 							</section>
 						)}
@@ -2606,6 +2676,33 @@ export default function GameContentEditor() {
 							<p className="text-xs text-slate-600 mt-4">
 								These are the attribute types available to attach on any unit, item, or projectile from its editor tab.
 							</p>
+						</div>
+					) : activeTab === 'sounds' ? (
+						<div className="flex-1 overflow-y-auto p-6">
+							<div className="max-w-3xl">
+								<div className="flex items-center justify-between mb-4">
+									<div>
+										<h2 className="text-base font-medium">Global sounds</h2>
+										<p className="text-xs text-slate-600 mt-1">Edit the game's global <span className="font-mono">data.sound</span> library. Changes here are available to the item sound assigner.</p>
+									</div>
+									<button onClick={addGlobalSound} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500 text-slate-950 text-sm font-medium hover:bg-amber-400 transition-colors"><Plus size={14} /> New sound</button>
+								</div>
+								<div className="space-y-2">
+									{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([key,sound]) => (
+										<div key={key} className="bg-slate-900 border border-slate-800 rounded-md p-3">
+											<div className="flex items-center gap-2 mb-2">
+												<input value={sound?.name || ''} onChange={(e)=>updateGlobalSound(key,'name',e.target.value)} placeholder="Sound name" className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
+												<label className="text-xs text-slate-600">volume</label>
+												<input type="number" min="0" value={sound?.volume ?? 100} onChange={(e)=>updateGlobalSound(key,'volume',Math.max(0,Number(e.target.value)||0))} className="w-24 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
+												<button onClick={()=>deleteGlobalSound(key)} className="text-slate-500 hover:text-red-400"><Trash2 size={14}/></button>
+											</div>
+											<input value={sound?.file || ''} onChange={(e)=>updateGlobalSound(key,'file',e.target.value)} placeholder="https://.../sound.ogg" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-sm" />
+											<div className="text-[11px] text-slate-600 mt-1.5 font-mono truncate">{key}</div>
+										</div>
+									))}
+								</div>
+								{Object.keys(soundTypes).length === 0 && <div className="text-sm text-slate-600 text-center py-8">No sounds yet.</div>}
+							</div>
 						</div>
 					) : (
 						<div className="flex-1 overflow-y-auto p-6 max-w-2xl">
