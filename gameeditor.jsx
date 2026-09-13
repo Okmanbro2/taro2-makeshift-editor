@@ -18,6 +18,20 @@ const GROUP_TABS = [
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; // 1 tile = 64x64 in-game pixels, used as the reference scale for the body size preview
 
+const DEFAULT_UNIT_CONTROLS = {
+	movementMethod: 'velocity',
+	movementControlScheme: 'wasd',
+	movementType: 'wasd',
+	mouseBehaviour: { rotateToFaceMouseCursor: true, flipSpriteHorizontallyWRTMouse: false },
+	absoluteRotation: false,
+	clientPredictedMovement: true,
+	permittedInventorySlots: [],
+	unitAbilities: {},
+	abilities: {},
+};
+
+ // 1 tile = 64x64 in-game pixels, used as the reference scale for the body size preview
+
 function generateKey() {
 	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 	let out = '';
@@ -297,7 +311,7 @@ export default function GameContentEditor() {
 				}
 				: {}),
 			scripts: deepClone(scripts) || {},
-			controls: deepClone(controls) || {},
+			controls: activeTab === 'unitTypes' ? (Object.keys(controls || {}).length ? deepClone(controls) : deepClone(DEFAULT_UNIT_CONTROLS)) : (deepClone(controls) || {}),
 			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
 			costUnitAttributes: deepClone(entity.cost?.unitAttributes) || {},
@@ -346,7 +360,7 @@ export default function GameContentEditor() {
 			cellSheet: { ...(deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 }), columnCount: Math.max(1, Number(cellSheet?.columnCount) || 1), rowCount: Math.max(1, Number(cellSheet?.rowCount) || 1) },
 			bodies: clonedBodies,
 			scripts: deepClone(scripts) || {},
-			controls: activeTab === 'unitTypes' ? (deepClone(controls) || defaultUnitControls) : (deepClone(controls) || {}),
+			controls: activeTab === 'unitTypes' ? (Object.keys(controls || {}).length ? deepClone(controls) : deepClone(DEFAULT_UNIT_CONTROLS)) : (deepClone(controls) || {}),
 			...(activeTab === 'unitTypes'
 				? { defaultItems: deepClone(defaultItems) || [], inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1 }
 				: {}),
