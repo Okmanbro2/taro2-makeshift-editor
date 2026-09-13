@@ -629,6 +629,19 @@ export default function GameContentEditor() {
 			return next;
 		});
 		setSelectedKey(key);
+		// New sounds are inserted alphabetically by name (every one starts out
+		// named "New Sound"), so on a list with existing entries it can land
+		// anywhere in the middle - with no visual cue, that reads as "the button
+		// didn't do anything." Scroll the new card into view and focus its name
+		// field so it's unmistakable something was actually added.
+		requestAnimationFrame(() => {
+			const $card = document.querySelector('[data-sound-key="' + key + '"]');
+			if ($card) {
+				$card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				const $nameInput = $card.querySelector('input');
+				if ($nameInput) $nameInput.focus();
+			}
+		});
 	}
 
 	function updateGlobalSound(key, field, value) {
@@ -2884,7 +2897,7 @@ export default function GameContentEditor() {
 								</div>
 								<div className="space-y-2">
 									{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([key,sound]) => (
-										<div key={key} className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3">
+										<div key={key} data-sound-key={key} className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3">
 											<div className="flex items-center gap-2 mb-2">
 												<input value={sound?.name || ''} onChange={(e)=>updateGlobalSound(key,'name',e.target.value)} placeholder="Sound name" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 												<label className="text-xs text-[#637588]">volume</label>
