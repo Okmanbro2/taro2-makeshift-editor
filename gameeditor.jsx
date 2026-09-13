@@ -649,7 +649,8 @@ export default function GameContentEditor() {
 			return;
 		}
 
-		const audio = new Audio(resolveAssetUrl(sound.file));
+		const resolvedUrl = resolveAssetUrl(sound.file);
+		const audio = new Audio(resolvedUrl);
 		const variation = Math.max(0, Math.min(1, Number(sound.pitchRandomization ?? 0.1) || 0));
 		audio.volume = Math.max(0, Math.min(1, Number(sound.volume ?? 100) / 100));
 		audio.playbackRate = 1 + (Math.random() * 2 - 1) * variation;
@@ -660,6 +661,25 @@ export default function GameContentEditor() {
 			}
 		});
 		audio.addEventListener('error', () => {
+			// audio.error.code: 1=ABORTED 2=NETWORK 3=DECODE 4=SRC_NOT_SUPPORTED
+			// (i.e. wrong URL / 404 / CORS vs. bad file format - very different
+			// fixes, so surfacing which one it is matters)
+			const codeNames = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' };
+			const code = audio.error?.code;
+			console.error(
+				`Sound preview failed for "${sound.name || key}".\n` +
+				`  raw file value: ${sound.file}\n` +
+				`  resolved URL: ${resolvedUrl}\n` +
+				`  error code: ${code} (${codeNames[code] || 'unknown'})`
+			);
+			alert(
+				`Couldn't play "${sound.name || key}" (${codeNames[code] || 'unknown error'}).\n\n` +
+				`Tried to load:\n${resolvedUrl}\n\n` +
+				`Open the browser console for the full detail - if this is a 404/NETWORK error, ` +
+				`the file likely didn't make it to its new host at that exact path; if it's ` +
+				`SRC_NOT_SUPPORTED, the new host may be serving the file with a MIME type the ` +
+				`browser doesn't recognize as audio.`
+			);
 			if (soundPreviewAudioRef.current === audio) {
 				soundPreviewAudioRef.current = null;
 				setPreviewingSoundKey(null);
@@ -667,7 +687,8 @@ export default function GameContentEditor() {
 		});
 		soundPreviewAudioRef.current = audio;
 		setPreviewingSoundKey(key);
-		audio.play().catch(() => {
+		audio.play().catch((err) => {
+			console.error(`Sound preview .play() rejected for "${sound.name || key}" (resolved URL: ${resolvedUrl}):`, err);
 			if (soundPreviewAudioRef.current === audio) {
 				soundPreviewAudioRef.current = null;
 				setPreviewingSoundKey(null);
@@ -1285,35 +1306,35 @@ export default function GameContentEditor() {
 		return (
 			<div>
 				<div
-					className={`flex items-center gap-1 px-2 py-1.5 border-b border-slate-900 group ${
-						selectedFolderId === node.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+					className={`flex items-center gap-1 px-2 py-1.5 border-b border-[#323d48] group ${
+						selectedFolderId === node.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 					}`}
 					style={{ paddingLeft: 8 + depth * 14 }}
 				>
 					<button
 						onClick={() => setCollapsed((c) => ({ ...c, [node.id]: !c[node.id] }))}
-						className="text-slate-500 hover:text-slate-300 shrink-0"
+						className="text-[#8291a1] hover:text-[#c5ccd3] shrink-0"
 					>
 						{isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
 					</button>
 					<button
 						onClick={() => setSelectedFolderId(node.id)}
-						className="flex-1 text-left text-sm text-slate-300 truncate font-medium"
+						className="flex-1 text-left text-sm text-[#c5ccd3] truncate font-medium"
 					>
 						{node.name || '(unnamed group)'}
 					</button>
 					<div className="hidden group-hover:flex items-center gap-1 shrink-0">
-						<button title="New sub-group" onClick={() => addFolder(node.id)} className="text-slate-500 hover:text-[#1a56da]">
+						<button title="New sub-group" onClick={() => addFolder(node.id)} className="text-[#8291a1] hover:text-[#1a56da]">
 							<FolderPlus size={13} />
 						</button>
-						<button title="Rename" onClick={() => renameFolder(node.id)} className="text-slate-500 hover:text-[#1a56da]">
+						<button title="Rename" onClick={() => renameFolder(node.id)} className="text-[#8291a1] hover:text-[#1a56da]">
 							<Pencil size={13} />
 						</button>
 						<select
 							title="Move to another group"
 							value=""
 							onChange={(e) => e.target.value && moveFolder(node.id, e.target.value)}
-							className="bg-[#262e36] border border-slate-800 rounded text-xs text-slate-500 max-w-[90px] focus:outline-none"
+							className="bg-[#262e36] border border-[#3d4a57] rounded text-xs text-[#8291a1] max-w-[90px] focus:outline-none"
 						>
 							<option value="" disabled>
 								Move to...
@@ -1326,7 +1347,7 @@ export default function GameContentEditor() {
 									</option>
 								))}
 						</select>
-						<button title="Delete group" onClick={() => deleteFolder(node.id)} className="text-slate-500 hover:text-red-400">
+						<button title="Delete group" onClick={() => deleteFolder(node.id)} className="text-[#8291a1] hover:text-red-400">
 							<Trash2 size={13} />
 						</button>
 					</div>
@@ -1339,12 +1360,12 @@ export default function GameContentEditor() {
 							key={child.id}
 							onClick={() => selectEntity(child.id)}
 							style={{ paddingLeft: 8 + (depth + 1) * 14 + 17 }}
-							className={`w-full text-left pr-3 py-2 border-b border-slate-900 transition-colors ${
-								selectedKey === child.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+							className={`w-full text-left pr-3 py-2 border-b border-[#323d48] transition-colors ${
+								selectedKey === child.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 							}`}
 						>
-							<div className="text-sm text-slate-200 truncate">{categoryMap[child.id]?.name || '(unnamed)'}</div>
-							<div className="text-xs text-slate-600 font-mono truncate">{child.id}</div>
+							<div className="text-sm text-[#e1e6ea] truncate">{categoryMap[child.id]?.name || '(unnamed)'}</div>
+							<div className="text-xs text-[#637588] font-mono truncate">{child.id}</div>
 						</button>
 					)
 				)}
@@ -1357,35 +1378,35 @@ export default function GameContentEditor() {
 		return (
 			<div>
 				<div
-					className={`flex items-center gap-1 px-2 py-1.5 border-b border-slate-900 group ${
-						selectedScriptFolderId === node.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+					className={`flex items-center gap-1 px-2 py-1.5 border-b border-[#323d48] group ${
+						selectedScriptFolderId === node.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 					}`}
 					style={{ paddingLeft: 8 + depth * 14 }}
 				>
 					<button
 						onClick={() => setScriptCollapsed((c) => ({ ...c, [node.id]: !c[node.id] }))}
-						className="text-slate-500 hover:text-slate-300 shrink-0"
+						className="text-[#8291a1] hover:text-[#c5ccd3] shrink-0"
 					>
 						{isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
 					</button>
 					<button
 						onClick={() => setSelectedScriptFolderId(node.id)}
-						className="flex-1 text-left text-sm text-slate-300 truncate font-medium"
+						className="flex-1 text-left text-sm text-[#c5ccd3] truncate font-medium"
 					>
 						{node.name || '(unnamed group)'}
 					</button>
 					<div className="hidden group-hover:flex items-center gap-1 shrink-0">
-						<button title="New sub-group" onClick={() => addScriptFolder(node.id)} className="text-slate-500 hover:text-[#1a56da]">
+						<button title="New sub-group" onClick={() => addScriptFolder(node.id)} className="text-[#8291a1] hover:text-[#1a56da]">
 							<FolderPlus size={13} />
 						</button>
-						<button title="Rename" onClick={() => renameScriptFolder(node.id)} className="text-slate-500 hover:text-[#1a56da]">
+						<button title="Rename" onClick={() => renameScriptFolder(node.id)} className="text-[#8291a1] hover:text-[#1a56da]">
 							<Pencil size={13} />
 						</button>
 						<select
 							title="Move to another group"
 							value=""
 							onChange={(e) => e.target.value !== '' && moveScriptFolder(node.id, e.target.value === '__top__' ? null : e.target.value)}
-							className="bg-[#262e36] border border-slate-800 rounded text-xs text-slate-500 max-w-[90px] focus:outline-none"
+							className="bg-[#262e36] border border-[#3d4a57] rounded text-xs text-[#8291a1] max-w-[90px] focus:outline-none"
 						>
 							<option value="" disabled>
 								Move to...
@@ -1398,7 +1419,7 @@ export default function GameContentEditor() {
 									</option>
 								))}
 						</select>
-						<button title="Delete group" onClick={() => deleteScriptFolder(node.id)} className="text-slate-500 hover:text-red-400">
+						<button title="Delete group" onClick={() => deleteScriptFolder(node.id)} className="text-[#8291a1] hover:text-red-400">
 							<Trash2 size={13} />
 						</button>
 					</div>
@@ -1412,12 +1433,12 @@ export default function GameContentEditor() {
 								key={child.id}
 								onClick={() => selectScript(child.id)}
 								style={{ paddingLeft: 8 + (depth + 1) * 14 + 17 }}
-								className={`w-full text-left pr-3 py-2 border-b border-slate-900 transition-colors ${
-									selectedKey === child.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+								className={`w-full text-left pr-3 py-2 border-b border-[#323d48] transition-colors ${
+									selectedKey === child.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 								}`}
 							>
-								<div className="text-sm text-slate-200 truncate">{scriptsCollection[child.id]?.name || '(unnamed)'}</div>
-								<div className="text-xs text-slate-600 truncate">
+								<div className="text-sm text-[#e1e6ea] truncate">{scriptsCollection[child.id]?.name || '(unnamed)'}</div>
+								<div className="text-xs text-[#637588] truncate">
 									{(scriptsCollection[child.id]?.triggers || []).map((t) => t.type).join(', ') || 'no triggers'}
 								</div>
 							</button>
@@ -1428,16 +1449,16 @@ export default function GameContentEditor() {
 	}
 
 	return (
-		<div className="min-h-screen bg-[#262e36] text-slate-200 font-sans">
-			<header className="border-b border-slate-800 bg-slate-900/60 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+		<div className="min-h-screen bg-[#262e36] text-[#e1e6ea] font-sans">
+			<header className="border-b border-[#3d4a57] bg-[#323d48]/60 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
 				<div>
 					<h1 className="text-lg font-semibold text-[#1a56da] tracking-tight">Content Editor</h1>
-					<p className="text-xs text-slate-500 mt-0.5">Create and edit units, items, and projectiles outside the live editor</p>
+					<p className="text-xs text-[#8291a1] mt-0.5">Create and edit units, items, and projectiles outside the live editor</p>
 				</div>
 				<div className="flex items-center gap-2">
 					{gameData && (
 						<>
-							<label className="text-xs text-slate-500 hidden md:inline" title="A domain where /sprites/... actually resolves to real image files - NOT the github.com webpage URL">
+							<label className="text-xs text-[#8291a1] hidden md:inline" title="A domain where /sprites/... actually resolves to real image files - NOT the github.com webpage URL">
 								Image server
 							</label>
 							<input
@@ -1445,14 +1466,14 @@ export default function GameContentEditor() {
 								onChange={(e) => updateAssetBaseUrl(e.target.value)}
 								placeholder="https://raw.githubusercontent.com/user/repo/main"
 								title="Where images actually live, e.g. https://raw.githubusercontent.com/user/repo/main or your own game server's URL - not a github.com/.../tree/... page"
-								className="hidden md:block w-64 bg-[#262e36] border border-slate-800 rounded-md px-2 py-1.5 text-xs placeholder-slate-700 focus:outline-none focus:border-[#1a56da] mr-1"
+								className="hidden md:block w-64 bg-[#262e36] border border-[#3d4a57] rounded-md px-2 py-1.5 text-xs placeholder-[#48596a] focus:outline-none focus:border-[#1a56da] mr-1"
 							/>
-							<span className="text-xs text-slate-500 mr-2 hidden sm:inline">{fileName}</span>
+							<span className="text-xs text-[#8291a1] mr-2 hidden sm:inline">{fileName}</span>
 						</>
 					)}
 					<button
 						onClick={() => fileInputRef.current?.click()}
-						className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-700 text-sm hover:bg-slate-800 transition-colors"
+						className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#48596a] text-sm hover:bg-[#3d4a57] transition-colors"
 					>
 						<Upload size={14} /> {gameData ? 'Replace file' : 'Upload game.json'}
 					</button>
@@ -1476,18 +1497,18 @@ export default function GameContentEditor() {
 
 			{!gameData ? (
 				<div className="flex flex-col items-center justify-center py-32 text-center px-6">
-					<div className="w-14 h-14 rounded-full border border-slate-700 flex items-center justify-center mb-4">
-						<Upload size={22} className="text-slate-500" />
+					<div className="w-14 h-14 rounded-full border border-[#48596a] flex items-center justify-center mb-4">
+						<Upload size={22} className="text-[#8291a1]" />
 					</div>
-					<p className="text-slate-400 max-w-sm text-sm">
+					<p className="text-[#a3adb8] max-w-sm text-sm">
 						Upload your game.json to start browsing, editing, or creating units, items, and projectiles.
 					</p>
 				</div>
 			) : (
 				<div className="flex" style={{ minHeight: 'calc(100vh - 73px)' }}>
 					{/* Tab rail */}
-					<nav className="w-40 shrink-0 border-r border-slate-800 py-4">
-						<div className="px-4 text-xs uppercase tracking-wide text-slate-600 mb-1.5">Entities</div>
+					<nav className="w-40 shrink-0 border-r border-[#3d4a57] py-4">
+						<div className="px-4 text-xs uppercase tracking-wide text-[#637588] mb-1.5">Entities</div>
 						{ENTITY_TABS.map((t) => (
 							<button
 								key={t.key}
@@ -1501,15 +1522,15 @@ export default function GameContentEditor() {
 								}}
 								className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 									activeTab === t.key
-										? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
-										: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+										? 'border-[#1a56da] text-[#1a56da] bg-[#323d48]'
+										: 'border-transparent text-[#a3adb8] hover:text-[#e1e6ea] hover:bg-[#323d48]/50'
 								}`}
 							>
 								{t.label}
-								<span className="text-slate-600 ml-1.5 text-xs">{Object.keys(gameData?.data?.[t.key] || {}).length}</span>
+								<span className="text-[#637588] ml-1.5 text-xs">{Object.keys(gameData?.data?.[t.key] || {}).length}</span>
 							</button>
 						))}
-						<div className="px-4 text-xs uppercase tracking-wide text-slate-600 mt-5 mb-1.5">Reference</div>
+						<div className="px-4 text-xs uppercase tracking-wide text-[#637588] mt-5 mb-1.5">Reference</div>
 						{REFERENCE_TABS.map((t) => (
 							<button
 								key={t.key}
@@ -1522,8 +1543,8 @@ export default function GameContentEditor() {
 								}}
 								className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 									activeTab === t.key
-										? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
-										: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+										? 'border-[#1a56da] text-[#1a56da] bg-[#323d48]'
+										: 'border-transparent text-[#a3adb8] hover:text-[#e1e6ea] hover:bg-[#323d48]/50'
 								}`}
 							>
 								{t.label}
@@ -1541,17 +1562,17 @@ export default function GameContentEditor() {
 								}}
 								className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 									activeTab === t.key
-										? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
-										: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+										? 'border-[#1a56da] text-[#1a56da] bg-[#323d48]'
+										: 'border-transparent text-[#a3adb8] hover:text-[#e1e6ea] hover:bg-[#323d48]/50'
 								}`}
 							>
 								{t.label}
-								<span className="text-slate-600 ml-1.5 text-xs">
+								<span className="text-[#637588] ml-1.5 text-xs">
 									{Object.values(gameData?.data?.variables || {}).filter((v) => v?.dataType === t.dataType).length}
 								</span>
 							</button>
 						))}
-						<div className="px-4 text-xs uppercase tracking-wide text-slate-600 mt-5 mb-1.5">Scripts</div>
+						<div className="px-4 text-xs uppercase tracking-wide text-[#637588] mt-5 mb-1.5">Scripts</div>
 						<button
 							onClick={() => {
 								setActiveTab('globalScripts');
@@ -1562,12 +1583,12 @@ export default function GameContentEditor() {
 							}}
 							className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 								activeTab === 'globalScripts'
-									? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
-									: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+									? 'border-[#1a56da] text-[#1a56da] bg-[#323d48]'
+									: 'border-transparent text-[#a3adb8] hover:text-[#e1e6ea] hover:bg-[#323d48]/50'
 							}`}
 						>
 							Global scripts
-							<span className="text-slate-600 ml-1.5 text-xs">
+							<span className="text-[#637588] ml-1.5 text-xs">
 								{Object.values(scriptsCollection).filter((v) => 'triggers' in v).length}
 							</span>
 						</button>
@@ -1580,47 +1601,47 @@ export default function GameContentEditor() {
 							}}
 							className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
 								activeTab === 'dialogues'
-									? 'border-[#1a56da] text-[#1a56da] bg-slate-900'
-									: 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+									? 'border-[#1a56da] text-[#1a56da] bg-[#323d48]'
+									: 'border-transparent text-[#a3adb8] hover:text-[#e1e6ea] hover:bg-[#323d48]/50'
 							}`}
 						>
 							Dialogues
-							<span className="text-slate-600 ml-1.5 text-xs">{Object.keys(dialoguesCollection).length}</span>
+							<span className="text-[#637588] ml-1.5 text-xs">{Object.keys(dialoguesCollection).length}</span>
 						</button>
 					</nav>
 
 					{isEntityTab ? (
 						<>
 							{/* List pane */}
-							<div className="w-64 shrink-0 border-r border-slate-800 flex flex-col">
-								<div className="p-3 border-b border-slate-800">
+							<div className="w-64 shrink-0 border-r border-[#3d4a57] flex flex-col">
+								<div className="p-3 border-b border-[#3d4a57]">
 									<div className="relative">
-										<Search size={13} className="absolute left-2.5 top-2.5 text-slate-600" />
+										<Search size={13} className="absolute left-2.5 top-2.5 text-[#637588]" />
 										<input
 											value={search}
 											onChange={(e) => setSearch(e.target.value)}
 											placeholder="Search..."
-											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-[#1a56da]"
+											className="w-full bg-[#323d48] border border-[#48596a] rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-[#637588] focus:outline-none focus:border-[#1a56da]"
 										/>
 									</div>
 									<div className="flex gap-1.5 mt-2">
 										<button
 											onClick={() => setShowNewModal(true)}
-											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
+											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-[#48596a] text-sm text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 										>
 											<Plus size={14} /> New {ENTITY_TABS.find((t) => t.key === activeTab)?.label.slice(0, -1)}
 										</button>
 										<button
 											title="New group"
 											onClick={() => addFolder(selectedFolderId || activeTabDef.root)}
-											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-slate-700 text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
+											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 										>
 											<FolderPlus size={14} />
 										</button>
 									</div>
 									{selectedFolderId && !search.trim() && (
-										<div className="text-xs text-slate-600 mt-1.5 truncate">
-											New items go into: <span className="text-slate-400">{folders[selectedFolderId]?.name || 'root'}</span>
+										<div className="text-xs text-[#637588] mt-1.5 truncate">
+											New items go into: <span className="text-[#a3adb8]">{folders[selectedFolderId]?.name || 'root'}</span>
 										</div>
 									)}
 								</div>
@@ -1631,16 +1652,16 @@ export default function GameContentEditor() {
 												<button
 													key={key}
 													onClick={() => selectEntity(key)}
-													className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
-														selectedKey === key ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+													className={`w-full text-left px-3 py-2 border-b border-[#323d48] transition-colors ${
+														selectedKey === key ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 													}`}
 												>
-													<div className="text-sm text-slate-200 truncate">{entity?.name || '(unnamed)'}</div>
-													<div className="text-xs text-slate-600 font-mono truncate">{key}</div>
+													<div className="text-sm text-[#e1e6ea] truncate">{entity?.name || '(unnamed)'}</div>
+													<div className="text-xs text-[#637588] font-mono truncate">{key}</div>
 												</button>
 											))}
 											{filteredEntries.length === 0 && (
-												<div className="text-sm text-slate-600 text-center py-8 px-4">No matches.</div>
+												<div className="text-sm text-[#637588] text-center py-8 px-4">No matches.</div>
 											)}
 										</>
 									) : (
@@ -1652,17 +1673,17 @@ export default function GameContentEditor() {
 													<button
 														key={node.id}
 														onClick={() => selectEntity(node.id)}
-														className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
-															selectedKey === node.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+														className={`w-full text-left px-3 py-2 border-b border-[#323d48] transition-colors ${
+															selectedKey === node.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 														}`}
 													>
-														<div className="text-sm text-slate-200 truncate">{categoryMap[node.id]?.name || '(unnamed)'}</div>
-														<div className="text-xs text-slate-600 font-mono truncate">{node.id}</div>
+														<div className="text-sm text-[#e1e6ea] truncate">{categoryMap[node.id]?.name || '(unnamed)'}</div>
+														<div className="text-xs text-[#637588] font-mono truncate">{node.id}</div>
 													</button>
 												)
 											)}
 											{tree.length === 0 && (
-												<div className="text-sm text-slate-600 text-center py-8 px-4">Nothing here yet.</div>
+												<div className="text-sm text-[#637588] text-center py-8 px-4">Nothing here yet.</div>
 											)}
 										</>
 									)}
@@ -1672,7 +1693,7 @@ export default function GameContentEditor() {
 							{/* Editor pane */}
 							<div className="flex-1 overflow-y-auto p-6">
 								{!draft ? (
-									<div className="text-slate-600 text-sm mt-16 text-center">
+									<div className="text-[#637588] text-sm mt-16 text-center">
 										Select an entry on the left, or create a new one.
 									</div>
 								) : (
@@ -1682,9 +1703,9 @@ export default function GameContentEditor() {
 												<input
 													value={draft.name}
 													onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-[#1a56da] focus:outline-none px-0.5"
+													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-[#48596a] focus:border-[#1a56da] focus:outline-none px-0.5"
 												/>
-												<div className="text-xs text-slate-600 font-mono mt-1">
+												<div className="text-xs text-[#637588] font-mono mt-1">
 													{draft.key} {draft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}
 												</div>
 											</div>
@@ -1707,11 +1728,11 @@ export default function GameContentEditor() {
 										</div>
 
 										<div className="mb-6 flex items-center gap-2">
-											<span className="text-xs text-slate-500 shrink-0">Group</span>
+											<span className="text-xs text-[#8291a1] shrink-0">Group</span>
 											<select
 												value={draft.folderId}
 												onChange={(e) => setDraft((d) => ({ ...d, folderId: e.target.value }))}
-												className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]"
+												className="bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]"
 											>
 												{folderOptions.map((f) => (
 													<option key={f.id} value={f.id}>
@@ -1729,33 +1750,33 @@ export default function GameContentEditor() {
 
 										{/* Attributes */}
 										<section className="mb-7">
-											<h3 className="text-sm font-medium text-slate-300 mb-2">Attributes</h3>
+											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Attributes</h3>
 											<div className="space-y-2">
 												{Object.entries(draft.attributes).map(([attrKey, attr]) => (
-													<div key={attrKey} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+													<div key={attrKey} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
 														<span className="text-sm flex-1 truncate">{attributeTypes[attrKey]?.name || attrKey}</span>
-														<label className="text-xs text-slate-500">value</label>
+														<label className="text-xs text-[#8291a1]">value</label>
 														<input
 															type="number"
 															value={attr.value}
 															onChange={(e) => updateAttributeField(attrKey, 'value', Number(e.target.value))}
-															className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+															className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 														/>
-														<label className="text-xs text-slate-500">min</label>
+														<label className="text-xs text-[#8291a1]">min</label>
 														<input
 															type="number"
 															value={attr.min}
 															onChange={(e) => updateAttributeField(attrKey, 'min', Number(e.target.value))}
-															className="w-14 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+															className="w-14 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 														/>
-														<label className="text-xs text-slate-500">max</label>
+														<label className="text-xs text-[#8291a1]">max</label>
 														<input
 															type="number"
 															value={attr.max}
 															onChange={(e) => updateAttributeField(attrKey, 'max', Number(e.target.value))}
-															className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+															className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 														/>
-														<button onClick={() => removeAttribute(attrKey)} className="text-slate-600 hover:text-red-400 ml-1">
+														<button onClick={() => removeAttribute(attrKey)} className="text-[#637588] hover:text-red-400 ml-1">
 															<X size={14} />
 														</button>
 													</div>
@@ -1768,7 +1789,7 @@ export default function GameContentEditor() {
 														e.target.value = '';
 													}}
 													defaultValue=""
-													className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-[#1a56da]"
+													className="mt-2 bg-[#323d48] border border-dashed border-[#48596a] rounded-md px-2 py-1.5 text-sm text-[#a3adb8] w-full focus:outline-none focus:border-[#1a56da]"
 												>
 													<option value="" disabled>+ Attach an existing attribute...</option>
 													{unusedAttributeKeys.map((k) => (
@@ -1781,10 +1802,10 @@ export default function GameContentEditor() {
 										{activeTab === 'unitTypes' && (
 							/* Unit inventory */
 							<section className="mb-7">
-								<h3 className="text-sm font-medium text-slate-300 mb-2">Inventory</h3>
+								<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Inventory</h3>
 								<div className="flex items-center gap-3 mb-3">
 									<div>
-										<label className="block text-xs text-slate-500 mb-1">Inventory slots</label>
+										<label className="block text-xs text-[#8291a1] mb-1">Inventory slots</label>
 										<input
 											type="number"
 											min="0"
@@ -1794,18 +1815,18 @@ export default function GameContentEditor() {
 												const value = Math.min(9, Math.max(0, Number(e.target.value) || 0));
 												setDraft((d) => ({ ...d, inventorySize: value }));
 											}}
-											className="w-24 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+											className="w-24 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"
 										/>
 									</div>
-									<p className="text-xs text-slate-600 max-w-[20rem] mt-4">
+									<p className="text-xs text-[#637588] max-w-[20rem] mt-4">
 										Maximum 9 slots. Default items below are added to this unit automatically.
 									</p>
 								</div>
 
 								<div className="space-y-2">
 									{(draft.defaultItems || []).map((entry, index) => (
-										<div key={`${entry.key || 'item'}-${index}`} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
-											<span className="text-xs text-slate-500 w-5 shrink-0">{index + 1}</span>
+										<div key={`${entry.key || 'item'}-${index}`} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
+											<span className="text-xs text-[#8291a1] w-5 shrink-0">{index + 1}</span>
 											<select
 												value={entry.key || ''}
 												onChange={(e) => {
@@ -1818,7 +1839,7 @@ export default function GameContentEditor() {
 														return { ...d, defaultItems: next };
 													});
 												}}
-												className="flex-1 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm"
+												className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm"
 											>
 												<option value="" disabled>Choose an item...</option>
 												{Object.entries(itemTypes)
@@ -1829,8 +1850,8 @@ export default function GameContentEditor() {
 														</option>
 													))}
 											</select>
-											<span className="text-xs text-slate-600 font-mono truncate max-w-[10rem]">{entry.key}</span>
-											<button onClick={() => removeDefaultItem(index)} className="text-slate-600 hover:text-red-400 ml-1">
+											<span className="text-xs text-[#637588] font-mono truncate max-w-[10rem]">{entry.key}</span>
+											<button onClick={() => removeDefaultItem(index)} className="text-[#637588] hover:text-red-400 ml-1">
 												<X size={14} />
 											</button>
 										</div>
@@ -1842,7 +1863,7 @@ export default function GameContentEditor() {
 									e.target.value = '';
 								}}
 									defaultValue=""
-									className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-[#1a56da]"
+									className="mt-2 bg-[#323d48] border border-dashed border-[#48596a] rounded-md px-2 py-1.5 text-sm text-[#a3adb8] w-full focus:outline-none focus:border-[#1a56da]"
 								>
 									<option value="" disabled>+ Add an item...</option>
 									{Object.entries(itemTypes)
@@ -1859,141 +1880,141 @@ export default function GameContentEditor() {
 
 						{activeTab === 'itemTypes' && (
 							<section className="mb-7">
-								<h3 className="text-sm font-medium text-slate-300 mb-2">Item details</h3>
+								<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Item details</h3>
 								<div className="grid grid-cols-2 gap-3 mb-3">
 									<div>
-										<label className="block text-xs text-slate-500 mb-1">Item type</label>
-										<select value={draft.type || ''} onChange={(e) => updateDraftField('type', e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
+										<label className="block text-xs text-[#8291a1] mb-1">Item type</label>
+										<select value={draft.type || ''} onChange={(e) => updateDraftField('type', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm">
 											<option value="">(unset)</option><option value="weapon">weapon</option><option value="consumable">consumable</option><option value="unusable">unusable</option>
 										</select>
 									</div>
 									<div>
-										<label className="block text-xs text-slate-500 mb-1">Use delay / cooldown</label>
-										<input type="number" min="0" value={draft.delayBeforeUse ?? 0} onChange={(e) => updateDraftField('delayBeforeUse', Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+										<label className="block text-xs text-[#8291a1] mb-1">Use delay / cooldown</label>
+										<input type="number" min="0" value={draft.delayBeforeUse ?? 0} onChange={(e) => updateDraftField('delayBeforeUse', Number(e.target.value) || 0)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 									</div>
 									<div>
-										<label className="block text-xs text-slate-500 mb-1">Default quantity</label>
-										<input type="number" min="0" value={draft.quantity ?? ''} onChange={(e) => updateDraftField('quantity', e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0))} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+										<label className="block text-xs text-[#8291a1] mb-1">Default quantity</label>
+										<input type="number" min="0" value={draft.quantity ?? ''} onChange={(e) => updateDraftField('quantity', e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0))} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 									</div>
 									<div>
-										<label className="block text-xs text-slate-500 mb-1">Max quantity</label>
-										<input type="number" min="0" placeholder="∞" value={draft.maxQuantity ?? ''} onChange={(e) => updateDraftField('maxQuantity', e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0))} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
-										<p className="text-[11px] text-slate-600 mt-1">Blank means infinite.</p>
+										<label className="block text-xs text-[#8291a1] mb-1">Max quantity</label>
+										<input type="number" min="0" placeholder="∞" value={draft.maxQuantity ?? ''} onChange={(e) => updateDraftField('maxQuantity', e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0))} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
+										<p className="text-[11px] text-[#637588] mt-1">Blank means infinite.</p>
 									</div>
 									<div>
-										<label className="block text-xs text-slate-500 mb-1">Fire rate</label>
-										<input type="number" min="0" value={draft.fireRate ?? 0} onChange={(e) => updateDraftField('fireRate', Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+										<label className="block text-xs text-[#8291a1] mb-1">Fire rate</label>
+										<input type="number" min="0" value={draft.fireRate ?? 0} onChange={(e) => updateDraftField('fireRate', Number(e.target.value) || 0)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 									</div>
 									<div>
-										<label className="block text-xs text-slate-500 mb-1">Reload rate</label>
-										<input type="number" min="0" value={draft.reloadRate ?? 0} onChange={(e) => updateDraftField('reloadRate', Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+										<label className="block text-xs text-[#8291a1] mb-1">Reload rate</label>
+										<input type="number" min="0" value={draft.reloadRate ?? 0} onChange={(e) => updateDraftField('reloadRate', Number(e.target.value) || 0)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 									</div>
 									<div className="col-span-2">
-										<label className="block text-xs text-slate-500 mb-1">Inventory icon URL</label>
-										<input value={draft.inventoryImage || ''} onChange={(e) => updateDraftField('inventoryImage', e.target.value)} placeholder="/sprites/...png" className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+										<label className="block text-xs text-[#8291a1] mb-1">Inventory icon URL</label>
+										<input value={draft.inventoryImage || ''} onChange={(e) => updateDraftField('inventoryImage', e.target.value)} placeholder="/sprites/...png" className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 									</div>
 									<div className="col-span-2">
-										<label className="block text-xs text-slate-500 mb-1">Item description</label>
-										<textarea rows={3} value={draft.description || ''} onChange={(e) => updateDraftField('description', e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+										<label className="block text-xs text-[#8291a1] mb-1">Item description</label>
+										<textarea rows={3} value={draft.description || ''} onChange={(e) => updateDraftField('description', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 									</div>
 								</div>
 
 								<div className="grid grid-cols-2 gap-3 mb-4">
-									<label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={!!draft.isStackable} onChange={(e) => updateDraftField('isStackable', e.target.checked)} /> Stackable</label>
-									<label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={!!draft.isPurchasable} onChange={(e) => updateDraftField('isPurchasable', e.target.checked)} /> Purchasable</label>
+									<label className="flex items-center gap-2 text-sm text-[#c5ccd3]"><input type="checkbox" checked={!!draft.isStackable} onChange={(e) => updateDraftField('isStackable', e.target.checked)} /> Stackable</label>
+									<label className="flex items-center gap-2 text-sm text-[#c5ccd3]"><input type="checkbox" checked={!!draft.isPurchasable} onChange={(e) => updateDraftField('isPurchasable', e.target.checked)} /> Purchasable</label>
 								</div>
 
 								<div className="mb-4">
-									<h4 className="text-xs font-medium text-slate-400 mb-2">Can be carried by</h4>
+									<h4 className="text-xs font-medium text-[#a3adb8] mb-2">Can be carried by</h4>
 									<div className="flex flex-wrap gap-1.5 mb-2">
-										{(draft.carriedBy || []).map((id) => <span key={id} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-900 border border-slate-800 text-xs">{groupMemberCollection?.[id]?.name || categoryMap?.[id]?.name || gameData.data.unitTypes?.[id]?.name || id}<button onClick={() => setDraft((d) => ({...d, carriedBy:(d.carriedBy||[]).filter(x=>x!==id)}))} className="text-slate-500 hover:text-red-400">×</button></span>)}
+										{(draft.carriedBy || []).map((id) => <span key={id} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#323d48] border border-[#3d4a57] text-xs">{groupMemberCollection?.[id]?.name || categoryMap?.[id]?.name || gameData.data.unitTypes?.[id]?.name || id}<button onClick={() => setDraft((d) => ({...d, carriedBy:(d.carriedBy||[]).filter(x=>x!==id)}))} className="text-[#8291a1] hover:text-red-400">×</button></span>)}
 									</div>
-									<select defaultValue="" onChange={(e) => { const id=e.target.value; if(!id)return; setDraft(d=>({...d,carriedBy:Array.from(new Set([...(d.carriedBy||[]),id]))})); e.target.value=''; }} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1.5 text-sm"><option value="" disabled>+ Add a unit...</option>{Object.entries(gameData.data.unitTypes||{}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,v])=><option key={id} value={id}>{v?.name||id}</option>)}</select>
+									<select defaultValue="" onChange={(e) => { const id=e.target.value; if(!id)return; setDraft(d=>({...d,carriedBy:Array.from(new Set([...(d.carriedBy||[]),id]))})); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-sm"><option value="" disabled>+ Add a unit...</option>{Object.entries(gameData.data.unitTypes||{}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,v])=><option key={id} value={id}>{v?.name||id}</option>)}</select>
 								</div>
 
 								<div className="mb-4">
-									<h4 className="text-xs font-medium text-slate-400 mb-2">Can be used by</h4>
+									<h4 className="text-xs font-medium text-[#a3adb8] mb-2">Can be used by</h4>
 									<div className="flex flex-wrap gap-1.5 mb-2">
-										{(draft.canBeUsedBy || []).map((id) => <span key={id} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-900 border border-slate-800 text-xs">{gameData.data.unitTypes?.[id]?.name || id}<button onClick={() => setDraft((d) => ({...d, canBeUsedBy:(d.canBeUsedBy||[]).filter(x=>x!==id)}))} className="text-slate-500 hover:text-red-400">×</button></span>)}
+										{(draft.canBeUsedBy || []).map((id) => <span key={id} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#323d48] border border-[#3d4a57] text-xs">{gameData.data.unitTypes?.[id]?.name || id}<button onClick={() => setDraft((d) => ({...d, canBeUsedBy:(d.canBeUsedBy||[]).filter(x=>x!==id)}))} className="text-[#8291a1] hover:text-red-400">×</button></span>)}
 									</div>
-									<select defaultValue="" onChange={(e) => { const id=e.target.value; if(!id)return; setDraft(d=>({...d,canBeUsedBy:Array.from(new Set([...(d.canBeUsedBy||[]),id]))})); e.target.value=''; }} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1.5 text-sm"><option value="" disabled>+ Add a unit...</option>{Object.entries(gameData.data.unitTypes||{}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,v])=><option key={id} value={id}>{v?.name||id}</option>)}</select>
+									<select defaultValue="" onChange={(e) => { const id=e.target.value; if(!id)return; setDraft(d=>({...d,canBeUsedBy:Array.from(new Set([...(d.canBeUsedBy||[]),id]))})); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-sm"><option value="" disabled>+ Add a unit...</option>{Object.entries(gameData.data.unitTypes||{}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,v])=><option key={id} value={id}>{v?.name||id}</option>)}</select>
 								</div>
 
 								<div className="mb-4">
-									<h4 className="text-xs font-medium text-slate-400 mb-2">Permitted inventory slots</h4>
-									<div className="flex flex-wrap gap-2">{Array.from({length:9},(_,i)=>i+1).map(slot=><label key={slot} className="text-xs text-slate-300 flex items-center gap-1"><input type="checkbox" checked={(draft.controls?.permittedInventorySlots||[]).includes(slot)} onChange={(e)=>{const cur=draft.controls?.permittedInventorySlots||[]; const next=e.target.checked?Array.from(new Set([...cur,slot])):cur.filter(x=>x!==slot); updateDraftNestedField('controls','permittedInventorySlots',next.sort((a,b)=>a-b));}} /> {slot}</label>)}</div>
+									<h4 className="text-xs font-medium text-[#a3adb8] mb-2">Permitted inventory slots</h4>
+									<div className="flex flex-wrap gap-2">{Array.from({length:9},(_,i)=>i+1).map(slot=><label key={slot} className="text-xs text-[#c5ccd3] flex items-center gap-1"><input type="checkbox" checked={(draft.controls?.permittedInventorySlots||[]).includes(slot)} onChange={(e)=>{const cur=draft.controls?.permittedInventorySlots||[]; const next=e.target.checked?Array.from(new Set([...cur,slot])):cur.filter(x=>x!==slot); updateDraftNestedField('controls','permittedInventorySlots',next.sort((a,b)=>a-b));}} /> {slot}</label>)}</div>
 								</div>
 
 								<div className="mb-4">
-									<h4 className="text-xs font-medium text-slate-400 mb-2">Projectile type</h4>
-									<select value={draft.projectileType || ''} onChange={(e)=>updateDraftField('projectileType',e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-sm"><option value="">(none)</option>{Object.entries(gameData.data.projectileTypes||{}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,v])=><option key={id} value={id}>{v?.name||id} ({id})</option>)}</select>
+									<h4 className="text-xs font-medium text-[#a3adb8] mb-2">Projectile type</h4>
+									<select value={draft.projectileType || ''} onChange={(e)=>updateDraftField('projectileType',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="">(none)</option>{Object.entries(gameData.data.projectileTypes||{}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,v])=><option key={id} value={id}>{v?.name||id} ({id})</option>)}</select>
 								</div>
 
 								<div className="grid grid-cols-2 gap-4">
 									<div>
-										<h4 className="text-xs font-medium text-slate-400 mb-2">Cost</h4>
+										<h4 className="text-xs font-medium text-[#a3adb8] mb-2">Cost</h4>
 										<div className="space-y-2">
-											<div><label className="block text-[11px] text-slate-600 mb-1">Item quantity</label><input type="number" min="0" value={draft.cost?.quantity ?? 0} onChange={(e)=>updateDraftNestedField('cost','quantity',Math.max(0,Number(e.target.value)||0))} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" /></div>
-											<div><label className="block text-[11px] text-slate-600 mb-1">Unit attributes</label>{Object.entries(draft.costUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costUnitAttributes',k,Number(e.target.value)||0)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costUnitAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costUnitAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
-											<div><label className="block text-[11px] text-slate-600 mb-1">Player attributes</label>{Object.entries(draft.costPlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costPlayerAttributes',k,Number(e.target.value)||0)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costPlayerAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costPlayerAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costPlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-[#637588] mb-1">Item quantity</label><input type="number" min="0" value={draft.cost?.quantity ?? 0} onChange={(e)=>updateDraftNestedField('cost','quantity',Math.max(0,Number(e.target.value)||0))} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></div>
+											<div><label className="block text-[11px] text-[#637588] mb-1">Unit attributes</label>{Object.entries(draft.costUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costUnitAttributes',k,Number(e.target.value)||0)} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costUnitAttributes',k)} className="text-[#8291a1]">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costUnitAttributes',k,0);e.target.value='';}} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-[#637588] mb-1">Player attributes</label>{Object.entries(draft.costPlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input type="number" value={v} onChange={(e)=>updateMappedValue('costPlayerAttributes',k,Number(e.target.value)||0)} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('costPlayerAttributes',k)} className="text-[#8291a1]">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('costPlayerAttributes',k,0);e.target.value='';}} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.costPlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
 										</div>
 									</div>
 
 									<div>
-										<h4 className="text-xs font-medium text-slate-400 mb-2">Damage</h4>
+										<h4 className="text-xs font-medium text-[#a3adb8] mb-2">Damage</h4>
 										<div className="space-y-2">
-											<div><label className="block text-[11px] text-slate-600 mb-1">Unit attributes</label>{Object.entries(draft.damageUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damageUnitAttributes',k,e.target.value)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damageUnitAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damageUnitAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damageUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
-											<div><label className="block text-[11px] text-slate-600 mb-1">Player attributes</label>{Object.entries(draft.damagePlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damagePlayerAttributes',k,e.target.value)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damagePlayerAttributes',k)} className="text-slate-500">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damagePlayerAttributes',k,0);e.target.value='';}} className="w-full bg-slate-900 border border-dashed border-slate-700 rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damagePlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
-											<div><label className="block text-[11px] text-slate-600 mb-1">Who can be hit</label><div className="flex flex-wrap gap-x-3 gap-y-1">{[['hostile','Hostile players'],['neutral','Neutral players'],['friendly','Friendly players'],['other','Everyone except holder']].map(([id,label])=><label key={id} className="text-xs text-slate-300 flex items-center gap-1"><input type="checkbox" checked={(draft.damage?.targetsAffected||[]).includes(id)} onChange={()=>toggleDamageTarget(id)} /> {label}</label>)}</div><p className="text-[11px] text-slate-600 mt-1">The editor stores these in the item's targetsAffected list.</p></div>
+											<div><label className="block text-[11px] text-[#637588] mb-1">Unit attributes</label>{Object.entries(draft.damageUnitAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damageUnitAttributes',k,e.target.value)} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damageUnitAttributes',k)} className="text-[#8291a1]">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damageUnitAttributes',k,0);e.target.value='';}} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damageUnitAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-[#637588] mb-1">Player attributes</label>{Object.entries(draft.damagePlayerAttributes || {}).map(([k,v])=><div key={k} className="flex gap-1 mb-1"><span className="flex-1 text-xs truncate">{playerAttributeTypes[k]?.name||k}</span><input value={v} onChange={(e)=>updateMappedValue('damagePlayerAttributes',k,e.target.value)} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1 py-0.5 text-xs" /><button onClick={()=>removeMappedValue('damagePlayerAttributes',k)} className="text-[#8291a1]">×</button></div>)}<select defaultValue="" onChange={(e)=>{const k=e.target.value;if(k)addMappedValue('damagePlayerAttributes',k,0);e.target.value='';}} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1 text-xs"><option value="" disabled>+ Add attribute...</option>{Object.entries(playerAttributeTypes).filter(([k])=>!draft.damagePlayerAttributes?.[k]).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([k,v])=><option key={k} value={k}>{v?.name||k}</option>)}</select></div>
+											<div><label className="block text-[11px] text-[#637588] mb-1">Who can be hit</label><div className="flex flex-wrap gap-x-3 gap-y-1">{[['hostile','Hostile players'],['neutral','Neutral players'],['friendly','Friendly players'],['other','Everyone except holder']].map(([id,label])=><label key={id} className="text-xs text-[#c5ccd3] flex items-center gap-1"><input type="checkbox" checked={(draft.damage?.targetsAffected||[]).includes(id)} onChange={()=>toggleDamageTarget(id)} /> {label}</label>)}</div><p className="text-[11px] text-[#637588] mt-1">The editor stores these in the item's targetsAffected list.</p></div>
 										</div>
 								</div>
 
 								</div>
 
 							<div className="mt-5">
-								<h4 className="text-xs font-medium text-slate-400 mb-2">Sounds</h4>
-								<p className="text-[11px] text-slate-600 mb-3">Assign sounds from the global Sounds tab. This game.json uses <span className="font-mono">effects.use.sound</span>, <span className="font-mono">effects.create.sound</span>, and <span className="font-mono">effects.destroy.sound</span>; there are no separate pickup/drop fields in the current schema, so Create/Destroy are presented here as the world-item drop/pickup counterparts.</p>
+								<h4 className="text-xs font-medium text-[#a3adb8] mb-2">Sounds</h4>
+								<p className="text-[11px] text-[#637588] mb-3">Assign sounds from the global Sounds tab. This game.json uses <span className="font-mono">effects.use.sound</span>, <span className="font-mono">effects.create.sound</span>, and <span className="font-mono">effects.destroy.sound</span>; there are no separate pickup/drop fields in the current schema, so Create/Destroy are presented here as the world-item drop/pickup counterparts.</p>
 								{[['use','Use'],['create','Create / drop into world'],['destroy','Destroy / pick up from world']].map(([eventName,label]) => {
 									const selectedSounds = draft.effects?.[eventName]?.sound || {};
 									const selectedKeys = Object.keys(selectedSounds);
 									return (
-										<div key={eventName} className="mb-3 p-2.5 bg-slate-900 border border-slate-800 rounded-md">
-											<div className="text-xs text-slate-400 mb-2">{label}</div>
-											{selectedKeys.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">{selectedKeys.map((soundKey) => <div key={soundKey} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#262e36] border border-slate-800 text-xs"><span className="truncate max-w-[15rem]">{selectedSounds[soundKey]?.name || soundTypes[soundKey]?.name || soundKey}</span><button onClick={() => removeItemEffectSound(eventName, soundKey)} className="text-slate-500 hover:text-red-400"><X size={12} /></button></div>)}</div>}
-											<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) updateItemEffectSound(eventName,key,true); e.target.value=''; }} className="w-full bg-[#262e36] border border-dashed border-slate-700 rounded px-2 py-1.5 text-xs"><option value="" disabled>+ Add a sound...</option>{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).filter(([key])=>!selectedKeys.includes(key)).map(([key,sound])=><option key={key} value={key}>{sound?.name || key}</option>)}</select>
+										<div key={eventName} className="mb-3 p-2.5 bg-[#323d48] border border-[#3d4a57] rounded-md">
+											<div className="text-xs text-[#a3adb8] mb-2">{label}</div>
+											{selectedKeys.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">{selectedKeys.map((soundKey) => <div key={soundKey} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#262e36] border border-[#3d4a57] text-xs"><span className="truncate max-w-[15rem]">{selectedSounds[soundKey]?.name || soundTypes[soundKey]?.name || soundKey}</span><button onClick={() => removeItemEffectSound(eventName, soundKey)} className="text-[#8291a1] hover:text-red-400"><X size={12} /></button></div>)}</div>}
+											<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) updateItemEffectSound(eventName,key,true); e.target.value=''; }} className="w-full bg-[#262e36] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="" disabled>+ Add a sound...</option>{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).filter(([key])=>!selectedKeys.includes(key)).map(([key,sound])=><option key={key} value={key}>{sound?.name || key}</option>)}</select>
 										</div>
 									);
 								})}
 							</div>
-							<div className="mt-4 p-2.5 rounded-md border border-slate-800 bg-slate-900/50 text-xs text-slate-600">The item schema does not currently expose a separate <span className="font-mono">cooldown</span> field in this game's data, so "Use delay / cooldown" edits <span className="font-mono">delayBeforeUse</span>.</div>
+							<div className="mt-4 p-2.5 rounded-md border border-[#3d4a57] bg-[#323d48]/50 text-xs text-[#637588]">The item schema does not currently expose a separate <span className="font-mono">cooldown</span> field in this game's data, so "Use delay / cooldown" edits <span className="font-mono">delayBeforeUse</span>.</div>
 							</section>
 						)}
 
 						{activeTab === 'projectileTypes' && (
 							<section className="mb-7">
-								<h3 className="text-sm font-medium text-slate-300 mb-2">Projectile details</h3>
+								<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Projectile details</h3>
 								<div>
-									<label className="block text-xs text-slate-500 mb-1">Lifespan (ms)</label>
-									<input type="number" min="0" value={draft.lifeSpan ?? ''} onChange={(e)=>updateDraftField('lifeSpan', e.target.value === '' ? null : Math.max(0, Number(e.target.value)||0))} className="w-40 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" />
+									<label className="block text-xs text-[#8291a1] mb-1">Lifespan (ms)</label>
+									<input type="number" min="0" value={draft.lifeSpan ?? ''} onChange={(e)=>updateDraftField('lifeSpan', e.target.value === '' ? null : Math.max(0, Number(e.target.value)||0))} className="w-40 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 								</div>
 							</section>
 						)}
 
 						{/* Entity scripts */}
 						<section className="mb-7">
-							<h3 className="text-sm font-medium text-slate-300 mb-2">Scripts</h3>
+							<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Scripts</h3>
 							{getEntityScriptEntries().length === 0 ? (
-								<p className="text-xs text-slate-600">This {activeTabDef?.label?.toLowerCase() || 'entity'} has no embedded scripts.</p>
+								<p className="text-xs text-[#637588]">This {activeTabDef?.label?.toLowerCase() || 'entity'} has no embedded scripts.</p>
 							) : (
 								<div className="space-y-2">
-									<select value={selectedEntityScriptKey} onChange={(e)=>selectEntityScript(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-md px-2 py-1.5 text-sm">
+									<select value={selectedEntityScriptKey} onChange={(e)=>selectEntityScript(e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-1.5 text-sm">
 										<option value="">Choose a script...</option>
 										{getEntityScriptEntries().map(([id,script])=><option key={id} value={id}>{script.name || id}</option>)}
 									</select>
 									{selectedEntityScriptKey && draft.scripts?.[selectedEntityScriptKey] && (() => {
 										const script = draft.scripts[selectedEntityScriptKey];
 										const raw = script._editorBodyText ?? JSON.stringify((({ _editorBodyText, ...body }) => body)(script), null, 2);
-										return <div className="bg-slate-900 border border-slate-800 rounded-md p-2.5"><div className="text-xs text-slate-500 mb-2">{script.name || selectedEntityScriptKey}</div><textarea value={raw} onChange={(e)=>updateEntityScriptBody(selectedEntityScriptKey,e.target.value)} spellCheck={false} rows={18} className="w-full bg-[#262e36] border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-[#1a56da]" /><button onClick={()=>saveEntityScriptBody(selectedEntityScriptKey)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-800 text-sm hover:bg-slate-700"><Save size={13}/> Apply script JSON</button></div>;
+										return <div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-2.5"><div className="text-xs text-[#8291a1] mb-2">{script.name || selectedEntityScriptKey}</div><textarea value={raw} onChange={(e)=>updateEntityScriptBody(selectedEntityScriptKey,e.target.value)} spellCheck={false} rows={18} className="w-full bg-[#262e36] border border-[#3d4a57] rounded p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]" /><button onClick={()=>saveEntityScriptBody(selectedEntityScriptKey)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#3d4a57] text-sm hover:bg-[#48596a]"><Save size={13}/> Apply script JSON</button></div>;
 									})()}
 								</div>
 							)}
@@ -2001,15 +2022,15 @@ export default function GameContentEditor() {
 
 						{/* Variables */}
 										<section className="mb-7">
-											<h3 className="text-sm font-medium text-slate-300 mb-2">Variables</h3>
+											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Variables</h3>
 											<div className="space-y-2">
 												{Object.entries(draft.variables).map(([varName, v]) => (
-													<div key={varName} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+													<div key={varName} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
 														<span className="text-sm flex-1 truncate font-mono">{varName}</span>
 														<select
 															value={v.dataType || 'string'}
 															onChange={(e) => updateVariableField(varName, 'dataType', e.target.value)}
-															className="bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-xs"
+															className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"
 														>
 															<option value="string">string</option>
 															<option value="number">number</option>
@@ -2021,9 +2042,9 @@ export default function GameContentEditor() {
 															value={v.default ?? ''}
 															onChange={(e) => updateVariableField(varName, 'default', e.target.value)}
 															placeholder="default value"
-															className="w-28 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+															className="w-28 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 														/>
-														<button onClick={() => removeVariable(varName)} className="text-slate-600 hover:text-red-400 ml-1">
+														<button onClick={() => removeVariable(varName)} className="text-[#637588] hover:text-red-400 ml-1">
 															<X size={14} />
 														</button>
 													</div>
@@ -2031,7 +2052,7 @@ export default function GameContentEditor() {
 											</div>
 											<button
 												onClick={addVariable}
-												className="mt-2 flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#1a56da] transition-colors"
+												className="mt-2 flex items-center gap-1.5 text-sm text-[#a3adb8] hover:text-[#1a56da] transition-colors"
 											>
 												<Plus size={13} /> Add variable
 											</button>
@@ -2039,37 +2060,37 @@ export default function GameContentEditor() {
 
 										{/* Sprite sheet slicer */}
 										<section className="mb-7">
-											<h3 className="text-sm font-medium text-slate-300 mb-2">Sprite sheet</h3>
+											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Sprite sheet</h3>
 											<input
 												value={draft.cellSheet.url || ''}
 												onChange={(e) => updateCellSheetField('url', e.target.value)}
 												placeholder="Image URL"
-												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm mb-2 focus:outline-none focus:border-[#1a56da]"
+												className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm mb-2 focus:outline-none focus:border-[#1a56da]"
 											/>
 											<div className="flex gap-4 mb-3">
 												<div>
-													<label className="block text-xs text-slate-500 mb-1">Columns</label>
+													<label className="block text-xs text-[#8291a1] mb-1">Columns</label>
 													<input
 														type="number"
 														min="1"
 														value={draft.cellSheet.columnCount || 1}
 														onChange={(e) => updateCellSheetField('columnCount', Number(e.target.value))}
-														className="w-20 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+														className="w-20 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"
 													/>
 												</div>
 												<div>
-													<label className="block text-xs text-slate-500 mb-1">Rows</label>
+													<label className="block text-xs text-[#8291a1] mb-1">Rows</label>
 													<input
 														type="number"
 														min="1"
 														value={draft.cellSheet.rowCount || 1}
 														onChange={(e) => updateCellSheetField('rowCount', Number(e.target.value))}
-														className="w-20 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+														className="w-20 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"
 													/>
 												</div>
 											</div>
 											{draft.cellSheet.url ? (
-												<div className="relative inline-block border border-slate-700 rounded-md overflow-hidden max-w-full">
+												<div className="relative inline-block border border-[#48596a] rounded-md overflow-hidden max-w-full">
 													<img
 														src={resolveAssetUrl(draft.cellSheet.url)}
 														alt="sprite sheet preview"
@@ -2093,7 +2114,7 @@ export default function GameContentEditor() {
 													</div>
 												</div>
 											) : (
-												<p className="text-xs text-slate-600">Add an image URL to preview the grid slicing.</p>
+												<p className="text-xs text-[#637588]">Add an image URL to preview the grid slicing.</p>
 											)}
 											{draft.cellSheet.url && !assetBaseUrl && !/^https?:\/\//i.test(draft.cellSheet.url) && (
 												<p className="text-xs text-[#1a56da]/80 mt-1.5">
@@ -2101,7 +2122,7 @@ export default function GameContentEditor() {
 													page (your game server's address) so previews can actually load it.
 												</p>
 											)}
-											<p className="text-xs text-slate-600 mt-2">
+											<p className="text-xs text-[#637588] mt-2">
 												Columns/rows should match how many distinct frames are actually laid out in the image - a
 												mismatch here is what causes animations to silently freeze on one frame in-game.
 											</p>
@@ -2109,7 +2130,7 @@ export default function GameContentEditor() {
 
 										{/* Body / size */}
 										<section className="mb-7">
-											<h3 className="text-sm font-medium text-slate-300 mb-2">Body &amp; size</h3>
+											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Body &amp; size</h3>
 											<div className="flex flex-wrap items-center gap-1.5 mb-3">
 												{Object.keys(draft.bodies).map((bodyName) => (
 													<span
@@ -2118,7 +2139,7 @@ export default function GameContentEditor() {
 														className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs cursor-pointer border ${
 															selectedBodyName === bodyName
 																? 'bg-[#1a56da] border-[#1a56da] text-[#262e36] font-medium'
-																: 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+																: 'bg-[#323d48] border-[#48596a] text-[#c5ccd3] hover:border-[#8291a1]'
 														}`}
 													>
 														{bodyName}
@@ -2127,7 +2148,7 @@ export default function GameContentEditor() {
 																e.stopPropagation();
 																removeBody(bodyName);
 															}}
-															className={selectedBodyName === bodyName ? 'text-slate-900/60 hover:text-slate-900' : 'text-slate-600 hover:text-red-400'}
+															className={selectedBodyName === bodyName ? 'text-[#323d48]/60 hover:text-[#323d48]' : 'text-[#637588] hover:text-red-400'}
 														>
 															<X size={11} />
 														</button>
@@ -2135,7 +2156,7 @@ export default function GameContentEditor() {
 												))}
 												<button
 													onClick={addBody}
-													className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-dashed border-slate-700 text-slate-500 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
+													className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border border-dashed border-[#48596a] text-[#8291a1] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 												>
 													<Plus size={11} /> body
 												</button>
@@ -2146,27 +2167,27 @@ export default function GameContentEditor() {
 													<div>
 														<div className="flex gap-3 mb-3">
 															<div>
-																<label className="block text-xs text-slate-500 mb-1">Width</label>
+																<label className="block text-xs text-[#8291a1] mb-1">Width</label>
 																<input
 																	type="number"
 																	min="1"
 																	value={draft.bodies[selectedBodyName].width ?? TILE_PX}
 																	onChange={(e) => updateBodySize('width', e.target.value)}
-																	className="w-24 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+																	className="w-24 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"
 																/>
 															</div>
 															<div>
-																<label className="block text-xs text-slate-500 mb-1">Height</label>
+																<label className="block text-xs text-[#8291a1] mb-1">Height</label>
 																<input
 																	type="number"
 																	min="1"
 																	value={draft.bodies[selectedBodyName].height ?? TILE_PX}
 																	onChange={(e) => updateBodySize('height', e.target.value)}
-																	className="w-24 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm"
+																	className="w-24 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"
 																/>
 															</div>
 														</div>
-														<p className="text-xs text-slate-600 max-w-[15rem]">
+														<p className="text-xs text-[#637588] max-w-[15rem]">
 															1 tile = {TILE_PX}×{TILE_PX}px. Other physics settings for this body (type, gravity,
 															rotation, etc.) are still editable in Advanced below.
 														</p>
@@ -2192,7 +2213,7 @@ export default function GameContentEditor() {
 														return (
 															<div className="shrink-0">
 																<div
-																	className="relative border border-slate-700 rounded-md overflow-hidden bg-slate-900"
+																	className="relative border border-[#48596a] rounded-md overflow-hidden bg-[#323d48]"
 																	style={{
 																		width: containerW,
 																		height: containerH,
@@ -2245,7 +2266,7 @@ export default function GameContentEditor() {
 																		{!hasSprite && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
 																	</div>
 																</div>
-																<p className="text-xs text-slate-600 mt-1.5 text-center">
+																<p className="text-xs text-[#637588] mt-1.5 text-center">
 																	{(bw / TILE_PX).toFixed(2)} × {(bh / TILE_PX).toFixed(2)} tiles
 																</p>
 															</div>
@@ -2258,7 +2279,7 @@ export default function GameContentEditor() {
 
 										{/* Advanced raw JSON */}
 										<details className="mb-4">
-											<summary className="text-sm font-medium text-slate-300 cursor-pointer select-none">
+											<summary className="text-sm font-medium text-[#c5ccd3] cursor-pointer select-none">
 												Advanced (AI behavior, abilities, states, everything else)
 											</summary>
 											<textarea
@@ -2266,7 +2287,7 @@ export default function GameContentEditor() {
 												onChange={(e) => setAdvancedText(e.target.value)}
 												spellCheck={false}
 												rows={14}
-												className="w-full mt-2 bg-slate-900 border border-slate-800 rounded-md p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-[#1a56da]"
+												className="w-full mt-2 bg-[#323d48] border border-[#3d4a57] rounded-md p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]"
 											/>
 											{advancedError && <p className="text-xs text-red-400 mt-1">{advancedError}</p>}
 										</details>
@@ -2277,20 +2298,20 @@ export default function GameContentEditor() {
 					) : isGroupTab ? (
 						<>
 							{/* List pane */}
-							<div className="w-64 shrink-0 border-r border-slate-800 flex flex-col">
-								<div className="p-3 border-b border-slate-800">
+							<div className="w-64 shrink-0 border-r border-[#3d4a57] flex flex-col">
+								<div className="p-3 border-b border-[#3d4a57]">
 									<div className="relative">
-										<Search size={13} className="absolute left-2.5 top-2.5 text-slate-600" />
+										<Search size={13} className="absolute left-2.5 top-2.5 text-[#637588]" />
 										<input
 											value={search}
 											onChange={(e) => setSearch(e.target.value)}
 											placeholder="Search..."
-											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-[#1a56da]"
+											className="w-full bg-[#323d48] border border-[#48596a] rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-[#637588] focus:outline-none focus:border-[#1a56da]"
 										/>
 									</div>
 									<button
 										onClick={startNewGroup}
-										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
+										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-[#48596a] text-sm text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 									>
 										<Plus size={14} /> New group
 									</button>
@@ -2300,16 +2321,16 @@ export default function GameContentEditor() {
 										<button
 											key={key}
 											onClick={() => selectGroup(key)}
-											className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
-												selectedKey === key ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+											className={`w-full text-left px-3 py-2 border-b border-[#323d48] transition-colors ${
+												selectedKey === key ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 											}`}
 										>
-											<div className="text-sm text-slate-200 truncate">{key}</div>
-											<div className="text-xs text-slate-600">{Object.keys(v?.default || {}).length} members</div>
+											<div className="text-sm text-[#e1e6ea] truncate">{key}</div>
+											<div className="text-xs text-[#637588]">{Object.keys(v?.default || {}).length} members</div>
 										</button>
 									))}
 									{groupVariableEntries.length === 0 && (
-										<div className="text-sm text-slate-600 text-center py-8 px-4">Nothing here yet.</div>
+										<div className="text-sm text-[#637588] text-center py-8 px-4">Nothing here yet.</div>
 									)}
 								</div>
 							</div>
@@ -2317,18 +2338,18 @@ export default function GameContentEditor() {
 							{/* Editor pane */}
 							<div className="flex-1 overflow-y-auto p-6">
 								{!groupDraft ? (
-									<div className="text-slate-600 text-sm mt-16 text-center">
+									<div className="text-[#637588] text-sm mt-16 text-center">
 										Select a group on the left, or create a new one.
 									</div>
 								) : (
 									<div className="max-w-2xl">
 										<div className="flex items-center justify-between mb-4">
 											<div className="flex-1">
-												<label className="block text-xs text-slate-500 mb-1">Key</label>
+												<label className="block text-xs text-[#8291a1] mb-1">Key</label>
 												<input
 													value={groupDraft.key}
 													onChange={(e) => setGroupDraft((d) => ({ ...d, key: e.target.value }))}
-													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
+													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-[#48596a] focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
 												/>
 												{groupDraft.isNew && <span className="text-xs text-[#1a56da]">(new, not saved yet)</span>}
 											</div>
@@ -2350,8 +2371,8 @@ export default function GameContentEditor() {
 											</div>
 										</div>
 
-										<p className="text-xs text-slate-600 mb-4">
-											DataType: <span className="font-mono text-slate-400">{activeGroupDef.dataType}</span> - renaming this
+										<p className="text-xs text-[#637588] mb-4">
+											DataType: <span className="font-mono text-[#a3adb8]">{activeGroupDef.dataType}</span> - renaming this
 											group won't update any scripts that already reference it by name.
 										</p>
 
@@ -2361,28 +2382,28 @@ export default function GameContentEditor() {
 											</div>
 										)}
 
-										<h3 className="text-sm font-medium text-slate-300 mb-2">
+										<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">
 											{activeGroupDef.collection === 'unitTypes' ? 'Units' : 'Items'} in this group
 										</h3>
 										<div className="space-y-2">
 											{Object.entries(groupDraft.entries).map(([id, entry]) => (
-												<div key={id} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+												<div key={id} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
 													<span className="text-sm flex-1 truncate">{groupMemberCollection[id]?.name || id}</span>
-													<label className="text-xs text-slate-500">probability</label>
+													<label className="text-xs text-[#8291a1]">probability</label>
 													<input
 														type="number"
 														value={entry.probability ?? 0}
 														onChange={(e) => updateGroupMemberField(id, 'probability', Number(e.target.value))}
-														className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+														className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 													/>
-													<label className="text-xs text-slate-500">quantity</label>
+													<label className="text-xs text-[#8291a1]">quantity</label>
 													<input
 														type="number"
 														value={entry.quantity ?? 1}
 														onChange={(e) => updateGroupMemberField(id, 'quantity', Number(e.target.value))}
-														className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+														className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 													/>
-													<button onClick={() => removeGroupMember(id)} className="text-slate-600 hover:text-red-400 ml-1">
+													<button onClick={() => removeGroupMember(id)} className="text-[#637588] hover:text-red-400 ml-1">
 														<X size={14} />
 													</button>
 												</div>
@@ -2394,7 +2415,7 @@ export default function GameContentEditor() {
 												e.target.value = '';
 											}}
 											defaultValue=""
-											className="mt-2 bg-slate-900 border border-dashed border-slate-700 rounded-md px-2 py-1.5 text-sm text-slate-400 w-full focus:outline-none focus:border-[#1a56da]"
+											className="mt-2 bg-[#323d48] border border-dashed border-[#48596a] rounded-md px-2 py-1.5 text-sm text-[#a3adb8] w-full focus:outline-none focus:border-[#1a56da]"
 										>
 											<option value="" disabled>
 												+ Add {activeGroupDef.collection === 'unitTypes' ? 'a unit' : 'an item'}...
@@ -2415,36 +2436,36 @@ export default function GameContentEditor() {
 					) : isScriptsTab ? (
 						<>
 							{/* List pane */}
-							<div className="w-64 shrink-0 border-r border-slate-800 flex flex-col">
-								<div className="p-3 border-b border-slate-800">
+							<div className="w-64 shrink-0 border-r border-[#3d4a57] flex flex-col">
+								<div className="p-3 border-b border-[#3d4a57]">
 									<div className="relative">
-										<Search size={13} className="absolute left-2.5 top-2.5 text-slate-600" />
+										<Search size={13} className="absolute left-2.5 top-2.5 text-[#637588]" />
 										<input
 											value={search}
 											onChange={(e) => setSearch(e.target.value)}
 											placeholder="Search..."
-											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-[#1a56da]"
+											className="w-full bg-[#323d48] border border-[#48596a] rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-[#637588] focus:outline-none focus:border-[#1a56da]"
 										/>
 									</div>
 									<div className="flex gap-1.5 mt-2">
 										<button
 											onClick={() => startNewScript(selectedScriptFolderId)}
-											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
+											className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-[#48596a] text-sm text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 										>
 											<Plus size={14} /> New script
 										</button>
 										<button
 											title="New group"
 											onClick={() => addScriptFolder(selectedScriptFolderId)}
-											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-slate-700 text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
+											className="flex items-center justify-center px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 										>
 											<FolderPlus size={14} />
 										</button>
 									</div>
 									{selectedScriptFolderId && !search.trim() && (
-										<div className="text-xs text-slate-600 mt-1.5 truncate">
+										<div className="text-xs text-[#637588] mt-1.5 truncate">
 											New scripts go into:{' '}
-											<span className="text-slate-400">{scriptsCollection[selectedScriptFolderId]?.folderName || 'top level'}</span>
+											<span className="text-[#a3adb8]">{scriptsCollection[selectedScriptFolderId]?.folderName || 'top level'}</span>
 										</div>
 									)}
 								</div>
@@ -2455,18 +2476,18 @@ export default function GameContentEditor() {
 												<button
 													key={key}
 													onClick={() => selectScript(key)}
-													className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
-														selectedKey === key ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+													className={`w-full text-left px-3 py-2 border-b border-[#323d48] transition-colors ${
+														selectedKey === key ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 													}`}
 												>
-													<div className="text-sm text-slate-200 truncate">{s.name || '(unnamed)'}</div>
-													<div className="text-xs text-slate-600 truncate">
+													<div className="text-sm text-[#e1e6ea] truncate">{s.name || '(unnamed)'}</div>
+													<div className="text-xs text-[#637588] truncate">
 														{(s.triggers || []).map((t) => t.type).join(', ') || 'no triggers'}
 													</div>
 												</button>
 											))}
 											{scriptSearchResults.length === 0 && (
-												<div className="text-sm text-slate-600 text-center py-8 px-4">No matches.</div>
+												<div className="text-sm text-[#637588] text-center py-8 px-4">No matches.</div>
 											)}
 										</>
 									) : (
@@ -2478,19 +2499,19 @@ export default function GameContentEditor() {
 													<button
 														key={node.id}
 														onClick={() => selectScript(node.id)}
-														className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
-															selectedKey === node.id ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+														className={`w-full text-left px-3 py-2 border-b border-[#323d48] transition-colors ${
+															selectedKey === node.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 														}`}
 													>
-														<div className="text-sm text-slate-200 truncate">{scriptsCollection[node.id]?.name || '(unnamed)'}</div>
-														<div className="text-xs text-slate-600 truncate">
+														<div className="text-sm text-[#e1e6ea] truncate">{scriptsCollection[node.id]?.name || '(unnamed)'}</div>
+														<div className="text-xs text-[#637588] truncate">
 															{(scriptsCollection[node.id]?.triggers || []).map((t) => t.type).join(', ') || 'no triggers'}
 														</div>
 													</button>
 												)
 											)}
 											{scriptTree.length === 0 && (
-												<div className="text-sm text-slate-600 text-center py-8 px-4">Nothing here yet.</div>
+												<div className="text-sm text-[#637588] text-center py-8 px-4">Nothing here yet.</div>
 											)}
 										</>
 									)}
@@ -2500,7 +2521,7 @@ export default function GameContentEditor() {
 							{/* Editor pane */}
 							<div className="flex-1 overflow-y-auto p-6">
 								{!scriptDraft ? (
-									<div className="text-slate-600 text-sm mt-16 text-center">
+									<div className="text-[#637588] text-sm mt-16 text-center">
 										Select a script on the left, or create a new one.
 									</div>
 								) : (
@@ -2510,9 +2531,9 @@ export default function GameContentEditor() {
 												<input
 													value={scriptDraft.name}
 													onChange={(e) => setScriptDraft((d) => ({ ...d, name: e.target.value }))}
-													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
+													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-[#48596a] focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
 												/>
-												<div className="text-xs text-slate-600 font-mono mt-1">
+												<div className="text-xs text-[#637588] font-mono mt-1">
 													{scriptDraft.key} {scriptDraft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}
 												</div>
 											</div>
@@ -2535,13 +2556,13 @@ export default function GameContentEditor() {
 										</div>
 
 										<div className="mb-6 flex items-center gap-2">
-											<span className="text-xs text-slate-500 shrink-0">Group</span>
+											<span className="text-xs text-[#8291a1] shrink-0">Group</span>
 											<select
 												value={scriptDraft.parentId ?? '__top__'}
 												onChange={(e) =>
 													setScriptDraft((d) => ({ ...d, parentId: e.target.value === '__top__' ? null : e.target.value }))
 												}
-												className="bg-slate-900 border border-slate-800 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]"
+												className="bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]"
 											>
 												{scriptFolderOptions.map((f) => (
 													<option key={f.id ?? '__top__'} value={f.id ?? '__top__'}>
@@ -2557,16 +2578,16 @@ export default function GameContentEditor() {
 											</div>
 										)}
 
-										<h3 className="text-sm font-medium text-slate-300 mb-2">Triggers, conditions &amp; actions</h3>
+										<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Triggers, conditions &amp; actions</h3>
 										<textarea
 											value={scriptDraft.bodyText}
 											onChange={(e) => setScriptDraft((d) => ({ ...d, bodyText: e.target.value }))}
 											spellCheck={false}
 											rows={22}
-											className="w-full bg-slate-900 border border-slate-800 rounded-md p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-[#1a56da]"
+											className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]"
 										/>
 										{scriptBodyError && <p className="text-xs text-red-400 mt-1">{scriptBodyError}</p>}
-										<p className="text-xs text-slate-600 mt-2">
+										<p className="text-xs text-[#637588] mt-2">
 											Same idea as the "Advanced" box on units/items/projectiles - this is the raw script logic, edited
 											as JSON rather than through a visual builder.
 										</p>
@@ -2577,20 +2598,20 @@ export default function GameContentEditor() {
 					) : isDialoguesTab ? (
 						<>
 							{/* List pane */}
-							<div className="w-64 shrink-0 border-r border-slate-800 flex flex-col">
-								<div className="p-3 border-b border-slate-800">
+							<div className="w-64 shrink-0 border-r border-[#3d4a57] flex flex-col">
+								<div className="p-3 border-b border-[#3d4a57]">
 									<div className="relative">
-										<Search size={13} className="absolute left-2.5 top-2.5 text-slate-600" />
+										<Search size={13} className="absolute left-2.5 top-2.5 text-[#637588]" />
 										<input
 											value={search}
 											onChange={(e) => setSearch(e.target.value)}
 											placeholder="Search..."
-											className="w-full bg-slate-900 border border-slate-700 rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-slate-600 focus:outline-none focus:border-[#1a56da]"
+											className="w-full bg-[#323d48] border border-[#48596a] rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-[#637588] focus:outline-none focus:border-[#1a56da]"
 										/>
 									</div>
 									<button
 										onClick={startNewDialogue}
-										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
+										className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-[#48596a] text-sm text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 									>
 										<Plus size={14} /> New dialogue
 									</button>
@@ -2600,16 +2621,16 @@ export default function GameContentEditor() {
 										<button
 											key={key}
 											onClick={() => selectDialogue(key)}
-											className={`w-full text-left px-3 py-2 border-b border-slate-900 transition-colors ${
-												selectedKey === key ? 'bg-slate-900' : 'hover:bg-slate-900/50'
+											className={`w-full text-left px-3 py-2 border-b border-[#323d48] transition-colors ${
+												selectedKey === key ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 											}`}
 										>
-											<div className="text-sm text-slate-200 truncate">{d?.name || '(unnamed)'}</div>
-											<div className="text-xs text-slate-600 truncate">{(d?.options || []).length} option(s)</div>
+											<div className="text-sm text-[#e1e6ea] truncate">{d?.name || '(unnamed)'}</div>
+											<div className="text-xs text-[#637588] truncate">{(d?.options || []).length} option(s)</div>
 										</button>
 									))}
 									{dialogueEntries.length === 0 && (
-										<div className="text-sm text-slate-600 text-center py-8 px-4">Nothing here yet.</div>
+										<div className="text-sm text-[#637588] text-center py-8 px-4">Nothing here yet.</div>
 									)}
 								</div>
 							</div>
@@ -2617,20 +2638,20 @@ export default function GameContentEditor() {
 							{/* Editor pane */}
 							<div className="flex-1 overflow-y-auto p-6">
 								{!dialogueDraft ? (
-									<div className="text-slate-600 text-sm mt-16 text-center">
+									<div className="text-[#637588] text-sm mt-16 text-center">
 										Select a dialogue on the left, or create a new one.
 									</div>
 								) : (
 									<div className="max-w-2xl">
 										<div className="flex items-center justify-between mb-4">
 											<div className="flex-1">
-												<label className="block text-xs text-slate-500 mb-1">Name (editor label only)</label>
+												<label className="block text-xs text-[#8291a1] mb-1">Name (editor label only)</label>
 												<input
 													value={dialogueDraft.name}
 													onChange={(e) => updateDialogueField('name', e.target.value)}
-													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-slate-700 focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
+													className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-[#48596a] focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
 												/>
-												<div className="text-xs text-slate-600 font-mono mt-1">
+												<div className="text-xs text-[#637588] font-mono mt-1">
 													{dialogueDraft.key}{' '}
 													{dialogueDraft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}
 												</div>
@@ -2660,50 +2681,50 @@ export default function GameContentEditor() {
 										)}
 
 										<div className="mb-4">
-											<label className="block text-xs text-slate-500 mb-1">Dialogue title (shown to players)</label>
+											<label className="block text-xs text-[#8291a1] mb-1">Dialogue title (shown to players)</label>
 											<input
 												value={dialogueDraft.dialogueTitle}
 												onChange={(e) => updateDialogueField('dialogueTitle', e.target.value)}
-												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
+												className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
 											/>
 										</div>
 
 										<div className="mb-4">
-											<label className="block text-xs text-slate-500 mb-1">Message</label>
+											<label className="block text-xs text-[#8291a1] mb-1">Message</label>
 											<textarea
 												value={dialogueDraft.message}
 												onChange={(e) => updateDialogueField('message', e.target.value)}
 												rows={4}
-												className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
+												className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
 											/>
-											<p className="text-xs text-slate-600 mt-1">Supports basic HTML like {'<br>'} for line breaks.</p>
+											<p className="text-xs text-[#637588] mt-1">Supports basic HTML like {'<br>'} for line breaks.</p>
 										</div>
 
 										<div className="flex gap-4 mb-6">
 											<div className="flex-1">
-												<label className="block text-xs text-slate-500 mb-1">Image URL (optional)</label>
+												<label className="block text-xs text-[#8291a1] mb-1">Image URL (optional)</label>
 												<input
 													value={dialogueDraft.image}
 													onChange={(e) => updateDialogueField('image', e.target.value)}
-													className="w-full bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
+													className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
 												/>
 											</div>
 											<div>
-												<label className="block text-xs text-slate-500 mb-1">Letter print speed</label>
+												<label className="block text-xs text-[#8291a1] mb-1">Letter print speed</label>
 												<input
 													type="number"
 													min="0"
 													value={dialogueDraft.letterPrintSpeed}
 													onChange={(e) => updateDialogueField('letterPrintSpeed', e.target.value)}
-													className="w-28 bg-slate-900 border border-slate-800 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
+													className="w-28 bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
 												/>
-												<p className="text-xs text-slate-600 mt-1">0 = instant</p>
+												<p className="text-xs text-[#637588] mt-1">0 = instant</p>
 											</div>
 											{dialogueDraft.image && (
 												<img
 													src={resolveAssetUrl(dialogueDraft.image)}
 													alt="dialogue"
-													className="w-14 h-14 object-cover rounded-md border border-slate-700"
+													className="w-14 h-14 object-cover rounded-md border border-[#48596a]"
 													onError={(e) => {
 														e.target.style.display = 'none';
 													}}
@@ -2711,42 +2732,42 @@ export default function GameContentEditor() {
 											)}
 										</div>
 
-										<h3 className="text-sm font-medium text-slate-300 mb-2">Options</h3>
+										<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Options</h3>
 										<div className="space-y-2">
 											{dialogueDraft.options.map((opt, i) => (
-												<div key={i} className="bg-slate-900 border border-slate-800 rounded-md p-2.5">
+												<div key={i} className="bg-[#323d48] border border-[#3d4a57] rounded-md p-2.5">
 													<div className="flex items-center gap-2 mb-2">
 														<input
 															value={opt.name}
 															onChange={(e) => updateDialogueOption(i, 'name', e.target.value)}
 															placeholder="Button label"
-															className="flex-1 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm"
+															className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm"
 														/>
 														<button
 															onClick={() => moveDialogueOption(i, -1)}
 															disabled={i === 0}
-															className="text-slate-500 hover:text-[#1a56da] disabled:opacity-30 disabled:hover:text-slate-500"
+															className="text-[#8291a1] hover:text-[#1a56da] disabled:opacity-30 disabled:hover:text-[#8291a1]"
 														>
 															<ChevronRight size={13} className="-rotate-90" />
 														</button>
 														<button
 															onClick={() => moveDialogueOption(i, 1)}
 															disabled={i === dialogueDraft.options.length - 1}
-															className="text-slate-500 hover:text-[#1a56da] disabled:opacity-30 disabled:hover:text-slate-500"
+															className="text-[#8291a1] hover:text-[#1a56da] disabled:opacity-30 disabled:hover:text-[#8291a1]"
 														>
 															<ChevronRight size={13} className="rotate-90" />
 														</button>
-														<button onClick={() => removeDialogueOption(i)} className="text-slate-600 hover:text-red-400">
+														<button onClick={() => removeDialogueOption(i)} className="text-[#637588] hover:text-red-400">
 															<X size={14} />
 														</button>
 													</div>
 													<div className="flex gap-2">
 														<div className="flex-1">
-															<label className="block text-xs text-slate-500 mb-1">On click, run script</label>
+															<label className="block text-xs text-[#8291a1] mb-1">On click, run script</label>
 															<select
 																value={opt.scriptName || ''}
 																onChange={(e) => updateDialogueOption(i, 'scriptName', e.target.value)}
-																className="w-full bg-[#262e36] border border-slate-800 rounded px-1.5 py-1 text-xs"
+																className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-1 text-xs"
 															>
 																<option value="">(none)</option>
 																{pickableScripts.map(([sk, sv]) => (
@@ -2757,11 +2778,11 @@ export default function GameContentEditor() {
 															</select>
 														</div>
 														<div className="flex-1">
-															<label className="block text-xs text-slate-500 mb-1">Then show dialogue</label>
+															<label className="block text-xs text-[#8291a1] mb-1">Then show dialogue</label>
 															<select
 																value={opt.followUpDialogue || ''}
 																onChange={(e) => updateDialogueOption(i, 'followUpDialogue', e.target.value)}
-																className="w-full bg-[#262e36] border border-slate-800 rounded px-1.5 py-1 text-xs"
+																className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-1 text-xs"
 															>
 																<option value="">(none - closes dialogue)</option>
 																{Object.entries(dialoguesCollection).map(([dk, dv]) => (
@@ -2777,7 +2798,7 @@ export default function GameContentEditor() {
 										</div>
 										<button
 											onClick={addDialogueOption}
-											className="mt-2 flex items-center gap-1.5 text-sm text-slate-400 hover:text-[#1a56da] transition-colors"
+											className="mt-2 flex items-center gap-1.5 text-sm text-[#a3adb8] hover:text-[#1a56da] transition-colors"
 										>
 											<Plus size={13} /> Add option
 										</button>
@@ -2791,44 +2812,44 @@ export default function GameContentEditor() {
 								<h2 className="text-base font-medium">Attribute types</h2>
 								<button
 									onClick={addAttributeType}
-									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-[#48596a] text-sm text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 								>
 									<Plus size={14} /> New attribute type
 								</button>
 							</div>
 							<div className="space-y-2">
 								{Object.entries(attributeTypes).map(([key, attr]) => (
-									<div key={key} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+									<div key={key} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
 										<input
 											value={attr.name || ''}
 											onChange={(e) => updateAttributeType(key, 'name', e.target.value)}
 											className="flex-1 bg-transparent text-sm focus:outline-none"
 										/>
-										<label className="text-xs text-slate-500">default</label>
+										<label className="text-xs text-[#8291a1]">default</label>
 										<input
 											type="number"
 											value={attr.value ?? 0}
 											onChange={(e) => updateAttributeType(key, 'value', Number(e.target.value))}
-											className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+											className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 										/>
-										<label className="text-xs text-slate-500">min</label>
+										<label className="text-xs text-[#8291a1]">min</label>
 										<input
 											type="number"
 											value={attr.min ?? 0}
 											onChange={(e) => updateAttributeType(key, 'min', Number(e.target.value))}
-											className="w-14 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+											className="w-14 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 										/>
-										<label className="text-xs text-slate-500">max</label>
+										<label className="text-xs text-[#8291a1]">max</label>
 										<input
 											type="number"
 											value={attr.max ?? 100}
 											onChange={(e) => updateAttributeType(key, 'max', Number(e.target.value))}
-											className="w-16 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+											className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 										/>
 									</div>
 								))}
 							</div>
-							<p className="text-xs text-slate-600 mt-4">
+							<p className="text-xs text-[#637588] mt-4">
 								These are the attribute types available to attach on any unit, item, or projectile from its editor tab.
 							</p>
 						</div>
@@ -2838,30 +2859,30 @@ export default function GameContentEditor() {
 								<div className="flex items-center justify-between mb-4">
 									<div>
 										<h2 className="text-base font-medium">Global sounds</h2>
-										<p className="text-xs text-slate-600 mt-1">Edit the game's global <span className="font-mono">data.sound</span> library. Changes here are available to the item sound assigner.</p>
+										<p className="text-xs text-[#637588] mt-1">Edit the game's global <span className="font-mono">data.sound</span> library. Changes here are available to the item sound assigner.</p>
 									</div>
 									<button onClick={addGlobalSound} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"><Plus size={14} /> New sound</button>
 								</div>
 								<div className="space-y-2">
 									{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([key,sound]) => (
-										<div key={key} className="bg-slate-900 border border-slate-800 rounded-md p-3">
+										<div key={key} className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3">
 											<div className="flex items-center gap-2 mb-2">
-												<input value={sound?.name || ''} onChange={(e)=>updateGlobalSound(key,'name',e.target.value)} placeholder="Sound name" className="flex-1 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm" />
-												<label className="text-xs text-slate-600">volume</label>
-												<input type="number" min="0" max="100" value={sound?.volume ?? 100} onChange={(e)=>updateGlobalSound(key,'volume',Math.max(0,Math.min(100,Number(e.target.value)||0)))} className="w-20 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm" />
-												<label className="text-xs text-slate-600">pitch %</label>
-												<input type="number" min="0" max="100" step="1" value={Math.round((Number(sound?.pitchRandomization ?? 0.1) || 0) * 100)} onChange={(e)=>updateGlobalSound(key,'pitchRandomization',Math.max(0,Math.min(1,Number(e.target.value)||0))/100)} className="w-20 bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm" title="Random pitch variation applied by the game. 0% keeps the sound at its original pitch." />
-												<button onClick={() => previewGlobalSound(key)} disabled={!sound?.file} title={previewingSoundKey === key ? 'Stop preview' : 'Play preview'} className="text-slate-400 hover:text-[#1a56da] disabled:opacity-30 disabled:cursor-not-allowed">
+												<input value={sound?.name || ''} onChange={(e)=>updateGlobalSound(key,'name',e.target.value)} placeholder="Sound name" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
+												<label className="text-xs text-[#637588]">volume</label>
+												<input type="number" min="0" max="100" value={sound?.volume ?? 100} onChange={(e)=>updateGlobalSound(key,'volume',Math.max(0,Math.min(100,Number(e.target.value)||0)))} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
+												<label className="text-xs text-[#637588]">pitch %</label>
+												<input type="number" min="0" max="100" step="1" value={Math.round((Number(sound?.pitchRandomization ?? 0.1) || 0) * 100)} onChange={(e)=>updateGlobalSound(key,'pitchRandomization',Math.max(0,Math.min(1,Number(e.target.value)||0))/100)} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" title="Random pitch variation applied by the game. 0% keeps the sound at its original pitch." />
+												<button onClick={() => previewGlobalSound(key)} disabled={!sound?.file} title={previewingSoundKey === key ? 'Stop preview' : 'Play preview'} className="text-[#a3adb8] hover:text-[#1a56da] disabled:opacity-30 disabled:cursor-not-allowed">
 													{previewingSoundKey === key ? <Square size={14}/> : <Play size={14}/>}
 												</button>
-												<button onClick={()=>deleteGlobalSound(key)} className="text-slate-500 hover:text-red-400" title="Delete sound"><Trash2 size={14}/></button>
+												<button onClick={()=>deleteGlobalSound(key)} className="text-[#8291a1] hover:text-red-400" title="Delete sound"><Trash2 size={14}/></button>
 											</div>
-											<input value={sound?.file || ''} onChange={(e)=>updateGlobalSound(key,'file',e.target.value)} placeholder="https://.../sound.ogg or /assets/audio/..." className="w-full bg-[#262e36] border border-slate-800 rounded px-2 py-1 text-sm" />
-											<div className="text-[11px] text-slate-600 mt-1.5 font-mono truncate">{key}</div>
+											<input value={sound?.file || ''} onChange={(e)=>updateGlobalSound(key,'file',e.target.value)} placeholder="https://.../sound.ogg or /assets/audio/..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
+											<div className="text-[11px] text-[#637588] mt-1.5 font-mono truncate">{key}</div>
 										</div>
 									))}
 								</div>
-								{Object.keys(soundTypes).length === 0 && <div className="text-sm text-slate-600 text-center py-8">No sounds yet.</div>}
+								{Object.keys(soundTypes).length === 0 && <div className="text-sm text-[#637588] text-center py-8">No sounds yet.</div>}
 							</div>
 						</div>
 					) : activeTab === 'playerTypes' ? (
@@ -2870,12 +2891,12 @@ export default function GameContentEditor() {
 								<div className="flex items-center justify-between mb-4">
 									<div>
 										<h2 className="text-base font-medium">Player Types</h2>
-										<p className="text-xs text-slate-600 mt-1">Teams players get assigned to - controls diplomacy, name label/chat visibility, and any attributes or variables carried on the player itself rather than their unit.</p>
+										<p className="text-xs text-[#637588] mt-1">Teams players get assigned to - controls diplomacy, name label/chat visibility, and any attributes or variables carried on the player itself rather than their unit.</p>
 									</div>
 									<button onClick={addPlayerType} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-white text-sm font-medium hover:opacity-90 transition-colors"><Plus size={14} /> Add New</button>
 								</div>
-								<div className="border border-slate-800 rounded-md overflow-hidden">
-									<div className="grid grid-cols-[1fr_100px_80px] gap-2 px-3 py-2 bg-slate-900 text-xs uppercase tracking-wide text-slate-500 border-b border-slate-800">
+								<div className="border border-[#3d4a57] rounded-md overflow-hidden">
+									<div className="grid grid-cols-[1fr_100px_80px] gap-2 px-3 py-2 bg-[#323d48] text-xs uppercase tracking-wide text-[#8291a1] border-b border-[#3d4a57]">
 										<div>Name</div>
 										<div>Color</div>
 										<div className="text-right">Action</div>
@@ -2884,10 +2905,10 @@ export default function GameContentEditor() {
 										<div
 											key={key}
 											onClick={() => setEditingPlayerTypeKey(key)}
-											className="grid grid-cols-[1fr_100px_80px] gap-2 px-3 py-2.5 border-b border-slate-800 last:border-b-0 hover:bg-slate-900/60 cursor-pointer items-center"
+											className="grid grid-cols-[1fr_100px_80px] gap-2 px-3 py-2.5 border-b border-[#3d4a57] last:border-b-0 hover:bg-[#323d48]/60 cursor-pointer items-center"
 										>
 											<div className="text-sm truncate">{pt.name || key}</div>
-											<div><div className="w-6 h-6 rounded border border-slate-700" style={{ background: pt.color || '#ffffff' }} /></div>
+											<div><div className="w-6 h-6 rounded border border-[#48596a]" style={{ background: pt.color || '#ffffff' }} /></div>
 											<div className="text-right">
 												<button
 													onClick={(e) => { e.stopPropagation(); deletePlayerType(key); }}
@@ -2899,7 +2920,7 @@ export default function GameContentEditor() {
 											</div>
 										</div>
 									))}
-									{Object.keys(playerTypes).length === 0 && <div className="text-sm text-slate-600 text-center py-8">No player types yet.</div>}
+									{Object.keys(playerTypes).length === 0 && <div className="text-sm text-[#637588] text-center py-8">No player types yet.</div>}
 								</div>
 							</div>
 						</div>
@@ -2909,19 +2930,19 @@ export default function GameContentEditor() {
 								<h2 className="text-base font-medium">Global variables</h2>
 								<button
 									onClick={addGlobalVariable}
-									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-slate-700 text-sm text-slate-400 hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
+									className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-dashed border-[#48596a] text-sm text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"
 								>
 									<Plus size={14} /> New variable
 								</button>
 							</div>
 							<div className="space-y-2">
 								{Object.entries(gameData?.data?.variables || {}).map(([name, v]) => (
-									<div key={name} className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2">
+									<div key={name} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
 										<span className="text-sm flex-1 font-mono">{name}</span>
 										<select
 											value={v.dataType || 'string'}
 											onChange={(e) => updateGlobalVariable(name, 'dataType', e.target.value)}
-											className="bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-xs"
+											className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"
 										>
 											<option value="string">string</option>
 											<option value="number">number</option>
@@ -2931,12 +2952,12 @@ export default function GameContentEditor() {
 											value={v.default ?? ''}
 											onChange={(e) => updateGlobalVariable(name, 'default', e.target.value)}
 											placeholder="default value"
-											className="w-32 bg-[#262e36] border border-slate-800 rounded px-1.5 py-0.5 text-sm"
+											className="w-32 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
 										/>
 									</div>
 								))}
 							</div>
-							<p className="text-xs text-slate-600 mt-4">
+							<p className="text-xs text-[#637588] mt-4">
 								Game-wide variables, not tied to any specific unit/item/projectile.
 							</p>
 						</div>
@@ -2957,17 +2978,17 @@ export default function GameContentEditor() {
 					const value = pt[field] !== false; // treat missing as true, matching engine default for showNameLabel; hideChatBubble defaults to false either way
 					return (
 						<div className="mb-4">
-							<label className="text-sm text-slate-400 block mb-1.5">{label}</label>
-							<div className="flex rounded-md overflow-hidden border border-slate-700">
+							<label className="text-sm text-[#a3adb8] block mb-1.5">{label}</label>
+							<div className="flex rounded-md overflow-hidden border border-[#48596a]">
 								<button
 									onClick={() => updatePlayerTypeField(key, field, field === 'showNameLabel' ? true : true)}
-									className={`flex-1 py-2 text-sm font-medium transition-colors ${value ? 'bg-[#1a56da] text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
+									className={`flex-1 py-2 text-sm font-medium transition-colors ${value ? 'bg-[#1a56da] text-white' : 'bg-[#323d48] text-[#a3adb8] hover:bg-[#3d4a57]'}`}
 								>
 									True
 								</button>
 								<button
 									onClick={() => updatePlayerTypeField(key, field, false)}
-									className={`flex-1 py-2 text-sm font-medium transition-colors ${!value ? 'bg-[#1a56da] text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
+									className={`flex-1 py-2 text-sm font-medium transition-colors ${!value ? 'bg-[#1a56da] text-white' : 'bg-[#323d48] text-[#a3adb8] hover:bg-[#3d4a57]'}`}
 								>
 									False
 								</button>
@@ -2978,37 +2999,37 @@ export default function GameContentEditor() {
 
 				return (
 					<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-20 px-4">
-						<div className="bg-slate-900 border border-slate-700 rounded-lg p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto">
+						<div className="bg-[#323d48] border border-[#48596a] rounded-lg p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto">
 							<div className="flex items-center justify-between mb-4">
 								<h3 className="font-medium text-base">Player Types</h3>
-								<button onClick={() => setEditingPlayerTypeKey(null)} className="text-slate-500 hover:text-slate-300">
+								<button onClick={() => setEditingPlayerTypeKey(null)} className="text-[#8291a1] hover:text-[#c5ccd3]">
 									<X size={18} />
 								</button>
 							</div>
 
 							<div className="mb-4">
-								<label className="text-sm text-slate-400 block mb-1.5">Name</label>
+								<label className="text-sm text-[#a3adb8] block mb-1.5">Name</label>
 								<input
 									value={pt.name || ''}
 									onChange={(e) => updatePlayerTypeField(key, 'name', e.target.value)}
-									className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1a56da]"
+									className="w-full bg-[#13171b] border border-[#3d4a57] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1a56da]"
 								/>
 							</div>
 
 							<div className="mb-4">
-								<label className="text-sm text-slate-400 block mb-1.5">Color</label>
+								<label className="text-sm text-[#a3adb8] block mb-1.5">Color</label>
 								<div className="flex gap-2">
 									<input
 										value={pt.color || ''}
 										onChange={(e) => updatePlayerTypeField(key, 'color', e.target.value)}
 										placeholder="white or #rrggbb"
-										className="flex-1 bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1a56da]"
+										className="flex-1 bg-[#13171b] border border-[#3d4a57] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1a56da]"
 									/>
 									<input
 										type="color"
 										value={/^#[0-9a-fA-F]{6}$/.test(pt.color || '') ? pt.color : '#ffffff'}
 										onChange={(e) => updatePlayerTypeField(key, 'color', e.target.value)}
-										className="w-10 h-10 rounded-md border border-slate-700 bg-slate-950 cursor-pointer p-0.5"
+										className="w-10 h-10 rounded-md border border-[#48596a] bg-[#13171b] cursor-pointer p-0.5"
 										title="Pick a color"
 									/>
 								</div>
@@ -3018,32 +3039,32 @@ export default function GameContentEditor() {
 							<ToggleField label="Hide Chat Bubble" field="hideChatBubble" />
 
 							<div className="mb-4">
-								<label className="text-sm text-slate-400 block mb-1.5">Hide Chat Distance</label>
+								<label className="text-sm text-[#a3adb8] block mb-1.5">Hide Chat Distance</label>
 								<input
 									type="number"
 									value={pt.hideChatDistance ?? 0}
 									onChange={(e) => updatePlayerTypeField(key, 'hideChatDistance', Number(e.target.value))}
-									className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1a56da]"
+									className="w-full bg-[#13171b] border border-[#3d4a57] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1a56da]"
 								/>
-								<p className="text-[11px] text-slate-600 mt-1">Distance beyond which this team's chat bubbles are hidden from other players. 0 means no distance limit.</p>
+								<p className="text-[11px] text-[#637588] mt-1">Distance beyond which this team's chat bubbles are hidden from other players. 0 means no distance limit.</p>
 							</div>
 
 							<div className="mb-4">
-								<label className="text-sm text-slate-400 block mb-1.5">Attributes</label>
+								<label className="text-sm text-[#a3adb8] block mb-1.5">Attributes</label>
 								<div className="space-y-2 mb-2">
 									{Object.entries(pt.attributes || {}).map(([attrKey, attr]) => (
-										<div key={attrKey} className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
+										<div key={attrKey} className="flex items-center gap-2 bg-[#13171b] border border-[#3d4a57] rounded-md px-3 py-2">
 											<span className="text-sm flex-1 truncate">{attributeTypes[attrKey]?.name || attrKey}</span>
-											<label className="text-xs text-slate-500">value</label>
-											<input type="number" value={attr.value ?? 0} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'value', Number(e.target.value))} className="w-16 bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-sm" />
-											<button onClick={() => removePlayerTypeAttribute(key, attrKey)} className="text-slate-600 hover:text-red-400 ml-1"><X size={14} /></button>
+											<label className="text-xs text-[#8291a1]">value</label>
+											<input type="number" value={attr.value ?? 0} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'value', Number(e.target.value))} className="w-16 bg-[#323d48] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm" />
+											<button onClick={() => removePlayerTypeAttribute(key, attrKey)} className="text-[#637588] hover:text-red-400 ml-1"><X size={14} /></button>
 										</div>
 									))}
 								</div>
 								<select
 									onChange={(e) => { addPlayerTypeAttribute(key, e.target.value); e.target.value = ''; }}
 									defaultValue=""
-									className="w-full bg-slate-950 border border-dashed border-slate-700 rounded-md px-2.5 py-1.5 text-sm text-slate-500 focus:outline-none focus:border-[#1a56da]"
+									className="w-full bg-[#13171b] border border-dashed border-[#48596a] rounded-md px-2.5 py-1.5 text-sm text-[#8291a1] focus:outline-none focus:border-[#1a56da]"
 								>
 									<option value="" disabled>add attributes</option>
 									{unusedAttrKeys.map((k) => (
@@ -3053,19 +3074,19 @@ export default function GameContentEditor() {
 							</div>
 
 							<div className="mb-4">
-								<label className="text-sm text-slate-400 block mb-1.5">Variables</label>
+								<label className="text-sm text-[#a3adb8] block mb-1.5">Variables</label>
 								<div className="space-y-2 mb-2">
 									{Object.entries(pt.variables || {}).map(([varName, v]) => (
-										<div key={varName} className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-md px-3 py-2">
+										<div key={varName} className="flex items-center gap-2 bg-[#13171b] border border-[#3d4a57] rounded-md px-3 py-2">
 											<span className="text-sm flex-1 truncate">{varName}</span>
-											<button onClick={() => removePlayerTypeVariable(key, varName)} className="text-slate-600 hover:text-red-400 ml-1"><X size={14} /></button>
+											<button onClick={() => removePlayerTypeVariable(key, varName)} className="text-[#637588] hover:text-red-400 ml-1"><X size={14} /></button>
 										</div>
 									))}
 								</div>
 								<select
 									onChange={(e) => { addPlayerTypeVariable(key, e.target.value); e.target.value = ''; }}
 									defaultValue=""
-									className="w-full bg-slate-950 border border-dashed border-slate-700 rounded-md px-2.5 py-1.5 text-sm text-slate-500 focus:outline-none focus:border-[#1a56da]"
+									className="w-full bg-[#13171b] border border-dashed border-[#48596a] rounded-md px-2.5 py-1.5 text-sm text-[#8291a1] focus:outline-none focus:border-[#1a56da]"
 								>
 									<option value="" disabled>add variables</option>
 									{unusedVarNames.map((n) => (
@@ -3076,16 +3097,16 @@ export default function GameContentEditor() {
 
 							{otherTypeEntries.length > 0 && (
 								<div>
-									<h4 className="text-sm text-slate-400 mb-1">Diplomacy</h4>
-									<p className="text-[11px] text-slate-600 mb-2">How other teams are treated by this team. Hostile, Neutral, or Friendly. Everything seen in game.json &amp; engine.</p>
+									<h4 className="text-sm text-[#a3adb8] mb-1">Diplomacy</h4>
+									<p className="text-[11px] text-[#637588] mb-2">How other teams are treated by this team. Hostile, Neutral, or Friendly. Everything seen in game.json &amp; engine.</p>
 									<div className="space-y-1.5">
 										{otherTypeEntries.map(([otherKey, otherPt]) => (
-											<div key={otherKey} className="flex items-center justify-between gap-3 bg-slate-950 border border-slate-800 rounded-md px-3 py-1.5">
+											<div key={otherKey} className="flex items-center justify-between gap-3 bg-[#13171b] border border-[#3d4a57] rounded-md px-3 py-1.5">
 												<span className="text-sm truncate">{otherPt.name || otherKey}</span>
 												<select
 													value={(pt.relationships || {})[otherKey] || 'neutral'}
 													onChange={(e) => updatePlayerTypeRelationship(key, otherKey, e.target.value)}
-													className="bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]"
+													className="bg-[#323d48] border border-[#48596a] rounded-md px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]"
 												>
 													<option value="hostile">Hostile</option>
 													<option value="neutral">Neutral</option>
@@ -3103,25 +3124,25 @@ export default function GameContentEditor() {
 
 			{showNewModal && (
 				<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-20 px-4">
-					<div className="bg-slate-900 border border-slate-700 rounded-lg p-5 w-full max-w-sm">
+					<div className="bg-[#323d48] border border-[#48596a] rounded-lg p-5 w-full max-w-sm">
 						<div className="flex items-center justify-between mb-4">
 							<h3 className="font-medium">New {ENTITY_TABS.find((t) => t.key === activeTab)?.label.slice(0, -1)}</h3>
-							<button onClick={() => setShowNewModal(false)} className="text-slate-500 hover:text-slate-300">
+							<button onClick={() => setShowNewModal(false)} className="text-[#8291a1] hover:text-[#c5ccd3]">
 								<X size={16} />
 							</button>
 						</div>
 						<button
 							onClick={() => startNew(null)}
-							className="w-full text-left px-3 py-2 rounded-md border border-slate-700 hover:border-[#1a56da] hover:bg-slate-800/50 mb-3 text-sm transition-colors"
+							className="w-full text-left px-3 py-2 rounded-md border border-[#48596a] hover:border-[#1a56da] hover:bg-[#3d4a57]/50 mb-3 text-sm transition-colors"
 						>
 							Start from blank
 						</button>
-						<div className="text-xs text-slate-500 mb-1.5">...or duplicate an existing one as a starting point</div>
+						<div className="text-xs text-[#8291a1] mb-1.5">...or duplicate an existing one as a starting point</div>
 						<div className="flex gap-2">
 							<select
 								value={cloneFrom}
 								onChange={(e) => setCloneFrom(e.target.value)}
-								className="flex-1 bg-[#262e36] border border-slate-700 rounded-md px-2 py-1.5 text-sm"
+								className="flex-1 bg-[#262e36] border border-[#48596a] rounded-md px-2 py-1.5 text-sm"
 							>
 								<option value="">Choose...</option>
 								{Object.entries(categoryMap).map(([k, v]) => (
