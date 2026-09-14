@@ -112,7 +112,7 @@ function flattenFolderOptions(folders, rootId) {
 	return out;
 }
 
-// script tree viewers
+// script treee
 // some shit
 function resolveIdName(id, gameData) {
 	if (typeof id !== 'string' || !gameData?.data) return null;
@@ -124,6 +124,12 @@ function resolveIdName(id, gameData) {
 		['attribute', d.attributeTypes],
 		['player type', d.playerTypes],
 		['script', d.scripts],
+		['dialogue', d.dialogues],
+		['shop', d.shops],
+		['sound', d.sound],
+		['music', d.music],
+		['particle type', d.particleTypes],
+		['state', d.states],
 	];
 	for (const [kind, coll] of lookups) {
 		const hit = coll?.[id];
@@ -132,7 +138,25 @@ function resolveIdName(id, gameData) {
 	return null;
 }
 
-// "applyForceOnEntityXY" -> "apply force on entity XY", generic fallback for any
+// Which gameData.data collection backs each editable id-picker field kind - used
+// both to populate a field's dropdown options and (via resolveIdName above) to
+// display a resolved name instead of a raw id anywhere in the tree
+const ID_KIND_COLLECTIONS = {
+	itemTypeId: 'itemTypes',
+	unitTypeId: 'unitTypes',
+	projectileTypeId: 'projectileTypes',
+	attributeId: 'attributeTypes',
+	playerTypeId: 'playerTypes',
+	scriptId: 'scripts',
+	dialogueId: 'dialogues',
+	shopId: 'shops',
+	soundId: 'sound',
+	musicId: 'music',
+	particleTypeId: 'particleTypes',
+	stateId: 'states',
+};
+
+// "applyForceOnEntityXY" -> "Apply force on entity XY", generic fallback for any
 // action/function type name we haven't special-cased below
 function readableType(str) {
 	if (!str) return '';
@@ -260,8 +284,8 @@ function describeValue(val, gameData) {
 	}
 }
 
-// the weird-but-consistent [ {operator,operandType}, operandA, operandB ] triple
-// used for every condition in this schema, including the "OR of triples" case
+// The weird-but-consistent [ {operator,operandType}, operandA, operandB ] triple
+// used for every condition in this schema, including the "OR of triples" case.
 function describeCondition(cond, gameData) {
 	if (Array.isArray(cond) && cond.length === 3 && cond[0]?.operator) {
 		const [desc, a, b] = cond;
@@ -284,23 +308,242 @@ const SCRIPT_NODE_COLORS = {
 
 // a handful of common param keys worth surfacing inline for actions this viewer
 // doesn't have a dedicated phrasing for (see the default case below) - covers
-// most of the ~80 action types in this engine well enough to be readable even
-// without a bespoke line for every single one.
+// most of the action types in this engine well enough to be readable even
+// without a bespoke line for every single one
 const GENERIC_ACTION_PARAM_KEYS = ['entity', 'unit', 'attribute', 'variable', 'variableName', 'value', 'force', 'angle', 'unitType', 'itemType', 'scale', 'slot'];
 
-function ScriptActionNode({ action, gameData, depth, onJumpToScript }) {
+// data-driven field schemas, generated from real usage across an actual shipped
+// game's scripts (not guessed from memory) - for each action type, which top-level
+// keys are worth exposing as editable fields, and what kind of value each holds,
+// only covers action types that showed up in that real data; anything else still
+// gets full structural editing (delete/duplicate/disable/reorder) plus the
+// generic read-only summary line, it just won't have a dedicated fields panel
+const ACTION_FIELD_SCHEMAS = {
+	addAttributeBuffToUnit: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'time', kind: 'number' }, { key: 'value', kind: 'valueExpr' }],
+	aiAttackUnit: [{ key: 'targetUnit', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
+	aiGoIdle: [{ key: 'unit', kind: 'valueExpr' }],
+	aiMoveToPosition: [{ key: 'position', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
+	applyForceOnEntityAngle: [{ key: 'angle', kind: 'valueExpr' }, { key: 'entity', kind: 'valueExpr' }, { key: 'force', kind: 'number' }],
+	applyForceOnEntityXY: [{ key: 'entity', kind: 'valueExpr' }, { key: 'force', kind: 'xy' }],
+	assignPlayerType: [{ key: 'entity', kind: 'valueExpr' }, { key: 'playerType', kind: 'playerTypeId' }],
+	changeScaleOfEntityBody: [{ key: 'entity', kind: 'valueExpr' }, { key: 'scale', kind: 'valueExpr' }],
+	changeUnitType: [{ key: 'entity', kind: 'valueExpr' }, { key: 'unitType', kind: 'unitTypeId' }],
+	closeDialogueForPlayer: [{ key: 'player', kind: 'valueExpr' }],
+	closeShopForPlayer: [{ key: 'player', kind: 'valueExpr' }],
+	createEntityForPlayerAtPositionWithDimensions: [{ key: 'actionId', kind: 'string' }, { key: 'angle', kind: 'valueExpr' }, { key: 'entity', kind: 'unitTypeId' }, { key: 'entityType', kind: 'string' }, { key: 'height', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }, { key: 'width', kind: 'valueExpr' }],
+	createFloatingText: [{ key: 'color', kind: 'string' }, { key: 'position', kind: 'valueExpr' }, { key: 'text', kind: 'valueExpr' }],
+	createProjectileAtPosition: [{ key: 'actionId', kind: 'string' }, { key: 'angle', kind: 'valueExpr' }, { key: 'force', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }, { key: 'projectileType', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
+	createUnitAtPosition: [{ key: 'actionId', kind: 'string' }, { key: 'angle', kind: 'valueExpr' }, { key: 'entity', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }, { key: 'unitType', kind: 'valueExpr' }],
+	decreaseVariableByNumber: [{ key: 'number', kind: 'valueExpr' }, { key: 'variable', kind: 'string' }],
+	destroyEntity: [{ key: 'entity', kind: 'valueExpr' }, { key: 'runOnClient', kind: 'boolean' }],
+	disableAI: [{ key: 'unit', kind: 'valueExpr' }],
+	editMapTile: [{ key: 'gid', kind: 'valueExpr' }, { key: 'layer', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }, { key: 'x', kind: 'valueExpr' }, { key: 'y', kind: 'valueExpr' }],
+	emitParticlesAtPosition: [{ key: 'angle', kind: 'number' }, { key: 'particleType', kind: 'particleTypeId' }, { key: 'position', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }],
+	enableAI: [{ key: 'unit', kind: 'valueExpr' }],
+	giveNewItemToUnit: [{ key: 'itemType', kind: 'itemTypeId' }, { key: 'unit', kind: 'valueExpr' }],
+	hideUiElementForPlayer: [{ key: 'elementId', kind: 'string' }, { key: 'player', kind: 'valueExpr' }],
+	hideUiTextForEveryone: [{ key: 'target', kind: 'string' }],
+	hideUnitFromPlayer: [{ key: 'entity', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
+	increaseVariableByNumber: [{ key: 'number', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }, { key: 'variable', kind: 'string' }],
+	kickPlayer: [{ key: 'entity', kind: 'valueExpr' }, { key: 'message', kind: 'string' }, { key: 'vars', kind: 'valueExpr' }],
+	loadPlayerDataAndApplyIt: [{ key: 'player', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
+	loadPlayerDataFromString: [{ key: 'player', kind: 'valueExpr' }, { key: 'string', kind: 'valueExpr' }],
+	loadUnitDataFromString: [{ key: 'string', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
+	makeUnitInvisible: [{ key: 'entity', kind: 'valueExpr' }],
+	moveEntity: [{ key: 'actionId', kind: 'string' }, { key: 'entity', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }],
+	openDialogueForPlayer: [{ key: 'dialogue', kind: 'dialogueId' }, { key: 'player', kind: 'valueExpr' }, { key: 'vars', kind: 'valueExpr' }],
+	openShopForPlayer: [{ key: 'player', kind: 'valueExpr' }, { key: 'shop', kind: 'shopId' }, { key: 'vars', kind: 'valueExpr' }],
+	openWebsiteForPlayer: [{ key: 'player', kind: 'valueExpr' }, { key: 'string', kind: 'string' }, { key: 'vars', kind: 'valueExpr' }],
+	playEntityAnimation: [{ key: 'animation', kind: 'string' }, { key: 'entity', kind: 'valueExpr' }],
+	playMusic: [{ key: 'music', kind: 'musicId' }],
+	playMusicForPlayerRepeatedly: [{ key: 'music', kind: 'musicId' }, { key: 'player', kind: 'valueExpr' }],
+	playSoundAtPosition: [{ key: 'position', kind: 'valueExpr' }, { key: 'sound', kind: 'soundId' }],
+	playSoundForPlayer: [{ key: 'player', kind: 'valueExpr' }, { key: 'sound', kind: 'soundId' }],
+	playerCameraSetZoom: [{ key: 'player', kind: 'valueExpr' }, { key: 'zoom', kind: 'number' }],
+	playerCameraTrackUnit: [{ key: 'fighter', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
+	positionCamera: [{ key: 'player', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }],
+	rotateEntityToRadiansLT: [{ key: 'entity', kind: 'valueExpr' }, { key: 'radians', kind: 'valueExpr' }],
+	savePlayerData: [{ key: 'player', kind: 'valueExpr' }],
+	sendChatMessage: [{ key: 'message', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }, { key: 'vars', kind: 'valueExpr' }],
+	sendChatMessageToPlayer: [{ key: 'message', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }, { key: 'vars', kind: 'valueExpr' }],
+	sendPostRequest: [{ key: 'string', kind: 'valueExpr' }, { key: 'url', kind: 'string' }, { key: 'varName', kind: 'string' }, { key: 'vars', kind: 'valueExpr' }],
+	setEntityAttribute: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }],
+	setEntityAttributeMax: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }],
+	setEntityAttributeMin: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }],
+	setEntityAttributeRegenerationRate: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }],
+	setEntityLifeSpan: [{ key: 'entity', kind: 'valueExpr' }, { key: 'lifeSpan', kind: 'number' }],
+	setEntityState: [{ key: 'entity', kind: 'valueExpr' }, { key: 'state', kind: 'stateId' }],
+	setEntityVelocityAtAngle: [{ key: 'angle', kind: 'valueExpr' }, { key: 'entity', kind: 'valueExpr' }, { key: 'speed', kind: 'valueExpr' }],
+	setFadingTextOfUnit: [{ key: 'color', kind: 'string' }, { key: 'text', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
+	setItemFireRate: [{ key: 'item', kind: 'valueExpr' }, { key: 'number', kind: 'valueExpr' }],
+	setLastAttackedUnit: [{ key: 'unit', kind: 'valueExpr' }],
+	setLastAttackingUnit: [{ key: 'unit', kind: 'valueExpr' }],
+	setMaxAttackRange: [{ key: 'number', kind: 'number' }, { key: 'unit', kind: 'valueExpr' }],
+	setOwnerUnitOfProjectile: [{ key: 'projectile', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
+	setPlayerAttribute: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }, { key: 'vars', kind: 'valueExpr' }],
+	setPlayerAttributeMax: [{ key: 'attributeType', kind: 'attributeId' }, { key: 'number', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
+	setPlayerName: [{ key: 'name', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
+	setPlayerVariable: [{ key: 'player', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }, { key: 'variable', kind: 'valueExpr' }],
+	setSourceItemOfProjectile: [{ key: 'item', kind: 'valueExpr' }, { key: 'projectile', kind: 'valueExpr' }],
+	setTimeOut: [{ key: 'duration', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }, { key: 'vars', kind: 'valueExpr' }],
+	setUnitNameLabel: [{ key: 'name', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
+	setVelocityOfEntityXY: [{ key: 'entity', kind: 'valueExpr' }, { key: 'velocity', kind: 'xy' }],
+	showCustomModalToPlayer: [{ key: 'htmlContent', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }],
+	showInputModalToPlayer: [{ key: 'inputLabel', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
+	showUiElementForPlayer: [{ key: 'elementId', kind: 'string' }, { key: 'player', kind: 'valueExpr' }],
+	showUiTextForEveryone: [{ key: 'target', kind: 'string' }],
+	showUiTextForPlayer: [{ key: 'entity', kind: 'valueExpr' }, { key: 'target', kind: 'string' }],
+	showUnitToPlayer: [{ key: 'entity', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
+	spawnItem: [{ key: 'actionId', kind: 'string' }, { key: 'itemType', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }],
+	stopMusicForPlayer: [{ key: 'player', kind: 'valueExpr' }],
+	stunUnit: [{ key: 'unit', kind: 'valueExpr' }],
+	transformRegionDimensions: [{ key: 'height', kind: 'valueExpr' }, { key: 'region', kind: 'valueExpr' }, { key: 'width', kind: 'valueExpr' }, { key: 'x', kind: 'valueExpr' }, { key: 'y', kind: 'valueExpr' }],
+	updateUiTextForPlayer: [{ key: 'entity', kind: 'valueExpr' }, { key: 'target', kind: 'string' }, { key: 'value', kind: 'valueExpr' }],
+	updateUiTextForTimeForPlayer: [{ key: 'player', kind: 'valueExpr' }, { key: 'target', kind: 'string' }, { key: 'time', kind: 'number' }, { key: 'value', kind: 'valueExpr' }],
+	useItemOnce: [{ key: 'item', kind: 'valueExpr' }],
+};
+
+// generic path-based mutator for the whole editable tree - path is an array of
+// keys/indices from the script root (e.g. ['actions', 2, 'then', 0, 'force', 'x']),
+// every structural op (delete/duplicate/move/disable) and every field edit routes
+// through this one function, which is what keeps the editing UI itself simple:
+// every node just needs to know its own path, not how to mutate the tree
+function applyScriptOp(script, path, operation, payload) {
+	const next = deepClone(script);
+	const parentPath = path.slice(0, -1);
+	const lastKey = path[path.length - 1];
+	let parent = next;
+	for (const k of parentPath) parent = parent?.[k];
+	if (parent == null) return next;
+
+	if (operation === 'setField') {
+		parent[lastKey] = payload;
+	} else if (operation === 'toggleDisabled') {
+		const node = parent[lastKey];
+		if (node) node.disabled = !node.disabled;
+	} else if (operation === 'delete' && Array.isArray(parent)) {
+		parent.splice(lastKey, 1);
+	} else if (operation === 'duplicate' && Array.isArray(parent)) {
+		parent.splice(lastKey + 1, 0, deepClone(parent[lastKey]));
+	} else if (operation === 'moveUp' && Array.isArray(parent) && lastKey > 0) {
+		[parent[lastKey - 1], parent[lastKey]] = [parent[lastKey], parent[lastKey - 1]];
+	} else if (operation === 'moveDown' && Array.isArray(parent) && lastKey < parent.length - 1) {
+		[parent[lastKey + 1], parent[lastKey]] = [parent[lastKey], parent[lastKey + 1]];
+	}
+	return next;
+}
+
+// renders one editable field per the field's `kind`. only handles plain-literal
+// values directly (a number, a string, a boolean, a known id, or a bare {x,y}
+// pair) - anything more complex (a nested function-call expression) is shown via
+// the same read-only describeValue() text used elsewhere in the tree, with a note
+// pointing at Raw JSON, rather than trying to build an editor for arbitrary
+// expression trees
+function ScriptFieldInput({ kind, value, gameData, onChange }) {
+	const collectionKey = ID_KIND_COLLECTIONS[kind];
+	if (collectionKey) {
+		const options = Object.entries(gameData?.data?.[collectionKey] || {})
+			.map(([id, v]) => ({ id, name: v.name || v.folderName || id }))
+			.sort((a, b) => a.name.localeCompare(b.name));
+		if (typeof value === 'object' && value !== null) {
+			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+		}
+		return (
+			<select
+				value={value ?? ''}
+				onChange={(e) => onChange(e.target.value)}
+				className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-[#1a56da]"
+			>
+				<option value="">(none)</option>
+				{options.map((o) => (
+					<option key={o.id} value={o.id}>
+						{o.name}
+					</option>
+				))}
+			</select>
+		);
+	}
+	if (kind === 'xy') {
+		if (typeof value !== 'object' || value === null || typeof value.x !== 'number' || typeof value.y !== 'number') {
+			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+		}
+		return (
+			<span className="flex items-center gap-1">
+				<span className="text-[10px] text-[#637588]">x</span>
+				<input
+					type="number"
+					value={value.x}
+					onChange={(e) => onChange({ ...value, x: Number(e.target.value) })}
+					className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-[#1a56da]"
+				/>
+				<span className="text-[10px] text-[#637588]">y</span>
+				<input
+					type="number"
+					value={value.y}
+					onChange={(e) => onChange({ ...value, y: Number(e.target.value) })}
+					className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-[#1a56da]"
+				/>
+			</span>
+		);
+	}
+	if (kind === 'boolean') {
+		if (typeof value !== 'boolean') {
+			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+		}
+		return (
+			<input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="accent-[#1a56da]" />
+		);
+	}
+	if (kind === 'number') {
+		if (typeof value !== 'number') {
+			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+		}
+		return (
+			<input
+				type="number"
+				value={value}
+				onChange={(e) => onChange(Number(e.target.value))}
+				className="w-24 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-[#1a56da]"
+			/>
+		);
+	}
+	if (kind === 'string') {
+		if (typeof value !== 'string') {
+			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+		}
+		return (
+			<input
+				type="text"
+				value={value}
+				onChange={(e) => onChange(e.target.value)}
+				className="w-40 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-[#1a56da]"
+			/>
+		);
+	}
+	// 'valueExpr' (or any kind we don't have a widget for): editable only when the
+	// current value happens to be a plain literal right now; a real expression
+	// (getVariable, calculate, etc.) stays read-only.
+	if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+		return <ScriptFieldInput kind={typeof value} value={value} gameData={gameData} onChange={onChange} />;
+	}
+	return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+}
+
+
+function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp, siblingCount, indexInParent }) {
 	const [open, setOpen] = useState(depth < 2);
+	const [fieldsOpen, setFieldsOpen] = useState(false);
 	if (!action || typeof action !== 'object') return null;
 
 	let color = SCRIPT_NODE_COLORS.action;
 	let label;
-	let children = null; // array of { heading, actions } sections to render nested, collapsible
+	let children = null; // array of { heading, actions, basePath } sections to render nested, collapsible
 
 	if (action.type === 'condition') {
 		color = SCRIPT_NODE_COLORS.condition;
 		label = `if ${describeCondition(action.conditions, gameData)}`;
-		children = [{ heading: null, actions: action.then || [] }];
-		if (action.else && action.else.length) children.push({ heading: 'else', actions: action.else });
+		children = [{ heading: null, actions: action.then || [], basePath: [...path, 'then'] }];
+		if (action.else && action.else.length) children.push({ heading: 'else', actions: action.else, basePath: [...path, 'else'] });
 	} else if (action.type === 'runScript') {
 		color = SCRIPT_NODE_COLORS.script;
 		const target = resolveIdName(action.scriptName, gameData);
@@ -324,7 +567,7 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript }) {
 					? ` (${action.variableName} from ${describeValue(action.start, gameData)} to ${describeValue(action.stop, gameData)})`
 					: '';
 		label = `${readableType(action.type)}${rangeBit}`;
-		children = [{ heading: null, actions: action.actions }];
+		children = [{ heading: null, actions: action.actions, basePath: [...path, 'actions'] }];
 	} else {
 		const parts = GENERIC_ACTION_PARAM_KEYS.filter((k) => action[k] !== undefined).map(
 			(k) => `${k}: ${describeValue(action[k], gameData)}`
@@ -333,29 +576,77 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript }) {
 	}
 
 	const hasChildren = !!children;
+	const fieldSchema = ACTION_FIELD_SCHEMAS[action.type];
+	const canMoveUp = indexInParent > 0;
+	const canMoveDown = indexInParent < siblingCount - 1;
 
 	return (
 		<div style={{ marginLeft: depth * 16 }}>
-			<div
-				className="flex items-center gap-1.5 py-1 px-1.5 rounded hover:bg-[#323d48]/60"
-				style={{ cursor: hasChildren || action.type === 'runScript' ? 'pointer' : 'default' }}
-				onClick={() => {
-					if (hasChildren) setOpen((o) => !o);
-					else if (action.type === 'runScript' && onJumpToScript) onJumpToScript(action.scriptName);
-				}}
-			>
-				<span style={{ width: 7, height: 7, borderRadius: 2, background: color, flexShrink: 0 }} />
-				{hasChildren ? (
-					open ? <ChevronDown size={13} className="text-[#637588] shrink-0" /> : <ChevronRight size={13} className="text-[#637588] shrink-0" />
-				) : (
-					<span style={{ width: 13, display: 'inline-block', flexShrink: 0 }} />
+			<div className="flex items-center gap-1.5 py-1 px-1.5 rounded hover:bg-[#323d48]/60 group">
+				<span
+					className="flex items-center gap-1.5 flex-1 min-w-0"
+					style={{ cursor: hasChildren || action.type === 'runScript' ? 'pointer' : 'default' }}
+					onClick={() => {
+						if (hasChildren) setOpen((o) => !o);
+						else if (action.type === 'runScript' && onJumpToScript) onJumpToScript(action.scriptName);
+					}}
+				>
+					<span style={{ width: 7, height: 7, borderRadius: 2, background: color, flexShrink: 0 }} />
+					{hasChildren ? (
+						open ? <ChevronDown size={13} className="text-[#637588] shrink-0" /> : <ChevronRight size={13} className="text-[#637588] shrink-0" />
+					) : (
+						<span style={{ width: 13, display: 'inline-block', flexShrink: 0 }} />
+					)}
+					<span className={`text-xs font-mono truncate ${action.disabled ? 'line-through text-[#637588]' : 'text-[#c5ccd3]'}`}>{label}</span>
+					{action.disabled && (
+						<span className="text-[10px] text-red-400 border border-red-900 rounded px-1 shrink-0">disabled</span>
+					)}
+					{action.type === 'runScript' && <ExternalLinkIcon />}
+				</span>
+				{onOp && (
+					<span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+						{fieldSchema && fieldSchema.length > 0 && (
+							<button
+								title="Edit fields"
+								onClick={() => setFieldsOpen((o) => !o)}
+								className={`p-1 rounded hover:bg-[#3d4a57] ${fieldsOpen ? 'text-[#1a56da]' : 'text-[#637588]'}`}
+							>
+								<Pencil size={11} />
+							</button>
+						)}
+						<button title="Move up" disabled={!canMoveUp} onClick={() => onOp(path, 'moveUp')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] disabled:opacity-30 disabled:hover:bg-transparent text-[10px] leading-none w-[19px] h-[19px]">
+							▲
+						</button>
+						<button title="Move down" disabled={!canMoveDown} onClick={() => onOp(path, 'moveDown')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] disabled:opacity-30 disabled:hover:bg-transparent text-[10px] leading-none w-[19px] h-[19px]">
+							▼
+						</button>
+						<button title={action.disabled ? 'Enable' : 'Disable'} onClick={() => onOp(path, 'toggleDisabled')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]">
+							<Square size={11} />
+						</button>
+						<button title="Duplicate" onClick={() => onOp(path, 'duplicate')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]">
+							<Copy size={11} />
+						</button>
+						<button title="Delete" onClick={() => onOp(path, 'delete')} className="p-1 rounded hover:bg-red-950/40 text-red-400">
+							<Trash2 size={11} />
+						</button>
+					</span>
 				)}
-				<span className={`text-xs font-mono truncate ${action.disabled ? 'line-through text-[#637588]' : 'text-[#c5ccd3]'}`}>{label}</span>
-				{action.disabled && (
-					<span className="text-[10px] text-red-400 border border-red-900 rounded px-1 shrink-0">disabled</span>
-				)}
-				{action.type === 'runScript' && <ExternalLinkIcon />}
 			</div>
+			{fieldsOpen && fieldSchema && (
+				<div className="space-y-1 py-1" style={{ marginLeft: (depth + 1) * 16 }}>
+					{fieldSchema.map((f) => (
+						<div key={f.key} className="flex items-center gap-2">
+							<span className="text-[10px] text-[#8291a1] w-28 shrink-0 truncate">{f.key}</span>
+							<ScriptFieldInput
+								kind={f.kind}
+								value={action[f.key]}
+								gameData={gameData}
+								onChange={(v) => onOp([...path, f.key], 'setField', v)}
+							/>
+						</div>
+					))}
+				</div>
+			)}
 			{hasChildren && open && (
 				<div>
 					{children.map((section, i) => (
@@ -371,7 +662,17 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript }) {
 								</div>
 							) : (
 								section.actions.map((a, i2) => (
-									<ScriptActionNode key={i2} action={a} gameData={gameData} depth={depth + 1} onJumpToScript={onJumpToScript} />
+									<ScriptActionNode
+										key={i2}
+										action={a}
+										gameData={gameData}
+										depth={depth + 1}
+										onJumpToScript={onJumpToScript}
+										path={[...section.basePath, i2]}
+										onOp={onOp}
+										siblingCount={section.actions.length}
+										indexInParent={i2}
+									/>
 								))
 							)}
 						</div>
@@ -389,11 +690,12 @@ function ExternalLinkIcon() {
 // top-level tree for one script: its triggers, its top-level conditions gate
 // (usually just `true == true`, i.e. no extra gate - only worth a line when it's
 // actually something), and its action list
-function ScriptTreeView({ script, gameData, onJumpToScript }) {
+function ScriptTreeView({ script, gameData, onJumpToScript, onOp }) {
 	const triggers = script?.triggers || [];
 	const topConditions = script?.conditions;
 	const hasRealTopCondition =
 		Array.isArray(topConditions) && !(topConditions[1] === true && topConditions[2] === true);
+	const topActions = script?.actions || [];
 
 	return (
 		<div className="space-y-0.5">
@@ -410,8 +712,18 @@ function ScriptTreeView({ script, gameData, onJumpToScript }) {
 					<span className="text-xs font-mono text-[#c5ccd3]">only if: {describeCondition(topConditions, gameData)}</span>
 				</div>
 			)}
-			{(script?.actions || []).map((a, i) => (
-				<ScriptActionNode key={i} action={a} gameData={gameData} depth={0} onJumpToScript={onJumpToScript} />
+			{topActions.map((a, i) => (
+				<ScriptActionNode
+					key={i}
+					action={a}
+					gameData={gameData}
+					depth={0}
+					onJumpToScript={onJumpToScript}
+					path={['actions', i]}
+					onOp={onOp}
+					siblingCount={topActions.length}
+					indexInParent={i}
+				/>
 			))}
 		</div>
 	);
@@ -466,12 +778,12 @@ export default function GameContentEditor() {
 		// avoid a doubled path segment when the configured base URL already ends
 		// in the same folder name the file path starts with - e.g. base
 		// ".../taro2/master/assets" + file "/assets/audio/x.wav" naively
-		// concatenates to ".../assets/assets/audio/x.wav", a 404 - confirmed via
+		// concatenates to ".../assets/assets/audio/x.wav", a 404. Confirmed via
 		// direct request: the doubled path 404s, the de-duplicated one 200s with
 		// the correct audio/wav content-type. This happened because the sound
 		// migration generated paths relative to the repo root (assets/audio/...)
 		// while the base URL here is configured one folder deeper (.../assets),
-		// a convention mismatch sprites apparently didn't hit
+		// a convention mismatch sprites apparently didn't hit.
 		const lastBaseSegment = base.split('/').pop();
 		const pathSegments = path.split('/').filter(Boolean);
 		if (lastBaseSegment && pathSegments[0] === lastBaseSegment) {
@@ -948,11 +1260,11 @@ export default function GameContentEditor() {
 			return next;
 		});
 		setSelectedKey(key);
-		// new sounds are inserted alphabetically by name (every one starts out
+		// New sounds are inserted alphabetically by name (every one starts out
 		// named "New Sound"), so on a list with existing entries it can land
 		// anywhere in the middle - with no visual cue, that reads as "the button
-		// didn't do anything." scroll the new card into view and focus its name
-		// field so it's unmistakable something was actually added
+		// didn't do anything." Scroll the new card into view and focus its name
+		// field so it's unmistakable something was actually added.
 		requestAnimationFrame(() => {
 			const $card = document.querySelector('[data-sound-key="' + key + '"]');
 			if ($card) {
@@ -2960,6 +3272,10 @@ export default function GameContentEditor() {
 														onJumpToScript={(id) => {
 															if (id && scriptsCollection[id]) selectScript(id);
 														}}
+														onOp={(path, operation, payload) => {
+															const next = applyScriptOp(scriptDraftParsed.value, path, operation, payload);
+															setScriptDraft((d) => ({ ...d, bodyText: JSON.stringify(next, null, 2) }));
+														}}
 													/>
 												</div>
 											)
@@ -2976,8 +3292,9 @@ export default function GameContentEditor() {
 											</>
 										)}
 										<p className="text-xs text-[#637588] mt-2">
-											Tree view is read-only - names are resolved from ids for readability, but edits still happen in
-											Raw JSON, same as the "Advanced" box on units/items/projectiles.
+											Hover a row for reorder/duplicate/disable/delete. The pencil icon (when present) opens editable
+											fields for that action - fields showing "complex - edit in Raw JSON" hold a computed expression
+											rather than a plain value, so they're edited there instead.
 										</p>
 									</div>
 								)}
