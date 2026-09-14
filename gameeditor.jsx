@@ -112,6 +112,311 @@ function flattenFolderOptions(folders, rootId) {
 	return out;
 }
 
+// script tree viewers
+// some shit
+function resolveIdName(id, gameData) {
+	if (typeof id !== 'string' || !gameData?.data) return null;
+	const d = gameData.data;
+	const lookups = [
+		['item', d.itemTypes],
+		['unit', d.unitTypes],
+		['projectile', d.projectileTypes],
+		['attribute', d.attributeTypes],
+		['player type', d.playerTypes],
+		['script', d.scripts],
+	];
+	for (const [kind, coll] of lookups) {
+		const hit = coll?.[id];
+		if (hit) return { kind, name: hit.name || hit.folderName || id };
+	}
+	return null;
+}
+
+// "applyForceOnEntityXY" -> "apply force on entity XY", generic fallback for any
+// action/function type name we haven't special-cased below
+function readableType(str) {
+	if (!str) return '';
+	const spaced = str.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+	const words = spaced.split(' ');
+	return words.map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w.toLowerCase())).join(' ');
+}
+
+const CALC_OPERATORS = { '+': '+', '-': '-', '*': '×', '/': '÷' };
+
+// turns any value node from a script (a literal, or a {function:...} descriptor)
+// into a short readable string. Not exhaustive - functions we don't specifically
+// know how to phrase fall back to "functionName(...)" with each argument
+// described recursively, which stays readable even for functions this doesn't
+// have a dedicated phrasing for
+function describeValue(val, gameData) {
+	if (val === null || val === undefined) return 'nothing';
+	if (typeof val === 'boolean') return val ? 'true' : 'false';
+	if (typeof val === 'number') return String(val);
+	if (typeof val === 'string') {
+		const resolved = resolveIdName(val, gameData);
+		return resolved ? resolved.name : `"${val}"`;
+	}
+	if (Array.isArray(val)) return val.map((v) => describeValue(v, gameData)).join(', ');
+	if (typeof val !== 'object') return String(val);
+
+	const fn = val.function;
+	if (!fn) {
+		// a bare {text, entity, key, dataType} style custom-variable reference
+		if (val.text) {
+			const owner = val.entity ? resolveIdName(val.entity, gameData) : null;
+			return owner ? `${val.text} (on ${owner.name})` : val.text;
+		}
+		return JSON.stringify(val);
+	}
+
+	switch (fn) {
+		case 'getVariable':
+			return val.variableName;
+		case 'getTriggeringUnit':
+			return 'triggering unit';
+		case 'getTriggeringItem':
+			return 'triggering item';
+		case 'getTriggeringProjectile':
+			return 'triggering projectile';
+		case 'getLastAttackedUnit':
+			return 'last attacked unit';
+		case 'getLastAttackingUnit':
+			return 'last attacking unit';
+		case 'getLastCreatedUnit':
+			return 'last created unit';
+		case 'thisEntity':
+			return 'this entity';
+		case 'getSelectedEntity':
+			return 'selected entity';
+		case 'undefinedValue':
+			return 'nothing';
+		case 'getOwnerOfItem':
+			return `owner of ${describeValue(val.entity, gameData)}`;
+		case 'getOwner':
+			return `owner of ${describeValue(val.entity, gameData)}`;
+		case 'getItemTypeOfItem':
+			return `item type of ${describeValue(val.entity, gameData)}`;
+		case 'getUnitTypeOfUnit':
+			return `unit type of ${describeValue(val.entity, gameData)}`;
+		case 'getItemTypeName':
+			return `name of ${describeValue(val.itemType, gameData)}`;
+		case 'getEntityAttribute':
+			return `${describeValue(val.attribute, gameData)} of ${describeValue(val.entity, gameData)}`;
+		case 'entityAttributeMax':
+			return `max ${describeValue(val.attribute, gameData)} of ${describeValue(val.entity, gameData)}`;
+		case 'getValueOfEntityVariable':
+			return `${describeValue(val.variable, gameData)} of ${describeValue(val.entity, gameData)}`;
+		case 'getEntityVariable':
+			return describeValue(val.variable, gameData);
+		case 'playerTypeOfPlayer':
+			return `player type of ${describeValue(val.player, gameData)}`;
+		case 'playersAreHostile':
+			return `${describeValue(val.playerA, gameData)} hostile to ${describeValue(val.playerB, gameData)}`;
+		case 'getEntityPosition':
+			return `position of ${describeValue(val.entity, gameData)}`;
+		case 'getPositionX':
+			return `x of ${describeValue(val.position, gameData)}`;
+		case 'getPositionY':
+			return `y of ${describeValue(val.position, gameData)}`;
+		case 'xyCoordinate':
+			return `(${describeValue(val.x, gameData)}, ${describeValue(val.y, gameData)})`;
+		case 'toRadians':
+			return `${describeValue(val.number, gameData)} degrees`;
+		case 'angleBetweenPositions':
+			return `angle from ${describeValue(val.positionA, gameData)} to ${describeValue(val.positionB, gameData)}`;
+		case 'getMin':
+			return `min(${describeValue(val.num1, gameData)}, ${describeValue(val.num2, gameData)})`;
+		case 'getMax':
+			return `max(${describeValue(val.num1, gameData)}, ${describeValue(val.num2, gameData)})`;
+		case 'stringToNumber':
+		case 'numberToString':
+			return describeValue(val.value, gameData);
+		case 'getStringArrayElement':
+			return `${describeValue(val.string, gameData)}[${describeValue(val.number, gameData)}]`;
+		case 'getStringArrayLength':
+			return `length of ${describeValue(val.string, gameData)}`;
+		case 'updateStringArrayElement':
+			return `${describeValue(val.string, gameData)} with [${describeValue(val.number, gameData)}] set to ${describeValue(val.value, gameData)}`;
+		case 'unitIsCarryingItemType':
+			return `${describeValue(val.unit, gameData)} carrying ${describeValue(val.itemType, gameData)}`;
+		case 'getItemAtSlot':
+			return `item in slot ${describeValue(val.slot, gameData)} of ${describeValue(val.unit, gameData)}`;
+		case 'getUnitFromId':
+			return `unit #${describeValue(val.string, gameData)}`;
+		case 'entitiesBetweenTwoPositions':
+			return `entities between ${describeValue(val.positionA, gameData)} and ${describeValue(val.positionB, gameData)}`;
+		case 'calculate': {
+			const [opDesc, a, b] = val.items || [];
+			const op = CALC_OPERATORS[opDesc?.operator] || opDesc?.operator || '?';
+			return `(${describeValue(a, gameData)} ${op} ${describeValue(b, gameData)})`;
+		}
+		default: {
+			const args = Object.entries(val)
+				.filter(([k]) => k !== 'function')
+				.map(([k, v]) => `${k}: ${describeValue(v, gameData)}`)
+				.join(', ');
+			return `${readableType(fn)}(${args})`;
+		}
+	}
+}
+
+// the weird-but-consistent [ {operator,operandType}, operandA, operandB ] triple
+// used for every condition in this schema, including the "OR of triples" case
+function describeCondition(cond, gameData) {
+	if (Array.isArray(cond) && cond.length === 3 && cond[0]?.operator) {
+		const [desc, a, b] = cond;
+		if (desc.operandType === 'or' || desc.operator === 'OR') {
+			return (a || []).map((sub) => describeCondition(sub, gameData)).join(' OR ');
+		}
+		return `${describeValue(a, gameData)} ${desc.operator} ${describeValue(b, gameData)}`;
+	}
+	return describeValue(cond, gameData);
+}
+
+const SCRIPT_NODE_COLORS = {
+	trigger: '#5DCAA5',
+	condition: '#85B7EB',
+	action: '#F0997B',
+	variable: '#AFA9EC',
+	control: '#8291A1',
+	script: '#ED93B1',
+};
+
+// a handful of common param keys worth surfacing inline for actions this viewer
+// doesn't have a dedicated phrasing for (see the default case below) - covers
+// most of the ~80 action types in this engine well enough to be readable even
+// without a bespoke line for every single one.
+const GENERIC_ACTION_PARAM_KEYS = ['entity', 'unit', 'attribute', 'variable', 'variableName', 'value', 'force', 'angle', 'unitType', 'itemType', 'scale', 'slot'];
+
+function ScriptActionNode({ action, gameData, depth, onJumpToScript }) {
+	const [open, setOpen] = useState(depth < 2);
+	if (!action || typeof action !== 'object') return null;
+
+	let color = SCRIPT_NODE_COLORS.action;
+	let label;
+	let children = null; // array of { heading, actions } sections to render nested, collapsible
+
+	if (action.type === 'condition') {
+		color = SCRIPT_NODE_COLORS.condition;
+		label = `if ${describeCondition(action.conditions, gameData)}`;
+		children = [{ heading: null, actions: action.then || [] }];
+		if (action.else && action.else.length) children.push({ heading: 'else', actions: action.else });
+	} else if (action.type === 'runScript') {
+		color = SCRIPT_NODE_COLORS.script;
+		const target = resolveIdName(action.scriptName, gameData);
+		label = `run script: ${target ? target.name : action.scriptName}`;
+	} else if (action.type === 'setVariable') {
+		color = SCRIPT_NODE_COLORS.variable;
+		label = `${action.variableName} = ${describeValue(action.value, gameData)}`;
+	} else if (action.type === 'setEntityVariable') {
+		color = SCRIPT_NODE_COLORS.variable;
+		label = `${describeValue(action.variable, gameData)} of ${describeValue(action.entity, gameData)} = ${describeValue(action.value, gameData)}`;
+	} else if (action.type === 'return' || action.type === 'break' || action.type === 'continue') {
+		color = SCRIPT_NODE_COLORS.control;
+		label = readableType(action.type);
+	} else if (Array.isArray(action.actions)) {
+		// loop-shaped action (for, forAllEntities, forAllPlayers, etc.)
+		color = SCRIPT_NODE_COLORS.control;
+		const rangeBit =
+			action.entityGroup !== undefined
+				? ` over ${describeValue(action.entityGroup, gameData)}`
+				: action.start !== undefined
+					? ` (${action.variableName} from ${describeValue(action.start, gameData)} to ${describeValue(action.stop, gameData)})`
+					: '';
+		label = `${readableType(action.type)}${rangeBit}`;
+		children = [{ heading: null, actions: action.actions }];
+	} else {
+		const parts = GENERIC_ACTION_PARAM_KEYS.filter((k) => action[k] !== undefined).map(
+			(k) => `${k}: ${describeValue(action[k], gameData)}`
+		);
+		label = `${readableType(action.type || 'unknown action')}${parts.length ? ' — ' + parts.join(', ') : ''}`;
+	}
+
+	const hasChildren = !!children;
+
+	return (
+		<div style={{ marginLeft: depth * 16 }}>
+			<div
+				className="flex items-center gap-1.5 py-1 px-1.5 rounded hover:bg-[#323d48]/60"
+				style={{ cursor: hasChildren || action.type === 'runScript' ? 'pointer' : 'default' }}
+				onClick={() => {
+					if (hasChildren) setOpen((o) => !o);
+					else if (action.type === 'runScript' && onJumpToScript) onJumpToScript(action.scriptName);
+				}}
+			>
+				<span style={{ width: 7, height: 7, borderRadius: 2, background: color, flexShrink: 0 }} />
+				{hasChildren ? (
+					open ? <ChevronDown size={13} className="text-[#637588] shrink-0" /> : <ChevronRight size={13} className="text-[#637588] shrink-0" />
+				) : (
+					<span style={{ width: 13, display: 'inline-block', flexShrink: 0 }} />
+				)}
+				<span className={`text-xs font-mono truncate ${action.disabled ? 'line-through text-[#637588]' : 'text-[#c5ccd3]'}`}>{label}</span>
+				{action.disabled && (
+					<span className="text-[10px] text-red-400 border border-red-900 rounded px-1 shrink-0">disabled</span>
+				)}
+				{action.type === 'runScript' && <ExternalLinkIcon />}
+			</div>
+			{hasChildren && open && (
+				<div>
+					{children.map((section, i) => (
+						<div key={i}>
+							{section.heading && (
+								<div className="text-[10px] uppercase tracking-wide text-[#637588]" style={{ marginLeft: (depth + 1) * 16 }}>
+									{section.heading}
+								</div>
+							)}
+							{section.actions.length === 0 ? (
+								<div className="text-xs text-[#637588] italic" style={{ marginLeft: (depth + 1) * 16 }}>
+									(nothing)
+								</div>
+							) : (
+								section.actions.map((a, i2) => (
+									<ScriptActionNode key={i2} action={a} gameData={gameData} depth={depth + 1} onJumpToScript={onJumpToScript} />
+								))
+							)}
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function ExternalLinkIcon() {
+	return <ChevronRight size={11} className="text-[#ED93B1] shrink-0 -ml-0.5" />;
+}
+
+// top-level tree for one script: its triggers, its top-level conditions gate
+// (usually just `true == true`, i.e. no extra gate - only worth a line when it's
+// actually something), and its action list
+function ScriptTreeView({ script, gameData, onJumpToScript }) {
+	const triggers = script?.triggers || [];
+	const topConditions = script?.conditions;
+	const hasRealTopCondition =
+		Array.isArray(topConditions) && !(topConditions[1] === true && topConditions[2] === true);
+
+	return (
+		<div className="space-y-0.5">
+			{triggers.map((t, i) => (
+				<div key={i} className="flex items-center gap-1.5 py-1 px-1.5">
+					<span style={{ width: 7, height: 7, borderRadius: 2, background: SCRIPT_NODE_COLORS.trigger, flexShrink: 0 }} />
+					<span className="text-xs font-mono text-[#c5ccd3]">when: {readableType(t.type)}</span>
+				</div>
+			))}
+			{triggers.length === 0 && <div className="text-xs text-[#637588] italic px-1.5">no triggers</div>}
+			{hasRealTopCondition && (
+				<div className="flex items-center gap-1.5 py-1 px-1.5">
+					<span style={{ width: 7, height: 7, borderRadius: 2, background: SCRIPT_NODE_COLORS.condition, flexShrink: 0 }} />
+					<span className="text-xs font-mono text-[#c5ccd3]">only if: {describeCondition(topConditions, gameData)}</span>
+				</div>
+			)}
+			{(script?.actions || []).map((a, i) => (
+				<ScriptActionNode key={i} action={a} gameData={gameData} depth={0} onJumpToScript={onJumpToScript} />
+			))}
+		</div>
+	);
+}
+
 export default function GameContentEditor() {
 	const [gameData, setGameData] = useState(null);
 	const [editingPlayerTypeKey, setEditingPlayerTypeKey] = useState(null);
@@ -124,6 +429,7 @@ export default function GameContentEditor() {
 	const [selectedScriptFolderId, setSelectedScriptFolderId] = useState(null);
 	const [scriptCollapsed, setScriptCollapsed] = useState({});
 	const [scriptDraft, setScriptDraft] = useState(null);
+	const [scriptViewMode, setScriptViewMode] = useState('tree'); // 'tree' | 'raw'
 	const [scriptBodyError, setScriptBodyError] = useState('');
 	const [dialogueDraft, setDialogueDraft] = useState(null);
 	const [draft, setDraft] = useState(null);
@@ -157,15 +463,15 @@ export default function GameContentEditor() {
 		const base = assetBaseUrl.replace(/\/$/, '');
 		let path = url.startsWith('/') ? url : '/' + url;
 
-		// Avoid a doubled path segment when the configured base URL already ends
+		// avoid a doubled path segment when the configured base URL already ends
 		// in the same folder name the file path starts with - e.g. base
 		// ".../taro2/master/assets" + file "/assets/audio/x.wav" naively
-		// concatenates to ".../assets/assets/audio/x.wav", a 404. Confirmed via
+		// concatenates to ".../assets/assets/audio/x.wav", a 404 - confirmed via
 		// direct request: the doubled path 404s, the de-duplicated one 200s with
 		// the correct audio/wav content-type. This happened because the sound
 		// migration generated paths relative to the repo root (assets/audio/...)
 		// while the base URL here is configured one folder deeper (.../assets),
-		// a convention mismatch sprites apparently didn't hit.
+		// a convention mismatch sprites apparently didn't hit
 		const lastBaseSegment = base.split('/').pop();
 		const pathSegments = path.split('/').filter(Boolean);
 		if (lastBaseSegment && pathSegments[0] === lastBaseSegment) {
@@ -276,6 +582,19 @@ export default function GameContentEditor() {
 		walk(null, 1);
 		return out;
 	}, [isScriptsTab, gameData, scriptsCollection]);
+
+	// live-parsed body for the tree view - separate from the save-time validation
+	// (scriptBodyError) so switching to tree view always reflects whatever's
+	// currently typed in the raw JSON box, valid or not.
+	const scriptDraftParsed = useMemo(() => {
+		if (!scriptDraft) return { value: null, error: null };
+		if (!scriptDraft.bodyText.trim()) return { value: { triggers: [], conditions: [], actions: [] }, error: null };
+		try {
+			return { value: JSON.parse(scriptDraft.bodyText), error: null };
+		} catch (e) {
+			return { value: null, error: e.message };
+		}
+	}, [scriptDraft]);
 
 	const isDialoguesTab = activeTab === 'dialogues';
 	const dialoguesCollection = gameData?.data?.dialogues || {};
@@ -629,11 +948,11 @@ export default function GameContentEditor() {
 			return next;
 		});
 		setSelectedKey(key);
-		// New sounds are inserted alphabetically by name (every one starts out
+		// new sounds are inserted alphabetically by name (every one starts out
 		// named "New Sound"), so on a list with existing entries it can land
 		// anywhere in the middle - with no visual cue, that reads as "the button
-		// didn't do anything." Scroll the new card into view and focus its name
-		// field so it's unmistakable something was actually added.
+		// didn't do anything." scroll the new card into view and focus its name
+		// field so it's unmistakable something was actually added
 		requestAnimationFrame(() => {
 			const $card = document.querySelector('[data-sound-key="' + key + '"]');
 			if ($card) {
@@ -2610,18 +2929,55 @@ export default function GameContentEditor() {
 											</div>
 										)}
 
-										<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Triggers, conditions &amp; actions</h3>
-										<textarea
-											value={scriptDraft.bodyText}
-											onChange={(e) => setScriptDraft((d) => ({ ...d, bodyText: e.target.value }))}
-											spellCheck={false}
-											rows={22}
-											className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]"
-										/>
-										{scriptBodyError && <p className="text-xs text-red-400 mt-1">{scriptBodyError}</p>}
+										<div className="flex items-center justify-between mb-2">
+											<h3 className="text-sm font-medium text-[#c5ccd3]">Triggers, conditions &amp; actions</h3>
+											<div className="flex rounded-md border border-[#3d4a57] overflow-hidden text-xs">
+												<button
+													onClick={() => setScriptViewMode('tree')}
+													className={`px-2.5 py-1 ${scriptViewMode === 'tree' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}
+												>
+													Tree view
+												</button>
+												<button
+													onClick={() => setScriptViewMode('raw')}
+													className={`px-2.5 py-1 ${scriptViewMode === 'raw' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}
+												>
+													Raw JSON
+												</button>
+											</div>
+										</div>
+										{scriptViewMode === 'tree' ? (
+											scriptDraftParsed.error ? (
+												<div className="text-xs text-red-400 bg-red-950/20 border border-red-900 rounded-md p-3">
+													Can't show the tree view - this script's JSON doesn't currently parse: {scriptDraftParsed.error}.
+													Switch to Raw JSON to fix it.
+												</div>
+											) : (
+												<div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3 overflow-x-auto">
+													<ScriptTreeView
+														script={scriptDraftParsed.value}
+														gameData={gameData}
+														onJumpToScript={(id) => {
+															if (id && scriptsCollection[id]) selectScript(id);
+														}}
+													/>
+												</div>
+											)
+										) : (
+											<>
+												<textarea
+													value={scriptDraft.bodyText}
+													onChange={(e) => setScriptDraft((d) => ({ ...d, bodyText: e.target.value }))}
+													spellCheck={false}
+													rows={22}
+													className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]"
+												/>
+												{scriptBodyError && <p className="text-xs text-red-400 mt-1">{scriptBodyError}</p>}
+											</>
+										)}
 										<p className="text-xs text-[#637588] mt-2">
-											Same idea as the "Advanced" box on units/items/projectiles - this is the raw script logic, edited
-											as JSON rather than through a visual builder.
+											Tree view is read-only - names are resolved from ids for readability, but edits still happen in
+											Raw JSON, same as the "Advanced" box on units/items/projectiles.
 										</p>
 									</div>
 								)}
