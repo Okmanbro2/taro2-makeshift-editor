@@ -952,7 +952,7 @@ export default function GameContentEditor() {
 	}
 
 	function loadDraftFromEntity(key, entity) {
-		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = entity;
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = entity;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setDraft({
 			key,
@@ -970,7 +970,7 @@ export default function GameContentEditor() {
 				: {}),
 			scripts: deepClone(scripts) || {},
 			controls: activeTab === 'unitTypes' ? (Object.keys(controls || {}).length ? deepClone(controls) : deepClone(DEFAULT_UNIT_CONTROLS)) : (deepClone(controls) || {}),
-			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
+			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, knockbackForce: Number.isFinite(Number(knockbackForce)) ? Number(knockbackForce) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
 			costUnitAttributes: deepClone(entity.cost?.unitAttributes) || {},
 			costPlayerAttributes: deepClone(entity.cost?.playerAttributes) || {},
@@ -1007,7 +1007,7 @@ export default function GameContentEditor() {
 		};
 		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
 		const newKey = generateKey();
-		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
 		setSelectedKey(newKey);
 		setDraft({
@@ -1023,7 +1023,7 @@ export default function GameContentEditor() {
 			...(activeTab === 'unitTypes'
 				? { defaultItems: deepClone(defaultItems) || [], inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1 }
 				: {}),
-			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
+			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, knockbackForce: Number.isFinite(Number(knockbackForce)) ? Number(knockbackForce) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
 			costUnitAttributes: deepClone(base.cost?.unitAttributes) || {},
 			costPlayerAttributes: deepClone(base.cost?.playerAttributes) || {},
@@ -1398,7 +1398,7 @@ export default function GameContentEditor() {
 				return [key, cleanScript];
 			})),
 			...(activeTab === 'itemTypes' ? { cost: finalCost, damage: finalDamage } : {}),
-			...(activeTab === 'itemTypes' ? { type: draft.type || '', delayBeforeUse: Number(draft.delayBeforeUse) || 0, quantity: draft.quantity ?? null, maxQuantity: draft.maxQuantity ?? null, inventoryImage: draft.inventoryImage || '', description: draft.description || '', fireRate: Number(draft.fireRate) || 0, reloadRate: Number(draft.reloadRate) || 0, showCDOverlay: !!draft.showCDOverlay, isStackable: !!draft.isStackable, isPurchasable: !!draft.isPurchasable, carriedBy: deepClone(draft.carriedBy) || [], canBeUsedBy: deepClone(draft.canBeUsedBy) || [], projectileType: draft.projectileType || '' } : {}),
+			...(activeTab === 'itemTypes' ? { type: draft.type || '', delayBeforeUse: Number(draft.delayBeforeUse) || 0, quantity: draft.quantity ?? null, maxQuantity: draft.maxQuantity ?? null, inventoryImage: draft.inventoryImage || '', description: draft.description || '', fireRate: Number(draft.fireRate) || 0, reloadRate: Number(draft.reloadRate) || 0, showCDOverlay: !!draft.showCDOverlay, knockbackForce: Number(draft.knockbackForce) || 0, isStackable: !!draft.isStackable, isPurchasable: !!draft.isPurchasable, carriedBy: deepClone(draft.carriedBy) || [], canBeUsedBy: deepClone(draft.canBeUsedBy) || [], projectileType: draft.projectileType || '' } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: draft.lifeSpan ?? null } : {}),
 		};
 		if (activeTab === 'unitTypes') {
@@ -2572,6 +2572,9 @@ export default function GameContentEditor() {
 											<span>Show visual cooldown overlay</span>
 										</label>
 										<div className="mt-1 text-xs text-[#637588]">Uses the engine's <span className="font-mono">showCDOverlay</span> setting with <span className="font-mono">fireRate</span> to display the item's in-game cooldown overlay.</div>
+										<label className="block mt-3 text-xs text-[#aab7c4]">Knockback force</label>
+										<input type="number" value={draft.knockbackForce ?? 0} onChange={(e) => updateDraftField('knockbackForce', Number(e.target.value) || 0)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
+										<div className="mt-1 text-xs text-[#637588]">Positive values push the affected unit backward; negative values push it forward.</div>
 									</div>
 									<div>
 										<label className="block text-xs text-[#8291a1] mb-1">Reload rate</label>
