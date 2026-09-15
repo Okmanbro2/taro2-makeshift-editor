@@ -18,7 +18,7 @@ const GROUP_TABS = [
 	{ key: 'itemTypeGroups', label: 'Item Type Groups', dataType: 'itemTypeGroup', collection: 'itemTypes' },
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
-const TILE_PX = 64; // 1 tile = 64x64 in-game pixels, used as the reference scale for the body size preview
+const TILE_PX = 64; 
 
 const DEFAULT_UNIT_CONTROLS = {
 	movementMethod: 'velocity',
@@ -32,8 +32,6 @@ const DEFAULT_UNIT_CONTROLS = {
 	abilities: {},
 };
 
- // 1 tile = 64x64 in-game pixels, used as the reference scale for the body size preview
-
 function generateKey() {
 	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 	let out = '';
@@ -45,24 +43,32 @@ function deepClone(obj) {
 	return obj ? JSON.parse(JSON.stringify(obj)) : obj;
 }
 
-// ensures every unit/item/projectile has a folders[] placement record (defaulting to that tab's root if missing), and
-// that the three root folder nodes exist
-// this lets the rest of the app assume every entity is always "filed" somewhere,
-// instead of special-casing "this entity predates the folders feature"
 function normalizeItemAttributeVisibility(parsed) {
-	const items = parsed?.data?.itemTypes || {};
-	for (const item of Object.values(items)) {
-		if (!item?.attributes || typeof item.attributes !== 'object') continue;
-		for (const attr of Object.values(item.attributes)) {
-			if (!attr || typeof attr !== 'object') continue;
-			if (Object.prototype.hasOwnProperty.call(attr, 'showInDescription')) {
-				const visible = Array.isArray(attr.isVisible) ? attr.isVisible.slice() : (attr.isVisible ? [attr.isVisible] : []);
-				if (attr.showInDescription && !visible.includes('itemDescription')) visible.push('itemDescription');
-				if (!attr.showInDescription) {
-					for (let i = visible.length - 1; i >= 0; i--) if (visible[i] === 'itemDescription') visible.splice(i, 1);
+
+	const data = parsed?.data;
+	const definitions = data?.attributeTypes || {};
+	const collections = ['itemTypes', 'unitTypes', 'playerTypes', 'projectileTypes'];
+
+	for (const collectionName of collections) {
+		const collection = data?.[collectionName] || {};
+		for (const entity of Object.values(collection)) {
+			if (!entity?.attributes || typeof entity.attributes !== 'object') continue;
+			for (const [attrKey, attr] of Object.entries(entity.attributes)) {
+				if (!attr || typeof attr !== 'object') continue;
+				const def = definitions[attrKey];
+				if (def && typeof def === 'object') {
+					entity.attributes[attrKey] = { ...deepClone(def), ...deepClone(attr) };
 				}
-				attr.isVisible = visible;
-				delete attr.showInDescription;
+				const repaired = entity.attributes[attrKey];
+				if (collectionName === 'itemTypes' && Object.prototype.hasOwnProperty.call(repaired, 'showInDescription')) {
+					const visible = Array.isArray(repaired.isVisible) ? repaired.isVisible.slice() : (repaired.isVisible ? [repaired.isVisible] : []);
+					if (repaired.showInDescription && !visible.includes('itemDescription')) visible.push('itemDescription');
+					if (!repaired.showInDescription) {
+						for (let i = visible.length - 1; i >= 0; i--) if (visible[i] === 'itemDescription') visible.splice(i, 1);
+					}
+					repaired.isVisible = visible;
+					delete repaired.showInDescription;
+				}
 			}
 		}
 	}
@@ -91,21 +97,18 @@ function normalizeFolders(parsed) {
 	return parsed;
 }
 
-// is `candidateId` the same as `folderId`, or nested somewhere inside it?
-// used to stop a group from being moved into its own descendant
 function isSelfOrDescendant(folders, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
 	while (cur != null) {
 		if (cur === folderId) return true;
-		if (seen.has(cur)) return false; // guard against any pre-existing cycle
+		if (seen.has(cur)) return false; 
 		seen.add(cur);
 		cur = folders[cur]?.parent;
 	}
 	return false;
 }
 
-// same idea above
 function isSelfOrDescendantScript(scripts, folderId, candidateId) {
 	let cur = candidateId;
 	const seen = new Set();
@@ -132,8 +135,6 @@ function flattenFolderOptions(folders, rootId) {
 	return out;
 }
 
-// script treee
-// some shit
 function resolveIdName(id, gameData) {
 	if (typeof id !== 'string' || !gameData?.data) return null;
 	const d = gameData.data;
@@ -158,9 +159,6 @@ function resolveIdName(id, gameData) {
 	return null;
 }
 
-// Which gameData.data collection backs each editable id-picker field kind - used
-// both to populate a field's dropdown options and (via resolveIdName above) to
-// display a resolved name instead of a raw id anywhere in the tree
 const ID_KIND_COLLECTIONS = {
 	itemTypeId: 'itemTypes',
 	unitTypeId: 'unitTypes',
@@ -176,8 +174,6 @@ const ID_KIND_COLLECTIONS = {
 	stateId: 'states',
 };
 
-// "applyForceOnEntityXY" -> "Apply force on entity XY", generic fallback for any
-// action/function type name we haven't special-cased below
 function readableType(str) {
 	if (!str) return '';
 	const spaced = str.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
@@ -187,11 +183,6 @@ function readableType(str) {
 
 const CALC_OPERATORS = { '+': '+', '-': '-', '*': '×', '/': '÷' };
 
-// turns any value node from a script (a literal, or a {function:...} descriptor)
-// into a short readable string. Not exhaustive - functions we don't specifically
-// know how to phrase fall back to "functionName(...)" with each argument
-// described recursively, which stays readable even for functions this doesn't
-// have a dedicated phrasing for
 function describeValue(val, gameData) {
 	if (val === null || val === undefined) return 'nothing';
 	if (typeof val === 'boolean') return val ? 'true' : 'false';
@@ -205,7 +196,7 @@ function describeValue(val, gameData) {
 
 	const fn = val.function;
 	if (!fn) {
-		// a bare {text, entity, key, dataType} style custom-variable reference
+
 		if (val.text) {
 			const owner = val.entity ? resolveIdName(val.entity, gameData) : null;
 			return owner ? `${val.text} (on ${owner.name})` : val.text;
@@ -304,8 +295,6 @@ function describeValue(val, gameData) {
 	}
 }
 
-// the weird-but-consistent [ {operator,operandType}, operandA, operandB ] triple
-// used for every condition in this schema, including the "OR of triples" case
 function describeCondition(cond, gameData) {
 	if (Array.isArray(cond) && cond.length === 3 && cond[0]?.operator) {
 		const [desc, a, b] = cond;
@@ -326,18 +315,8 @@ const SCRIPT_NODE_COLORS = {
 	script: '#ED93B1',
 };
 
-// a handful of common param keys worth surfacing inline for actions this viewer
-// doesn't have a dedicated phrasing for (see the default case below) - covers
-// most of the action types in this engine well enough to be readable even
-// without a bespoke line for every single one
 const GENERIC_ACTION_PARAM_KEYS = ['entity', 'unit', 'attribute', 'variable', 'variableName', 'value', 'force', 'angle', 'unitType', 'itemType', 'scale', 'slot'];
 
-// data-driven field schemas, generated from real usage across an actual shipped
-// game's scripts (not guessed from memory) - for each action type, which top-level
-// keys are worth exposing as editable fields, and what kind of value each holds,
-// only covers action types that showed up in that real data; anything else still
-// gets full structural editing (delete/duplicate/disable/reorder) plus the
-// generic read-only summary line, it just won't have a dedicated fields panel
 const ACTION_FIELD_SCHEMAS = {
 	addAttributeBuffToUnit: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'time', kind: 'number' }, { key: 'value', kind: 'valueExpr' }],
 	aiAttackUnit: [{ key: 'targetUnit', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
@@ -423,11 +402,6 @@ const ACTION_FIELD_SCHEMAS = {
 	useItemOnce: [{ key: 'item', kind: 'valueExpr' }],
 };
 
-// generic path-based mutator for the whole editable tree - path is an array of
-// keys/indices from the script root (e.g. ['actions', 2, 'then', 0, 'force', 'x']),
-// every structural op (delete/duplicate/move/disable) and every field edit routes
-// through this one function, which is what keeps the editing UI itself simple:
-// every node just needs to know its own path, not how to mutate the tree
 function applyScriptOp(script, path, operation, payload) {
 	const next = deepClone(script);
 	const parentPath = path.slice(0, -1);
@@ -456,13 +430,6 @@ function applyScriptOp(script, path, operation, payload) {
 	return next;
 }
 
-// renders one editable field per the field's `kind`. only handles plain-literal
-// values directly (a number, a string, a boolean, a known id, or a bare {x,y}
-// pair) - anything more complex (a nested function-call expression) is shown via
-// the same read-only describeValue() text used elsewhere in the tree, with a note
-// pointing at Raw JSON, rather than trying to build an editor for arbitrary
-// expression trees
-
 function getAtPath(root, path) {
 	let value = root;
 	for (const k of path || []) value = value?.[k];
@@ -484,7 +451,6 @@ function defaultValueForScriptField(kind) {
 }
 
 const SCRIPT_CONTAINER_ACTION_TYPES = new Set(['for', 'repeat', 'while', 'forAllUnits', 'forAllItems', 'forAllPlayers', 'forAllEntities', 'forAllUnitTypes', 'forAllItemTypes', 'forAllProjectiles', 'forAllRegions']);
-
 
 const FALLBACK_TRIGGER_TYPES = ['gameStart', 'secondTick', 'playerJoinsGame', 'playerLeavesGame', 'playerSendsChatMessage', 'playerCustomInput', 'unitUsesItem', 'unitTouchesUnit', 'unitTouchesItem', 'unitTouchesProjectile', 'unitAttacksUnit', 'unitEntersRegion', 'unitAttributeBecomesZero', 'playerPurchasesUnit', 'htmlUiClick'];
 const FALLBACK_CONDITION_OPERATORS = ['==', '!=', '>', '<', '>=', '<=', 'AND', 'OR'];
@@ -588,7 +554,6 @@ function ScriptExpressionInput({ value, gameData, onChange }) {
 	return <div className="flex items-center gap-1.5 w-full"><div className="flex-1 min-w-0"><ScriptValueEditor value={value} gameData={gameData} onChange={onChange} depth={2} /></div><div className="relative shrink-0"><button type="button" title="Replace with function" onClick={() => setOpen((v) => !v)} className="p-1 rounded border border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]"><Zap size={11} /></button>{open && <div className="absolute z-40 right-0 top-full mt-1 w-64 max-h-64 overflow-y-auto bg-[#262e36] border border-[#48596a] rounded-md shadow-xl p-1">{functions.map((f) => <button key={f.name} type="button" onClick={() => { setOpen(false); onChange(defaultFunctionExpression(f)); }} className="block w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48]">{readableType(f.name)}</button>)}</div>}</div></div>;
 }
 
-
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	const collectionKey = ID_KIND_COLLECTIONS[kind];
 	if (collectionKey) { const options = Object.entries(gameData?.data?.[collectionKey] || {}).map(([id, v]) => ({ id, name: v.name || v.folderName || id })).sort((a, b) => a.name.localeCompare(b.name)); if (typeof value === 'object' && value !== null) return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; return <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="max-w-[240px] bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="">(none)</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>; }
@@ -617,7 +582,7 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 
 	let color = SCRIPT_NODE_COLORS.action;
 	let label;
-	let children = null; // array of { heading, actions, basePath } sections to render nested, collapsible
+	let children = null; 
 
 	if (action.type === 'condition') {
 		color = SCRIPT_NODE_COLORS.condition;
@@ -638,7 +603,7 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 		color = SCRIPT_NODE_COLORS.control;
 		label = readableType(action.type);
 	} else if (Array.isArray(action.actions)) {
-		// loop-shaped action (for, forAllEntities, forAllPlayers, etc.)
+
 		color = SCRIPT_NODE_COLORS.control;
 		const rangeBit =
 			action.entityGroup !== undefined
@@ -754,9 +719,6 @@ function ExternalLinkIcon() {
 	return <ChevronRight size={11} className="text-[#ED93B1] shrink-0 -ml-0.5" />;
 }
 
-// top-level tree for one script: its triggers, its top-level conditions gate
-// (usually just `true == true`, i.e. no extra gate - only worth a line when it's
-// actually something), and its action list
 function ScriptTreeView({ script, gameData, onJumpToScript, onOp, onAddAction, onAddCondition, onAddTrigger }) {
 	const triggers = script?.triggers || [];
 	const topConditions = script?.conditions;
@@ -792,11 +754,11 @@ export default function GameContentEditor() {
 	const [activeTab, setActiveTab] = useState('unitTypes');
 	const [selectedKey, setSelectedKey] = useState(null);
 	const [selectedFolderId, setSelectedFolderId] = useState(null);
-	const [collapsed, setCollapsed] = useState({}); // folderId -> bool, UI-only
+	const [collapsed, setCollapsed] = useState({}); 
 	const [selectedScriptFolderId, setSelectedScriptFolderId] = useState(null);
 	const [scriptCollapsed, setScriptCollapsed] = useState({});
 	const [scriptDraft, setScriptDraft] = useState(null);
-	const [scriptViewMode, setScriptViewMode] = useState('tree'); // 'tree' | 'raw'
+	const [scriptViewMode, setScriptViewMode] = useState('tree'); 
 	const [scriptBodyError, setScriptBodyError] = useState('');
 	const [dialogueDraft, setDialogueDraft] = useState(null);
 	const [draft, setDraft] = useState(null);
@@ -810,8 +772,8 @@ export default function GameContentEditor() {
 	const [gridPreview, setGridPreview] = useState({ cols: 1, rows: 1 });
 	const [selectedBodyName, setSelectedBodyName] = useState('default');
 	const [selectedEntityScriptKey, setSelectedEntityScriptKey] = useState('');
-	const [entityScriptViewMode, setEntityScriptViewMode] = useState('tree'); // 'tree' | 'raw'
-	const [spriteNatural, setSpriteNatural] = useState(null); // {w, h} of the currently loaded sprite sheet image
+	const [entityScriptViewMode, setEntityScriptViewMode] = useState('tree'); 
+	const [spriteNatural, setSpriteNatural] = useState(null); 
 	const [assetBaseUrl, setAssetBaseUrl] = useState(() => localStorage.getItem('editorAssetBaseUrl') || '');
 	const [previewingSoundKey, setPreviewingSoundKey] = useState(null);
 	const fileInputRef = useRef(null);
@@ -822,7 +784,6 @@ export default function GameContentEditor() {
 		localStorage.setItem('editorAssetBaseUrl', value);
 	}
 
-	// sprite/sound urls
 	function resolveAssetUrl(url) {
 		if (!url) return '';
 		if (/^https?:\/\//i.test(url)) return url;
@@ -831,15 +792,6 @@ export default function GameContentEditor() {
 		const base = assetBaseUrl.replace(/\/$/, '');
 		let path = url.startsWith('/') ? url : '/' + url;
 
-		// avoid a doubled path segment when the configured base URL already ends
-		// in the same folder name the file path starts with - e.g. base
-		// ".../taro2/master/assets" + file "/assets/audio/x.wav" naively
-		// concatenates to ".../assets/assets/audio/x.wav", a 404. Confirmed via
-		// direct request: the doubled path 404s, the de-duplicated one 200s with
-		// the correct audio/wav content-type. This happened because the sound
-		// migration generated paths relative to the repo root (assets/audio/...)
-		// while the base URL here is configured one folder deeper (.../assets),
-		// a convention mismatch sprites apparently didn't hit.
 		const lastBaseSegment = base.split('/').pop();
 		const pathSegments = path.split('/').filter(Boolean);
 		if (lastBaseSegment && pathSegments[0] === lastBaseSegment) {
@@ -871,7 +823,6 @@ export default function GameContentEditor() {
 		return entries.filter(([k, v]) => (v?.name || '').toLowerCase().includes(q) || k.toLowerCase().includes(q));
 	}, [categoryMap, search]);
 
-	// folder tree
 	const tree = useMemo(() => {
 		if (!isEntityTab || !gameData) return [];
 		function build(parentId) {
@@ -909,7 +860,6 @@ export default function GameContentEditor() {
 	const isScriptsTab = activeTab === 'globalScripts';
 	const scriptsCollection = gameData?.data?.scripts || {};
 
-	// search and rendering of folders
 	const scriptSearchResults = useMemo(() => {
 		if (!isScriptsTab || !search.trim()) return [];
 		const q = search.toLowerCase();
@@ -951,9 +901,6 @@ export default function GameContentEditor() {
 		return out;
 	}, [isScriptsTab, gameData, scriptsCollection]);
 
-	// live-parsed body for the tree view - separate from the save-time validation
-	// (scriptBodyError) so switching to tree view always reflects whatever's
-	// currently typed in the raw JSON box, valid or not.
 	const scriptDraftParsed = useMemo(() => {
 		if (!scriptDraft) return { value: null, error: null };
 		if (!scriptDraft.bodyText.trim()) return { value: { triggers: [], conditions: [], actions: [] }, error: null };
@@ -967,7 +914,6 @@ export default function GameContentEditor() {
 	const isDialoguesTab = activeTab === 'dialogues';
 	const dialoguesCollection = gameData?.data?.dialogues || {};
 
-	// dialogue
 	const pickableScripts = useMemo(
 		() =>
 			Object.entries(scriptsCollection)
@@ -1104,7 +1050,9 @@ export default function GameContentEditor() {
 		if (!attrKey || draft.attributes[attrKey]) return;
 		const def = attributeTypes[attrKey];
 		const initialVisibility = Array.isArray(def?.isVisible) ? deepClone(def.isVisible) : (def?.isVisible ? [def.isVisible] : []);
-		setDraft((d) => ({ ...d, attributes: { ...d.attributes, [attrKey]: { value: def?.value ?? 0, min: def?.min ?? 0, max: def?.max ?? 100, ...(activeTab === 'itemTypes' ? { isVisible: initialVisibility } : {}) } } }));
+		const initialAttribute = def && typeof def === 'object' ? deepClone(def) : { value: 0, min: 0, max: 100 };
+		if (activeTab === 'itemTypes') initialAttribute.isVisible = initialVisibility;
+		setDraft((d) => ({ ...d, attributes: { ...d.attributes, [attrKey]: initialAttribute } }));
 	}
 
 	function toggleAttributeDescription(attrKey) {
@@ -1332,11 +1280,7 @@ export default function GameContentEditor() {
 			return next;
 		});
 		setSelectedKey(key);
-		// new sounds are inserted alphabetically by name (every one starts out
-		// named "New Sound"), so on a list with existing entries it can land
-		// anywhere in the middle - with no visual cue, that reads as "the button
-		// didn't do anything." scroll the new card into view and focus its name
-		// field so it's unmistakable something was actually added
+
 		requestAnimationFrame(() => {
 			const $card = document.querySelector('[data-sound-key="' + key + '"]');
 			if ($card) {
@@ -1396,9 +1340,7 @@ export default function GameContentEditor() {
 			}
 		});
 		audio.addEventListener('error', () => {
-			// audio.error.code: 1=ABORTED 2=NETWORK 3=DECODE 4=SRC_NOT_SUPPORTED
-			// (i.e. wrong URL / 404 / CORS vs. bad file format - very different
-			// fixes, so surfacing which one it is matters)
+
 			const codeNames = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' };
 			const code = audio.error?.code;
 			console.error(
@@ -1752,7 +1694,7 @@ export default function GameContentEditor() {
 		});
 		setSavedMsg('');
 	}
-	
+
 	function startNewDialogue() {
 		const id = generateKey();
 		setSelectedKey(id);
@@ -1865,7 +1807,6 @@ export default function GameContentEditor() {
 		});
 	}
 
-	// removing folders
 	function deleteFolder(id) {
 		const folder = folders[id];
 		if (!folder) return;
@@ -1929,7 +1870,6 @@ export default function GameContentEditor() {
 		});
 	}
 
-	// player types aka teams
 	function addPlayerType() {
 		const name = prompt('New team/player type name:');
 		if (!name) return;
@@ -2578,7 +2518,7 @@ export default function GameContentEditor() {
 </section>
 
 										{activeTab === 'unitTypes' && (
-							/* Unit inventory */
+
 							<section className="mb-7">
 								<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Inventory</h3>
 								<div className="flex items-center gap-3 mb-3">
@@ -2654,8 +2594,6 @@ export default function GameContentEditor() {
 									</select>
 							</section>
 						)}
-
-
 
 						{activeTab === 'unitTypes' && (
 							<section className="mb-7">
@@ -2805,7 +2743,6 @@ export default function GameContentEditor() {
 							</section>
 						)}
 
-
 						{activeTab === 'projectileTypes' && (
 							<section className="mb-7">
 								<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Sounds</h3>
@@ -2824,7 +2761,7 @@ export default function GameContentEditor() {
 							</section>
 						)}
 
-						{/* Entity scripts */}
+						{}
 		<section className="mb-7">
 			<div className="flex items-center justify-between mb-2">
 				<h3 className="text-sm font-medium text-[#c5ccd3]">Scripts</h3>
@@ -2864,7 +2801,7 @@ export default function GameContentEditor() {
 				</div>
 			)}
 		</section>
-		
+
 		{/* Variables */}
 										<section className="mb-7">
 											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Variables</h3>
@@ -2973,7 +2910,7 @@ export default function GameContentEditor() {
 											</p>
 										</section>
 
-										{/* Body / size */}
+										{}
 										<section className="mb-7">
 											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Body &amp; size</h3>
 											<div className="flex flex-wrap items-center gap-1.5 mb-3">
@@ -3051,7 +2988,6 @@ export default function GameContentEditor() {
 														const rows = draft.cellSheet.rowCount || 1;
 														const hasSprite = !!draft.cellSheet.url;
 
-										// don't know why it keeps doing this
 										const containerW = Math.max(tileCss * 2, bodyCssW + tileCss);
 														const containerH = Math.max(tileCss * 2, bodyCssH + tileCss);
 
@@ -3094,7 +3030,7 @@ export default function GameContentEditor() {
 															/>
 															</div>
 													)}
-													
+
 																		<div
 
 																		className={`absolute border flex items-center justify-center ${
@@ -3121,8 +3057,7 @@ export default function GameContentEditor() {
 											)}
 										</section>
 
-
-										{/* Advanced raw JSON */}
+										{}
 										<details className="mb-4">
 											<summary className="text-sm font-medium text-[#c5ccd3] cursor-pointer select-none">
 												Advanced (AI behavior, abilities, states, everything else)
@@ -3142,7 +3077,7 @@ export default function GameContentEditor() {
 						</>
 					) : isGroupTab ? (
 						<>
-							{/* List pane */}
+							{}
 							<div className="w-64 shrink-0 border-r border-[#3d4a57] flex flex-col">
 								<div className="p-3 border-b border-[#3d4a57]">
 									<div className="relative">
@@ -3180,7 +3115,7 @@ export default function GameContentEditor() {
 								</div>
 							</div>
 
-							{/* Editor pane */}
+							{}
 							<div className="flex-1 overflow-y-auto p-6">
 								{!groupDraft ? (
 									<div className="text-[#637588] text-sm mt-16 text-center">
@@ -3458,7 +3393,7 @@ export default function GameContentEditor() {
 															const next = applyScriptOp(scriptDraftParsed.value, path, operation, payload);
 															setScriptDraft((d) => ({ ...d, bodyText: JSON.stringify(next, null, 2) }));
 														}}
-													
+
 										onAddAction={addScriptAction}
 										onAddCondition={addScriptCondition}
 										onAddTrigger={addScriptTrigger}
@@ -3487,7 +3422,7 @@ export default function GameContentEditor() {
 						</>
 					) : isDialoguesTab ? (
 						<>
-							{/* List pane */}
+							{}
 							<div className="w-64 shrink-0 border-r border-[#3d4a57] flex flex-col">
 								<div className="p-3 border-b border-[#3d4a57]">
 									<div className="relative">
@@ -3525,7 +3460,7 @@ export default function GameContentEditor() {
 								</div>
 							</div>
 
-							{/* Editor pane */}
+							{}
 							<div className="flex-1 overflow-y-auto p-6">
 								{!dialogueDraft ? (
 									<div className="text-[#637588] text-sm mt-16 text-center">
