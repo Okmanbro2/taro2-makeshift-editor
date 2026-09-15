@@ -525,7 +525,7 @@ function ScriptValueEditor({ value, gameData, onChange, depth = 0 }) {
 	if (typeof value === 'string') return <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="w-44 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" />;
 	if (Array.isArray(value)) return <div className="w-full"><button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-[#a3adb8]">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<span className="font-mono">Array [{value.length}]</span></button>{open && <div className="ml-3 mt-1 border-l border-[#48596a] pl-2 space-y-1">{value.map((item, index) => <div key={index} className="flex items-start gap-1.5"><span className="text-[10px] text-[#637588] font-mono w-5 pt-1">{index}</span><div className="flex-1 min-w-0"><ScriptValueEditor value={item} gameData={gameData} depth={depth + 1} onChange={(next) => { const copy = value.slice(); copy[index] = next; onChange(copy); }} /></div><button type="button" title="Remove array entry" onClick={() => onChange(value.filter((_, i) => i !== index))} className="p-1 text-[#637588] hover:text-red-400"><X size={11} /></button></div>)}<button type="button" onClick={() => onChange([...value, null])} className="text-[10px] text-[#637588] hover:text-[#1a56da]">+ Add value</button></div>}</div>;
 	if (typeof value === 'object') {
-		if (typeof value.function === 'string') return <ScriptFunctionEditor value={value} gameData={gameData} onChange={onChange} />;
+		if (typeof value.function === 'string') return <ScriptFunctionEditor value={value} gameData={gameData} depth={depth} onChange={onChange} />;
 		const keys = Object.keys(value);
 		return <div className="w-full"><button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-[#a3adb8]">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<span className="font-mono">{value.type || 'Object'}</span><span className="text-[10px] text-[#637588]">{keys.length} field{keys.length === 1 ? '' : 's'}</span></button>{open && <div className="ml-3 mt-1 border-l border-[#48596a] pl-2 space-y-1.5">{keys.map((key) => <div key={key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] font-mono w-24 shrink-0 pt-1 truncate">{key}</span><div className="flex-1 min-w-0"><ScriptValueEditor value={value[key]} gameData={gameData} depth={depth + 1} onChange={(next) => onChange({ ...value, [key]: next })} /></div><button type="button" title={`Remove ${key}`} onClick={() => { const copy = { ...value }; delete copy[key]; onChange(copy); }} className="p-1 text-[#637588] hover:text-red-400"><X size={11} /></button></div>)}</div>}</div>;
 	}
@@ -551,15 +551,34 @@ function getFunctionVocabulary(gameData) {
 function defaultValueFromExample(value) { if (value === null || value === undefined) return null; if (Array.isArray(value)) return []; if (typeof value === 'object') return deepClone(value); if (typeof value === 'boolean') return false; if (typeof value === 'number') return 0; if (typeof value === 'string') return ''; return null; }
 function defaultFunctionExpression(entry) { if (!entry) return { function: 'undefinedValue' }; const out = { function: entry.name }; for (const key of Object.keys(entry.example || {}).filter((k) => k !== 'function')) out[key] = defaultValueFromExample(entry.example[key]); return out; }
 
-function ScriptFunctionEditor({ value, gameData, onChange }) {
+function ScriptFunctionEditor({ value, gameData, onChange, depth = 0 }) {
 	const vocabulary = getFunctionVocabulary(gameData);
 	const current = vocabulary.find((x) => x.name === value?.function);
 	const [searchText, setSearchText] = useState('');
+	const [open, setOpen] = useState(depth < 1);
 	const filtered = vocabulary.filter((x) => { const q = searchText.trim().toLowerCase(); return !q || x.name.toLowerCase().includes(q) || readableType(x.name).toLowerCase().includes(q); }).slice(0, 100);
 	const changeFunction = (name) => { const entry = vocabulary.find((x) => x.name === name); if (!entry) return; const next = { function: name }; for (const key of entry.args) next[key] = value && Object.prototype.hasOwnProperty.call(value, key) ? deepClone(value[key]) : defaultValueFromExample(entry.example?.[key]); onChange(next); };
 	const keys = Object.keys(value || {}).filter((k) => k !== 'function');
 	const missing = (current?.args || []).filter((k) => !Object.prototype.hasOwnProperty.call(value || {}, k));
-	return <div className="w-full bg-[#20272e] border border-[#48596a] rounded-md p-2 space-y-2"><div className="flex items-center gap-2"><Zap size={12} className="text-[#AFA9EC]" /><select value={value?.function || ''} onChange={(e) => changeFunction(e.target.value)} className="flex-1 min-w-0 bg-[#323d48] border border-[#48596a] rounded px-1.5 py-1 text-xs font-mono"><option value="">(choose function)</option>{filtered.map((x) => <option key={x.name} value={x.name}>{readableType(x.name)}</option>)}</select></div><input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search functions..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-xs" />{value?.function && <div className="space-y-1.5">{keys.map((key) => <div key={key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] font-mono w-28 shrink-0 pt-1 truncate">{key}</span><div className="flex-1 min-w-0"><ScriptValueEditor value={value[key]} gameData={gameData} depth={1} onChange={(next) => onChange({ ...value, [key]: next })} /></div><button type="button" title={`Remove ${key}`} onClick={() => { const copy = { ...value }; delete copy[key]; onChange(copy); }} className="p-1 text-[#637588] hover:text-red-400"><X size={11} /></button></div>)}{missing.length > 0 && <select defaultValue="" onChange={(e) => { const key = e.target.value; if (!key) return; onChange({ ...value, [key]: defaultValueFromExample(current?.example?.[key]) }); e.target.value = ''; }} className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-1 text-[10px] text-[#8291a1]"><option value="">+ Add known argument...</option>{missing.map((key) => <option key={key} value={key}>{key}</option>)}</select>}</div>}</div>;
+	const compact = depth > 0;
+	return <div className={compact ? "w-full bg-[#252d35] border border-[#3d4a57] rounded-md" : "w-full bg-[#20272e] border border-[#48596a] rounded-md p-2 space-y-2"}>
+		<div className={compact ? "flex items-center gap-1.5 px-1.5 py-1" : "flex items-center gap-2"}>
+			{compact ? <button type="button" title={open ? "Collapse arguments" : "Expand arguments"} onClick={() => setOpen((v) => !v)} className="shrink-0 text-[#8291a1] hover:text-[#c5ccd3]">{open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}</button> : <Zap size={12} className="text-[#AFA9EC]" />}
+			{compact && <Zap size={10} className="text-[#AFA9EC]" />}
+			<select value={value?.function || ''} onChange={(e) => changeFunction(e.target.value)} className={compact ? "flex-1 min-w-0 max-w-full bg-[#323d48] border border-[#48596a] rounded px-1 py-0.5 text-[11px] font-mono" : "flex-1 min-w-0 bg-[#323d48] border border-[#48596a] rounded px-1.5 py-1 text-xs font-mono"}>
+				<option value="">(choose function)</option>{filtered.map((x) => <option key={x.name} value={x.name}>{readableType(x.name)}</option>)}
+			</select>
+		</div>
+		{!compact && <input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search functions..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-xs" />}
+		{value?.function && open && <div className={compact ? "px-1.5 pb-1.5 pl-4 space-y-1" : "space-y-1.5"}>
+			{keys.map((key) => <div key={key} className={compact ? "grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-1" : "flex items-start gap-2"}>
+				<span className={compact ? "text-[9px] text-[#8291a1] font-mono pt-1 truncate max-w-24" : "text-[10px] text-[#8291a1] font-mono w-28 shrink-0 pt-1 truncate"}>{key}</span>
+				<div className="min-w-0"><ScriptValueEditor value={value[key]} gameData={gameData} depth={depth + 1} onChange={(next) => onChange({ ...value, [key]: next })} /></div>
+				<button type="button" title={`Remove ${key}`} onClick={() => { const copy = { ...value }; delete copy[key]; onChange(copy); }} className="p-0.5 text-[#637588] hover:text-red-400"><X size={10} /></button>
+			</div>)}
+			{missing.length > 0 && <select defaultValue="" onChange={(e) => { const key = e.target.value; if (!key) return; onChange({ ...value, [key]: defaultValueFromExample(current?.example?.[key]) }); e.target.value = ''; }} className="max-w-full bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-1 text-[10px] text-[#8291a1]"><option value="">+ Add known argument...</option>{missing.map((key) => <option key={key} value={key}>{key}</option>)}</select>}
+		</div>}
+	</div>;
 }
 
 function ScriptExpressionInput({ value, gameData, onChange }) {
