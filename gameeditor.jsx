@@ -418,6 +418,9 @@ function applyScriptOp(script, path, operation, payload) {
 
 	if (operation === 'setField') {
 		parent[lastKey] = payload;
+	} else if (operation === 'insert') {
+		const list = getAtPath(next, path);
+		if (Array.isArray(list) && payload?.value) list.splice(Math.max(0, Math.min(payload.index ?? list.length, list.length)), 0, deepClone(payload.value));
 	} else if (operation === 'toggleDisabled') {
 		const node = parent[lastKey];
 		if (node) node.disabled = !node.disabled;
@@ -439,6 +442,102 @@ function applyScriptOp(script, path, operation, payload) {
 // the same read-only describeValue() text used elsewhere in the tree, with a note
 // pointing at Raw JSON, rather than trying to build an editor for arbitrary
 // expression trees
+
+function getAtPath(root, path) {
+	let value = root;
+	for (const k of path || []) value = value?.[k];
+	return value;
+}
+
+function defaultValueForScriptField(kind) {
+	switch (kind) {
+		case 'boolean': return false;
+		case 'number': return 0;
+		case 'xy': return { x: 0, y: 0 };
+		case 'string': return '';
+		case 'valueExpr': return 0;
+		case 'itemTypeId': case 'unitTypeId': case 'projectileTypeId': case 'attributeId':
+		case 'playerTypeId': case 'scriptId': case 'dialogueId': case 'shopId': case 'soundId':
+		case 'musicId': case 'particleTypeId': case 'stateId': return '';
+		default: return null;
+	}
+}
+
+const SCRIPT_CONTAINER_ACTION_TYPES = new Set(['for', 'repeat', 'while', 'forAllUnits', 'forAllItems', 'forAllPlayers', 'forAllEntities', 'forAllUnitTypes', 'forAllItemTypes', 'forAllProjectiles', 'forAllRegions']);
+
+function defaultActionForType(type) {
+	if (type === 'condition') return { type: 'condition', conditions: [{ operandType: 'boolean', operator: '==' }, true, true], then: [], else: [] };
+	if (type === 'runScript') return { type: 'runScript', scriptName: '', isEntityScript: false };
+	const schema = ACTION_FIELD_SCHEMAS[type];
+	if (schema) {
+		const out = { type };
+		for (const field of schema) out[field.key] = defaultValueForScriptField(field.kind);
+		if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) out.actions = [];
+		return out;
+	}
+	if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) return { type, actions: [] };
+	return { type };
+}
+
+const FALLBACK_TRIGGER_TYPES = ['gameStart', 'secondTick', 'playerJoinsGame', 'playerLeavesGame', 'playerSendsChatMessage', 'playerCustomInput', 'unitUsesItem', 'unitTouchesUnit', 'unitTouchesItem', 'unitTouchesProjectile', 'unitAttacksUnit', 'unitEntersRegion', 'unitAttributeBecomesZero', 'playerPurchasesUnit', 'htmlUiClick'];
+const FALLBACK_CONDITION_OPERATORS = ['==', '!=', '>', '<', '>=', '<=', 'AND', 'OR'];
+const FALLBACK_OPERAND_TYPES = ['boolean', 'number', 'string', 'player', 'unit', 'item', 'projectile', 'unitType', 'attribute'];
+
+function collectScriptVocabulary(gameData) {
+	const scripts = gameData?.data?.scripts || {};
+	const triggerTypes = new Set(FALLBACK_TRIGGER_TYPES);
+	const actionTypes = new Set(Object.keys(ACTION_FIELD_SCHEMAS));
+	const conditionOperators = new Set(FALLBACK_CONDITION_OPERATORS);
+	const operandTypes = new Set(FALLBACK_OPERAND_TYPES);
+	function walk(value) {
+		if (Array.isArray(value)) return value.forEach(walk);
+		if (!value || typeof value !== 'object') return;
+		if (value.type && value.type !== 'condition') actionTypes.add(value.type);
+		if (value.type === 'condition' && Array.isArray(value.conditions) && value.conditions[0]) {
+			if (value.conditions[0].operator) conditionOperators.add(value.conditions[0].operator);
+			if (value.conditions[0].operandType) operandTypes.add(value.conditions[0].operandType);
+		}
+		Object.values(value).forEach(walk);
+	}
+	Object.values(scripts).forEach((script) => {
+		(script?.triggers || []).forEach((t) => { if (t?.type) triggerTypes.add(t.type); });
+		walk(script?.actions);
+		if (Array.isArray(script?.conditions) && script.conditions[0]) {
+			if (script.conditions[0].operator) conditionOperators.add(script.conditions[0].operator);
+			if (script.conditions[0].operandType) operandTypes.add(script.conditions[0].operandType);
+		}
+	});
+	return { triggers: [...triggerTypes].sort((a,b) => readableType(a).localeCompare(readableType(b))), actions: [...actionTypes].sort((a,b) => readableType(a).localeCompare(readableType(b))), operators: [...conditionOperators].sort(), operandTypes: [...operandTypes].sort() };
+}
+
+function ScriptConditionEditor({ value, gameData, onChange }) {
+	const vocab = collectScriptVocabulary(gameData);
+	const cond = Array.isArray(value) && value.length >= 3 && value[0] && typeof value[0] === 'object' ? value : [{ operandType: 'boolean', operator: '==' }, true, true];
+	const meta = cond[0] || {};
+	return (
+		<div className="w-full bg-[#262e36]/70 border border-[#3d4a57] rounded-md p-2 space-y-2">
+			<div className="flex flex-wrap items-center gap-2">
+				<select value={meta.operandType || 'boolean'} onChange={(e) => onChange([{ ...meta, operandType: e.target.value }, cond[1], cond[2]])} className="bg-[#323d48] border border-[#48596a] rounded px-1.5 py-1 text-xs">{vocab.operandTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+				<select value={meta.operator || '=='} onChange={(e) => onChange([{ ...meta, operator: e.target.value }, cond[1], cond[2]])} className="bg-[#323d48] border border-[#48596a] rounded px-1.5 py-1 text-xs">{vocab.operators.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+			</div>
+			<div className="grid grid-cols-[auto_1fr] items-start gap-x-2 gap-y-1">
+				<span className="text-[10px] text-[#8291a1] pt-1">left</span><ScriptValueEditor value={cond[1]} gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} />
+				<span className="text-[10px] text-[#8291a1] pt-1">right</span><ScriptValueEditor value={cond[2]} gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} />
+			</div>
+		</div>
+	);
+}
+
+function ScriptAddMenu({ label, options, onSelect }) {
+	const [open, setOpen] = useState(false);
+	return (
+		<div className="relative inline-block">
+			<button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da]"><Plus size={13} /> {label}</button>
+			{open && <div className="absolute z-30 mt-1 left-0 min-w-64 max-h-72 overflow-y-auto bg-[#262e36] border border-[#48596a] rounded-md shadow-xl p-1">{options.map((option) => <button key={option.value} type="button" onClick={() => { setOpen(false); onSelect(option.value); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48]">{option.label}</button>)}</div>}
+		</div>
+	);
+}
+
 function ScriptValueEditor({ value, gameData, onChange, depth = 0 }) {
 	const [open, setOpen] = useState(depth < 1);
 
@@ -621,7 +720,7 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 	}
 
 	const hasChildren = !!children;
-	const fieldSchema = action.type === 'condition' ? [{ key: 'conditions', kind: 'valueExpr' }] : ACTION_FIELD_SCHEMAS[action.type];
+	const fieldSchema = action.type === 'condition' ? null : ACTION_FIELD_SCHEMAS[action.type];
 	const canMoveUp = indexInParent > 0;
 	const canMoveDown = indexInParent < siblingCount - 1;
 
@@ -650,7 +749,7 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 				</span>
 				{onOp && (
 					<span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-						{fieldSchema && fieldSchema.length > 0 && (
+						{((fieldSchema && fieldSchema.length > 0) || action.type === 'condition') && (
 							<button
 								title="Edit fields"
 								onClick={() => setFieldsOpen((o) => !o)}
@@ -677,17 +776,17 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 					</span>
 				)}
 			</div>
+			{action.type === 'condition' && fieldsOpen && (
+				<div className="space-y-1 py-1" style={{ marginLeft: (depth + 1) * 16 }}>
+					<ScriptConditionEditor value={action.conditions} gameData={gameData} onChange={(v) => onOp([...path, 'conditions'], 'setField', v)} />
+				</div>
+			)}
 			{fieldsOpen && fieldSchema && (
 				<div className="space-y-1 py-1" style={{ marginLeft: (depth + 1) * 16 }}>
 					{fieldSchema.map((f) => (
 						<div key={f.key} className="flex items-center gap-2">
 							<span className="text-[10px] text-[#8291a1] w-28 shrink-0 truncate">{f.key}</span>
-							<ScriptFieldInput
-								kind={f.kind}
-								value={action[f.key]}
-								gameData={gameData}
-								onChange={(v) => onOp([...path, f.key], 'setField', v)}
-							/>
+							<ScriptFieldInput kind={f.kind} value={action[f.key]} gameData={gameData} onChange={(v) => onOp([...path, f.key], 'setField', v)} />
 						</div>
 					))}
 				</div>
@@ -696,30 +795,16 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 				<div>
 					{children.map((section, i) => (
 						<div key={i}>
-							{section.heading && (
-								<div className="text-[10px] uppercase tracking-wide text-[#637588]" style={{ marginLeft: (depth + 1) * 16 }}>
-									{section.heading}
-								</div>
-							)}
+							{section.heading && <div className="text-[10px] uppercase tracking-wide text-[#637588]" style={{ marginLeft: (depth + 1) * 16 }}>{section.heading}</div>}
+							<div className="flex items-center gap-1.5 py-1" style={{ marginLeft: (depth + 1) * 16 }}>
+								<ScriptAddMenu label="Add action" options={collectScriptVocabulary(gameData).actions.map((type) => ({ value: type, label: readableType(type) }))} onSelect={(type) => onOp?.(section.basePath, 'insert', { index: section.actions.length, value: defaultActionForType(type) })} />
+								<button type="button" onClick={() => onOp?.(section.basePath, 'insert', { index: section.actions.length, value: defaultActionForType('condition') })} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#8291a1] hover:text-[#85B7EB]"><Plus size={11} /> Condition</button>
+							</div>
 							{section.actions.length === 0 ? (
-								<div className="text-xs text-[#637588] italic" style={{ marginLeft: (depth + 1) * 16 }}>
-									(nothing)
-								</div>
-							) : (
-								section.actions.map((a, i2) => (
-									<ScriptActionNode
-										key={i2}
-										action={a}
-										gameData={gameData}
-										depth={depth + 1}
-										onJumpToScript={onJumpToScript}
-										path={[...section.basePath, i2]}
-										onOp={onOp}
-										siblingCount={section.actions.length}
-										indexInParent={i2}
-									/>
-								))
-							)}
+								<div className="text-xs text-[#637588] italic" style={{ marginLeft: (depth + 1) * 16 }}>(nothing)</div>
+							) : section.actions.map((a, i2) => (
+								<ScriptActionNode key={i2} action={a} gameData={gameData} depth={depth + 1} onJumpToScript={onJumpToScript} path={[...section.basePath, i2]} onOp={onOp} siblingCount={section.actions.length} indexInParent={i2} />
+							))}
 						</div>
 					))}
 				</div>
@@ -735,41 +820,29 @@ function ExternalLinkIcon() {
 // top-level tree for one script: its triggers, its top-level conditions gate
 // (usually just `true == true`, i.e. no extra gate - only worth a line when it's
 // actually something), and its action list
-function ScriptTreeView({ script, gameData, onJumpToScript, onOp }) {
+function ScriptTreeView({ script, gameData, onJumpToScript, onOp, onAddAction, onAddCondition, onAddTrigger }) {
 	const triggers = script?.triggers || [];
 	const topConditions = script?.conditions;
-	const hasRealTopCondition =
-		Array.isArray(topConditions) && !(topConditions[1] === true && topConditions[2] === true);
+	const hasRealTopCondition = Array.isArray(topConditions) && topConditions.length >= 3;
 	const topActions = script?.actions || [];
-
+	const vocab = collectScriptVocabulary(gameData);
+	const addActionOptions = vocab.actions.map((type) => ({ value: type, label: readableType(type) }));
+	const addTriggerOptions = vocab.triggers.map((type) => ({ value: type, label: readableType(type) }));
 	return (
-		<div className="space-y-0.5">
-			{triggers.map((t, i) => (
-				<div key={i} className="flex items-center gap-1.5 py-1 px-1.5">
-					<span style={{ width: 7, height: 7, borderRadius: 2, background: SCRIPT_NODE_COLORS.trigger, flexShrink: 0 }} />
-					<span className="text-xs font-mono text-[#c5ccd3]">when: {readableType(t.type)}</span>
-				</div>
-			))}
-			{triggers.length === 0 && <div className="text-xs text-[#637588] italic px-1.5">no triggers</div>}
-			{hasRealTopCondition && (
-				<div className="flex items-center gap-1.5 py-1 px-1.5">
-					<span style={{ width: 7, height: 7, borderRadius: 2, background: SCRIPT_NODE_COLORS.condition, flexShrink: 0 }} />
-					<span className="text-xs font-mono text-[#c5ccd3]">only if: {describeCondition(topConditions, gameData)}</span>
-				</div>
-			)}
-			{topActions.map((a, i) => (
-				<ScriptActionNode
-					key={i}
-					action={a}
-					gameData={gameData}
-					depth={0}
-					onJumpToScript={onJumpToScript}
-					path={['actions', i]}
-					onOp={onOp}
-					siblingCount={topActions.length}
-					indexInParent={i}
-				/>
-			))}
+		<div className="space-y-1">
+			<div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-[#3d4a57]">
+				<span className="text-[10px] uppercase tracking-wide text-[#637588] mr-1">Triggers</span>
+				{triggers.map((t, i) => <div key={i} className="flex items-center gap-1.5 py-1 px-2 rounded bg-[#262e36] border border-[#3d4a57] group"><span style={{ width: 7, height: 7, borderRadius: 2, background: SCRIPT_NODE_COLORS.trigger, flexShrink: 0 }} /><span className="text-xs font-mono text-[#c5ccd3]">when: {readableType(t.type)}</span><button type="button" title="Remove trigger" onClick={() => onOp?.(['triggers', i], 'delete')} className="opacity-0 group-hover:opacity-100 p-0.5 text-red-400 hover:bg-red-950/40 rounded"><X size={11} /></button></div>)}
+				{onAddTrigger && <ScriptAddMenu label="Add trigger" options={addTriggerOptions} onSelect={(type) => onAddTrigger({ type })} />}
+				{triggers.length === 0 && <span className="text-[10px] text-[#637588] italic">No triggers yet</span>}
+			</div>
+			<div className="py-2 border-b border-[#3d4a57]">
+				<div className="flex items-center justify-between gap-2 mb-1"><div className="flex items-center gap-1.5"><span style={{ width: 7, height: 7, borderRadius: 2, background: SCRIPT_NODE_COLORS.condition, flexShrink: 0 }} /><span className="text-xs font-mono text-[#c5ccd3]">Top-level condition</span></div>{hasRealTopCondition && <button type="button" onClick={() => onOp?.(['conditions'], 'setField', [])} className="text-[10px] text-red-400 hover:underline">Remove</button>}</div>
+				{hasRealTopCondition ? <ScriptConditionEditor value={topConditions} gameData={gameData} onChange={(v) => onOp?.(['conditions'], 'setField', v)} /> : <div className="text-[10px] text-[#637588] flex items-center gap-2"><span>No extra gate.</span><button type="button" onClick={() => onOp?.(['conditions'], 'setField', [{ operandType: 'boolean', operator: '==' }, true, true])} className="text-[#1a56da] hover:underline">+ Add condition</button></div>}
+			</div>
+			<div className="flex items-center gap-1.5 pt-2 pb-1"><span className="text-[10px] uppercase tracking-wide text-[#637588] mr-1">Actions</span>{onAddAction && <ScriptAddMenu label="Add action" options={addActionOptions} onSelect={(type) => onAddAction(['actions'], topActions.length, defaultActionForType(type))} />}{onAddCondition && <button type="button" onClick={() => onAddCondition(['actions'], topActions.length)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#85B7EB] hover:text-[#85B7EB]"><Plus size={13} /> Add condition</button>}</div>
+			{topActions.map((a, i) => <ScriptActionNode key={i} action={a} gameData={gameData} depth={0} onJumpToScript={onJumpToScript} path={['actions', i]} onOp={onOp} siblingCount={topActions.length} indexInParent={i} />)}
+			{topActions.length === 0 && <div className="text-xs text-[#637588] italic px-1.5 py-2">No actions yet. Add an action or condition above.</div>}
 		</div>
 	);
 }
@@ -1437,6 +1510,13 @@ export default function GameContentEditor() {
 			columnCount: Math.max(1, Number(draft.cellSheet?.columnCount) || 1),
 			rowCount: Math.max(1, Number(draft.cellSheet?.rowCount) || 1),
 		};
+		for (const [key, value] of Object.entries(draft.scripts || {})) {
+			if (typeof value?._editorBodyText === 'string') {
+				try { JSON.parse(value._editorBodyText.trim() || '{\"triggers\":[],\"conditions\":[],\"actions\":[]}'); }
+				catch (err) { setAdvancedError(`Embedded script "${value?.name || key}" is invalid: ${err.message}`); return; }
+			}
+		}
+
 		const finalEntity = {
 			...restParsed,
 			id: draft.key,
@@ -1449,6 +1529,14 @@ export default function GameContentEditor() {
 			...(draft.effects !== undefined ? { effects: deepClone(draft.effects) } : {}),
 			scripts: Object.fromEntries(Object.entries(draft.scripts || {}).map(([key, value]) => {
 				const { _editorBodyText, ...cleanScript } = value || {};
+				if (typeof _editorBodyText === 'string') {
+					try {
+						const parsedBody = _editorBodyText.trim() ? JSON.parse(_editorBodyText) : { triggers: [], conditions: [], actions: [] };
+						return [key, { ...parsedBody, key: cleanScript.key ?? key, name: cleanScript.name || '', parent: cleanScript.parent ?? null, order: cleanScript.order ?? 0 }];
+					} catch (err) {
+						throw new Error(`Embedded script "${cleanScript.name || key}" is invalid: ${err.message}`);
+					}
+				}
 				return [key, cleanScript];
 			})),
 			...(activeTab === 'itemTypes' ? { cost: finalCost, damage: finalDamage } : {}),
@@ -1612,6 +1700,27 @@ export default function GameContentEditor() {
 		});
 		setScriptDraft((d) => ({ ...d, isNew: false }));
 		setSavedMsg('Saved to the working copy in this tool. Download the file below to keep it.');
+	}
+
+	function updateScriptTree(nextBody) {
+		setScriptDraft((d) => ({ ...d, bodyText: JSON.stringify(nextBody, null, 2) }));
+	}
+
+	function addScriptTrigger(trigger) {
+		if (!scriptDraftParsed.value) return;
+		const next = deepClone(scriptDraftParsed.value);
+		if (!Array.isArray(next.triggers)) next.triggers = [];
+		next.triggers.push(trigger);
+		updateScriptTree(next);
+	}
+
+	function addScriptAction(listPath, index, action) {
+		if (!scriptDraftParsed.value) return;
+		updateScriptTree(applyScriptOp(scriptDraftParsed.value, listPath, 'insert', { index, value: action }));
+	}
+
+	function addScriptCondition(listPath, index) {
+		addScriptAction(listPath, index, defaultActionForType('condition'));
 	}
 
 	function deleteScript() {
@@ -2789,7 +2898,11 @@ export default function GameContentEditor() {
 							<div className="flex items-center justify-between gap-2 mb-2"><div className="text-xs text-[#8291a1]">{script.name || selectedEntityScriptKey}</div>{entityScriptViewMode === 'tree' && <span className="text-[10px] text-[#637588]">Editable tree</span>}</div>
 							{entityScriptViewMode === 'tree' ? (
 								parseError ? <div className="text-xs text-red-400 bg-red-950/20 border border-red-900 rounded-md p-3">Can't show the tree view - this script's JSON doesn't currently parse: {parseError}. Switch to Raw JSON to fix it.</div> :
-								<ScriptTreeView script={parsed} gameData={gameData} onJumpToScript={(id) => { if (id && scriptsCollection[id]) selectScript(id); }} onOp={(path, operation, payload) => { const next = applyScriptOp(parsed, path, operation, payload); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }} />
+								<ScriptTreeView script={parsed} gameData={gameData} onJumpToScript={(id) => { if (id && scriptsCollection[id]) selectScript(id); }} onOp={(path, operation, payload) => { const next = applyScriptOp(parsed, path, operation, payload); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }} 
+										onAddAction={(listPath, index, action) => { const next = applyScriptOp(parsed, listPath, 'insert', { index, value: action }); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }}
+										onAddCondition={(listPath, index) => { const next = applyScriptOp(parsed, listPath, 'insert', { index, value: defaultActionForType('condition') }); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }}
+										onAddTrigger={(trigger) => { const next = deepClone(parsed); if (!Array.isArray(next.triggers)) next.triggers = []; next.triggers.push(trigger); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }}
+									/>
 							) : <>
 								<textarea value={raw} onChange={(e)=>updateEntityScriptBody(selectedEntityScriptKey,e.target.value)} spellCheck={false} rows={18} className="w-full bg-[#262e36] border border-[#3d4a57] rounded p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]" />
 								<button onClick={()=>saveEntityScriptBody(selectedEntityScriptKey)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#3d4a57] text-sm hover:bg-[#48596a]"><Save size={13}/> Apply script JSON</button>
@@ -3393,7 +3506,11 @@ export default function GameContentEditor() {
 															const next = applyScriptOp(scriptDraftParsed.value, path, operation, payload);
 															setScriptDraft((d) => ({ ...d, bodyText: JSON.stringify(next, null, 2) }));
 														}}
-													/>
+													
+										onAddAction={addScriptAction}
+										onAddCondition={addScriptCondition}
+										onAddTrigger={addScriptTrigger}
+									/>
 												</div>
 											)
 										) : (
@@ -3409,9 +3526,8 @@ export default function GameContentEditor() {
 											</>
 										)}
 										<p className="text-xs text-[#637588] mt-2">
-											Hover a row for reorder/duplicate/disable/delete. The pencil icon (when present) opens editable
-											fields for that action - fields showing "complex - edit in Raw JSON" hold a computed expression
-											rather than a plain value, so they're edited there instead.
+											Use the add buttons to create triggers, actions, and condition nodes. Existing rows can be edited,
+											duplicated, reordered, disabled, or deleted; Raw JSON remains available for unusual data.
 										</p>
 									</div>
 								)}
