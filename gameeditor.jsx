@@ -49,6 +49,26 @@ function deepClone(obj) {
 // that the three root folder nodes exist
 // this lets the rest of the app assume every entity is always "filed" somewhere,
 // instead of special-casing "this entity predates the folders feature"
+function normalizeItemAttributeVisibility(parsed) {
+	const items = parsed?.data?.itemTypes || {};
+	for (const item of Object.values(items)) {
+		if (!item?.attributes || typeof item.attributes !== 'object') continue;
+		for (const attr of Object.values(item.attributes)) {
+			if (!attr || typeof attr !== 'object') continue;
+			if (Object.prototype.hasOwnProperty.call(attr, 'showInDescription')) {
+				const visible = Array.isArray(attr.isVisible) ? attr.isVisible.slice() : (attr.isVisible ? [attr.isVisible] : []);
+				if (attr.showInDescription && !visible.includes('itemDescription')) visible.push('itemDescription');
+				if (!attr.showInDescription) {
+					for (let i = visible.length - 1; i >= 0; i--) if (visible[i] === 'itemDescription') visible.splice(i, 1);
+				}
+				attr.isVisible = visible;
+				delete attr.showInDescription;
+			}
+		}
+	}
+	return parsed;
+}
+
 function normalizeFolders(parsed) {
 	if (!parsed.data.folders) parsed.data.folders = {};
 	const folders = parsed.data.folders;
@@ -984,6 +1004,7 @@ export default function GameContentEditor() {
 				const parsed = JSON.parse(evt.target.result);
 				if (!parsed?.data) throw new Error("This doesn't look like a game.json - no top-level \"data\" field found.");
 				normalizeFolders(parsed);
+				normalizeItemAttributeVisibility(parsed);
 				setGameData(parsed);
 				setSelectedKey(null);
 				setSelectedFolderId(null);
@@ -1090,13 +1111,20 @@ export default function GameContentEditor() {
 	function addAttribute(attrKey) {
 		if (!attrKey || draft.attributes[attrKey]) return;
 		const def = attributeTypes[attrKey];
-		setDraft((d) => ({
-			...d,
-			attributes: {
-				...d.attributes,
-				[attrKey]: { value: def?.value ?? 0, min: def?.min ?? 0, max: def?.max ?? 100 },
-			},
-		}));
+		const initialVisibility = Array.isArray(def?.isVisible) ? deepClone(def.isVisible) : (def?.isVisible ? [def.isVisible] : []);
+		setDraft((d) => ({ ...d, attributes: { ...d.attributes, [attrKey]: { value: def?.value ?? 0, min: def?.min ?? 0, max: def?.max ?? 100, ...(activeTab === 'itemTypes' ? { isVisible: initialVisibility } : {}) } } }));
+	}
+
+	function toggleAttributeDescription(attrKey) {
+		if (activeTab !== 'itemTypes') return;
+		setDraft((d) => {
+			const attr = d.attributes?.[attrKey];
+			if (!attr) return d;
+			const visible = Array.isArray(attr.isVisible) ? attr.isVisible.slice() : (attr.isVisible ? [attr.isVisible] : []);
+			const index = visible.indexOf('itemDescription');
+			if (index >= 0) visible.splice(index, 1); else visible.push('itemDescription');
+			return { ...d, attributes: { ...d.attributes, [attrKey]: { ...attr, isVisible: visible } } };
+		});
 	}
 
 	function removeAttribute(attrKey) {
@@ -2502,8 +2530,14 @@ export default function GameContentEditor() {
 											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Attributes</h3>
 											<div className="space-y-2">
 												{Object.entries(draft.attributes).map(([attrKey, attr]) => (
-													<div key={attrKey} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
-														<span className="text-sm flex-1 truncate">{attributeTypes[attrKey]?.name || attrKey}</span>
+													<div key={attrKey} className="flex flex-wrap items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
+														<span className="text-sm flex-1 min-w-[120px] truncate">{attributeTypes[attrKey]?.name || attrKey}</span>
+										{activeTab === 'itemTypes' && (
+											<label className="flex items-center gap-1.5 text-xs text-[#a3adb8] cursor-pointer" title="Include this attribute in the item's generated attribute-description section.">
+												<input type="checkbox" checked={Array.isArray(attr.isVisible) ? attr.isVisible.includes('itemDescription') : attr.isVisible === 'itemDescription'} onChange={() => toggleAttributeDescription(attrKey)} className="accent-[#1a56da]" />
+												<span>description</span>
+											</label>
+										)}
 														<label className="text-xs text-[#8291a1]">value</label>
 														<input
 															type="number"
@@ -2546,7 +2580,10 @@ export default function GameContentEditor() {
 													))}
 												</select>
 											)}
-										</section>
+																	{activeTab === 'itemTypes' && (
+										<p className="mt-2 text-[10px] text-[#637588]">Checked attributes use TARO's <span className="font-mono">isVisible: ["itemDescription"]</span> field.</p>
+									)}
+</section>
 
 										{activeTab === 'unitTypes' && (
 							/* Unit inventory */
@@ -4025,5 +4062,15 @@ export default function GameContentEditor() {
 	);
 }
 
+class EditorErrorBoundary extends React.Component {
+	constructor(props) { super(props); this.state = { error: null }; }
+	static getDerivedStateFromError(error) { return { error }; }
+	componentDidCatch(error, info) { console.error('TARO Game Editor crashed:', error, info); }
+	render() {
+		if (!this.state.error) return this.props.children;
+		return <div className="min-h-screen bg-[#020817] text-[#c5ccd3] p-6 font-sans"><div className="max-w-3xl mx-auto border border-red-900 bg-[#111827] rounded-lg p-5"><h1 className="text-lg font-semibold text-red-400 mb-2">Game Editor runtime error</h1><p className="text-sm mb-3">A JavaScript error stopped React from rendering the editor.</p><pre className="whitespace-pre-wrap break-words text-xs text-[#fca5a5] bg-black/30 rounded p-3 overflow-auto">{String(this.state.error?.stack || this.state.error?.message || this.state.error)}</pre><p className="text-[11px] text-[#8291a1] mt-3">The full error is also logged to the browser console.</p></div></div>;
+	}
+}
+
 const appRoot = document.getElementById('root');
-if (appRoot) createRoot(appRoot).render(<GameContentEditor />);
+if (appRoot) createRoot(appRoot).render(<EditorErrorBoundary><GameContentEditor /></EditorErrorBoundary>);
