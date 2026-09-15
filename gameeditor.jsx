@@ -284,8 +284,8 @@ function describeValue(val, gameData) {
 	}
 }
 
-// the weird-but-consistent [ {operator,operandType}, operandA, operandB ] triple
-// used for every condition in this schema, including the "OR of triples" case
+// The weird-but-consistent [ {operator,operandType}, operandA, operandB ] triple
+// used for every condition in this schema, including the "OR of triples" case.
 function describeCondition(cond, gameData) {
 	if (Array.isArray(cond) && cond.length === 3 && cond[0]?.operator) {
 		const [desc, a, b] = cond;
@@ -439,6 +439,51 @@ function applyScriptOp(script, path, operation, payload) {
 // the same read-only describeValue() text used elsewhere in the tree, with a note
 // pointing at Raw JSON, rather than trying to build an editor for arbitrary
 // expression trees
+function ScriptValueEditor({ value, gameData, onChange, depth = 0 }) {
+	const [open, setOpen] = useState(depth < 1);
+
+	if (value === null) return <span className="text-xs text-[#8291a1] italic">null</span>;
+	if (typeof value === 'boolean') return <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="accent-[#1a56da]" />;
+	if (typeof value === 'number') return <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-28 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-[#1a56da]" />;
+	if (typeof value === 'string') return <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="w-44 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-[#1a56da]" />;
+	if (Array.isArray(value)) {
+		return (
+			<div className="w-full">
+				<button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-[#a3adb8] hover:text-[#e1e6ea]">
+					{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<span className="font-mono">Array [{value.length}]</span>
+				</button>
+				{open && <div className="ml-3 mt-1 border-l border-[#48596a] pl-2 space-y-1">
+					{value.map((item, index) => <div key={index} className="flex items-start gap-1.5">
+						<span className="text-[10px] text-[#637588] font-mono w-5 pt-1 shrink-0">{index}</span>
+						<div className="flex-1 min-w-0"><ScriptValueEditor value={item} gameData={gameData} depth={depth + 1} onChange={(next) => { const copy = value.slice(); copy[index] = next; onChange(copy); }} /></div>
+						<button type="button" title="Remove array entry" onClick={() => onChange(value.filter((_, i) => i !== index))} className="p-1 text-[#637588] hover:text-red-400 shrink-0"><X size={11} /></button>
+					</div>)}
+					<button type="button" onClick={() => onChange([...value, null])} className="text-[10px] text-[#637588] hover:text-[#1a56da]">+ Add value</button>
+				</div>}
+			</div>
+		);
+	}
+	if (typeof value === 'object') {
+		const objectTitle = value.function || value.type || 'Object';
+		const keys = Object.keys(value);
+		return (
+			<div className="w-full">
+				<button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-[#a3adb8] hover:text-[#e1e6ea]">
+					{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<span className="font-mono">{objectTitle}</span><span className="text-[10px] text-[#637588]">{keys.length} field{keys.length === 1 ? '' : 's'}</span>
+				</button>
+				{open && <div className="ml-3 mt-1 border-l border-[#48596a] pl-2 space-y-1.5">
+					{keys.map((key) => <div key={key} className="flex items-start gap-2">
+						<span className="text-[10px] text-[#8291a1] font-mono w-24 shrink-0 pt-1 truncate" title={key}>{key}</span>
+						<div className="flex-1 min-w-0"><ScriptValueEditor value={value[key]} gameData={gameData} depth={depth + 1} onChange={(next) => onChange({ ...value, [key]: next })} /></div>
+						<button type="button" title={`Remove ${key}`} onClick={() => { const copy = { ...value }; delete copy[key]; onChange(copy); }} className="p-1 text-[#637588] hover:text-red-400 shrink-0"><X size={11} /></button>
+					</div>)}
+				</div>}
+			</div>
+		);
+	}
+	return <span className="text-xs text-[#8291a1] italic">{String(value)}</span>;
+}
+
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	const collectionKey = ID_KIND_COLLECTIONS[kind];
 	if (collectionKey) {
@@ -446,7 +491,7 @@ function ScriptFieldInput({ kind, value, gameData, onChange }) {
 			.map(([id, v]) => ({ id, name: v.name || v.folderName || id }))
 			.sort((a, b) => a.name.localeCompare(b.name));
 		if (typeof value === 'object' && value !== null) {
-			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+			return <ScriptValueEditor value={value} gameData={gameData} onChange={onChange} />;
 		}
 		return (
 			<select
@@ -465,7 +510,7 @@ function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	}
 	if (kind === 'xy') {
 		if (typeof value !== 'object' || value === null || typeof value.x !== 'number' || typeof value.y !== 'number') {
-			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+			return <ScriptValueEditor value={value} gameData={gameData} onChange={onChange} />;
 		}
 		return (
 			<span className="flex items-center gap-1">
@@ -488,7 +533,7 @@ function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	}
 	if (kind === 'boolean') {
 		if (typeof value !== 'boolean') {
-			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+			return <ScriptValueEditor value={value} gameData={gameData} onChange={onChange} />;
 		}
 		return (
 			<input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="accent-[#1a56da]" />
@@ -496,7 +541,7 @@ function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	}
 	if (kind === 'number') {
 		if (typeof value !== 'number') {
-			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+			return <ScriptValueEditor value={value} gameData={gameData} onChange={onChange} />;
 		}
 		return (
 			<input
@@ -509,7 +554,7 @@ function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	}
 	if (kind === 'string') {
 		if (typeof value !== 'string') {
-			return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+			return <ScriptValueEditor value={value} gameData={gameData} onChange={onChange} />;
 		}
 		return (
 			<input
@@ -526,7 +571,7 @@ function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
 		return <ScriptFieldInput kind={typeof value} value={value} gameData={gameData} onChange={onChange} />;
 	}
-	return <span className="text-xs text-[#8291a1] italic">{describeValue(value, gameData)} (complex - edit in Raw JSON)</span>;
+	return <ScriptValueEditor value={value} gameData={gameData} onChange={onChange} />;
 }
 
 
@@ -576,7 +621,7 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 	}
 
 	const hasChildren = !!children;
-	const fieldSchema = ACTION_FIELD_SCHEMAS[action.type];
+	const fieldSchema = action.type === 'condition' ? [{ key: 'conditions', kind: 'valueExpr' }] : ACTION_FIELD_SCHEMAS[action.type];
 	const canMoveUp = indexInParent > 0;
 	const canMoveDown = indexInParent < siblingCount - 1;
 
@@ -755,6 +800,7 @@ export default function GameContentEditor() {
 	const [gridPreview, setGridPreview] = useState({ cols: 1, rows: 1 });
 	const [selectedBodyName, setSelectedBodyName] = useState('default');
 	const [selectedEntityScriptKey, setSelectedEntityScriptKey] = useState('');
+	const [entityScriptViewMode, setEntityScriptViewMode] = useState('tree'); // 'tree' | 'raw'
 	const [spriteNatural, setSpriteNatural] = useState(null); // {w, h} of the currently loaded sprite sheet image
 	const [assetBaseUrl, setAssetBaseUrl] = useState(() => localStorage.getItem('editorAssetBaseUrl') || '');
 	const [previewingSoundKey, setPreviewingSoundKey] = useState(null);
@@ -1268,11 +1314,11 @@ export default function GameContentEditor() {
 			return next;
 		});
 		setSelectedKey(key);
-		// new sounds are inserted alphabetically by name (every one starts out
+		// New sounds are inserted alphabetically by name (every one starts out
 		// named "New Sound"), so on a list with existing entries it can land
 		// anywhere in the middle - with no visual cue, that reads as "the button
-		// didn't do anything." scroll the new card into view and focus its name
-		// field so it's unmistakable something was actually added
+		// didn't do anything." Scroll the new card into view and focus its name
+		// field so it's unmistakable something was actually added.
 		requestAnimationFrame(() => {
 			const $card = document.querySelector('[data-sound-key="' + key + '"]');
 			if ($card) {
@@ -2718,26 +2764,43 @@ export default function GameContentEditor() {
 						)}
 
 						{/* Entity scripts */}
-						<section className="mb-7">
-							<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Scripts</h3>
-							{getEntityScriptEntries().length === 0 ? (
-								<p className="text-xs text-[#637588]">This {activeTabDef?.label?.toLowerCase() || 'entity'} has no embedded scripts.</p>
-							) : (
-								<div className="space-y-2">
-									<select value={selectedEntityScriptKey} onChange={(e)=>selectEntityScript(e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-1.5 text-sm">
-										<option value="">Choose a script...</option>
-										{getEntityScriptEntries().map(([id,script])=><option key={id} value={id}>{script.name || id}</option>)}
-									</select>
-									{selectedEntityScriptKey && draft.scripts?.[selectedEntityScriptKey] && (() => {
-										const script = draft.scripts[selectedEntityScriptKey];
-										const raw = script._editorBodyText ?? JSON.stringify((({ _editorBodyText, ...body }) => body)(script), null, 2);
-										return <div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-2.5"><div className="text-xs text-[#8291a1] mb-2">{script.name || selectedEntityScriptKey}</div><textarea value={raw} onChange={(e)=>updateEntityScriptBody(selectedEntityScriptKey,e.target.value)} spellCheck={false} rows={18} className="w-full bg-[#262e36] border border-[#3d4a57] rounded p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]" /><button onClick={()=>saveEntityScriptBody(selectedEntityScriptKey)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#3d4a57] text-sm hover:bg-[#48596a]"><Save size={13}/> Apply script JSON</button></div>;
-									})()}
-								</div>
-							)}
-						</section>
-
-						{/* Variables */}
+		<section className="mb-7">
+			<div className="flex items-center justify-between mb-2">
+				<h3 className="text-sm font-medium text-[#c5ccd3]">Scripts</h3>
+				{selectedEntityScriptKey && draft?.scripts?.[selectedEntityScriptKey] && <div className="flex rounded-md border border-[#3d4a57] overflow-hidden text-xs">
+					<button onClick={() => setEntityScriptViewMode('tree')} className={`px-2.5 py-1 ${entityScriptViewMode === 'tree' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}>Tree view</button>
+					<button onClick={() => setEntityScriptViewMode('raw')} className={`px-2.5 py-1 ${entityScriptViewMode === 'raw' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}>Raw JSON</button>
+				</div>}
+			</div>
+			{getEntityScriptEntries().length === 0 ? (
+				<p className="text-xs text-[#637588]">This {activeTabDef?.label?.toLowerCase() || 'entity'} has no embedded scripts.</p>
+			) : (
+				<div className="space-y-2">
+					<select value={selectedEntityScriptKey} onChange={(e)=>selectEntityScript(e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-1.5 text-sm">
+						<option value="">Choose a script...</option>
+						{getEntityScriptEntries().map(([id,script])=><option key={id} value={id}>{script.name || id}</option>)}
+					</select>
+					{selectedEntityScriptKey && draft.scripts?.[selectedEntityScriptKey] && (() => {
+						const script = draft.scripts[selectedEntityScriptKey];
+						const raw = script._editorBodyText ?? JSON.stringify((({ _editorBodyText, ...body }) => body)(script), null, 2);
+						let parsed = null; let parseError = null;
+						try { parsed = raw.trim() ? JSON.parse(raw) : { triggers: [], conditions: [], actions: [] }; } catch (e) { parseError = e.message; }
+						return <div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-2.5">
+							<div className="flex items-center justify-between gap-2 mb-2"><div className="text-xs text-[#8291a1]">{script.name || selectedEntityScriptKey}</div>{entityScriptViewMode === 'tree' && <span className="text-[10px] text-[#637588]">Editable tree</span>}</div>
+							{entityScriptViewMode === 'tree' ? (
+								parseError ? <div className="text-xs text-red-400 bg-red-950/20 border border-red-900 rounded-md p-3">Can't show the tree view - this script's JSON doesn't currently parse: {parseError}. Switch to Raw JSON to fix it.</div> :
+								<ScriptTreeView script={parsed} gameData={gameData} onJumpToScript={(id) => { if (id && scriptsCollection[id]) selectScript(id); }} onOp={(path, operation, payload) => { const next = applyScriptOp(parsed, path, operation, payload); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }} />
+							) : <>
+								<textarea value={raw} onChange={(e)=>updateEntityScriptBody(selectedEntityScriptKey,e.target.value)} spellCheck={false} rows={18} className="w-full bg-[#262e36] border border-[#3d4a57] rounded p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]" />
+								<button onClick={()=>saveEntityScriptBody(selectedEntityScriptKey)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#3d4a57] text-sm hover:bg-[#48596a]"><Save size={13}/> Apply script JSON</button>
+							</>}
+						</div>;
+					})()}
+				</div>
+			)}
+		</section>
+		
+		{/* Variables */}
 										<section className="mb-7">
 											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Variables</h3>
 											<div className="space-y-2">
