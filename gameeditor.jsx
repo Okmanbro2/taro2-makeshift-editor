@@ -284,8 +284,8 @@ function describeValue(val, gameData) {
 	}
 }
 
-// The weird-but-consistent [ {operator,operandType}, operandA, operandB ] triple
-// used for every condition in this schema, including the "OR of triples" case.
+// the weird-but-consistent [ {operator,operandType}, operandA, operandB ] triple
+// used for every condition in this schema, including the "OR of triples" case
 function describeCondition(cond, gameData) {
 	if (Array.isArray(cond) && cond.length === 3 && cond[0]?.operator) {
 		const [desc, a, b] = cond;
@@ -1231,8 +1231,8 @@ export default function GameContentEditor() {
 		}
 	}
 
-	function updateItemEffectSound(eventName, soundKey, enabled) {
-		if (activeTab !== 'itemTypes' || !soundKey) return;
+	function updateEntityEffectSound(eventName, soundKey, enabled) {
+		if (!['itemTypes', 'unitTypes', 'projectileTypes'].includes(activeTab) || !soundKey) return;
 		setDraft((d) => {
 			const effects = { ...(d.effects || {}) };
 			const effect = { ...(effects[eventName] || {}), sound: { ...((effects[eventName] || {}).sound || {}) } };
@@ -1247,8 +1247,16 @@ export default function GameContentEditor() {
 		});
 	}
 
+	function removeEntityEffectSound(eventName, soundKey) {
+		updateEntityEffectSound(eventName, soundKey, false);
+	}
+
+	function updateItemEffectSound(eventName, soundKey, enabled) {
+		updateEntityEffectSound(eventName, soundKey, enabled);
+	}
+
 	function removeItemEffectSound(eventName, soundKey) {
-		updateItemEffectSound(eventName, soundKey, false);
+		removeEntityEffectSound(eventName, soundKey);
 	}
 
 	function addGlobalSound() {
@@ -1260,11 +1268,11 @@ export default function GameContentEditor() {
 			return next;
 		});
 		setSelectedKey(key);
-		// New sounds are inserted alphabetically by name (every one starts out
+		// new sounds are inserted alphabetically by name (every one starts out
 		// named "New Sound"), so on a list with existing entries it can land
 		// anywhere in the middle - with no visual cue, that reads as "the button
-		// didn't do anything." Scroll the new card into view and focus its name
-		// field so it's unmistakable something was actually added.
+		// didn't do anything." scroll the new card into view and focus its name
+		// field so it's unmistakable something was actually added
 		requestAnimationFrame(() => {
 			const $card = document.querySelector('[data-sound-key="' + key + '"]');
 			if ($card) {
@@ -2541,6 +2549,25 @@ export default function GameContentEditor() {
 						)}
 
 
+
+						{activeTab === 'unitTypes' && (
+							<section className="mb-7">
+								<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Sounds</h3>
+								<p className="text-[11px] text-[#637588] mb-3">Assign sounds from the global Sounds tab. Unit create/destroy sounds are stored in <span className="font-mono">effects.create.sound</span> and <span className="font-mono">effects.destroy.sound</span>.</p>
+								{[['create','Create'],['destroy','Destroy']].map(([eventName,label]) => {
+									const selectedSounds = draft.effects?.[eventName]?.sound || {};
+									const selectedKeys = Object.keys(selectedSounds);
+									return (
+										<div key={eventName} className="mb-3 p-2.5 bg-[#323d48] border border-[#3d4a57] rounded-md">
+											<div className="text-xs text-[#a3adb8] mb-2">{label}</div>
+											{selectedKeys.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">{selectedKeys.map((soundKey) => <div key={soundKey} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#262e36] border border-[#3d4a57] text-xs"><span className="truncate max-w-[15rem]">{selectedSounds[soundKey]?.name || soundTypes[soundKey]?.name || soundKey}</span><button onClick={() => removeEntityEffectSound(eventName, soundKey)} className="text-[#8291a1] hover:text-red-400"><X size={12} /></button></div>)}</div>}
+											<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) updateEntityEffectSound(eventName,key,true); e.target.value=''; }} className="w-full bg-[#262e36] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="" disabled>+ Add a sound...</option>{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).filter(([key])=>!selectedKeys.includes(key)).map(([key,sound])=><option key={key} value={key}>{sound?.name || key}</option>)}</select>
+										</div>
+									);
+								})}
+							</section>
+						)}
+
 						{activeTab === 'itemTypes' && (
 							<section className="mb-7">
 								<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Item details</h3>
@@ -2668,6 +2695,25 @@ export default function GameContentEditor() {
 									<label className="block text-xs text-[#8291a1] mb-1">Lifespan (ms)</label>
 									<input type="number" min="0" value={draft.lifeSpan ?? ''} onChange={(e)=>updateDraftField('lifeSpan', e.target.value === '' ? null : Math.max(0, Number(e.target.value)||0))} className="w-40 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 								</div>
+							</section>
+						)}
+
+
+						{activeTab === 'projectileTypes' && (
+							<section className="mb-7">
+								<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Sounds</h3>
+								<p className="text-[11px] text-[#637588] mb-3">Assign sounds from the global Sounds tab. Projectile create/destroy sounds are stored in <span className="font-mono">effects.create.sound</span> and <span className="font-mono">effects.destroy.sound</span>.</p>
+								{[['create','Create'],['destroy','Destroy']].map(([eventName,label]) => {
+									const selectedSounds = draft.effects?.[eventName]?.sound || {};
+									const selectedKeys = Object.keys(selectedSounds);
+									return (
+										<div key={eventName} className="mb-3 p-2.5 bg-[#323d48] border border-[#3d4a57] rounded-md">
+											<div className="text-xs text-[#a3adb8] mb-2">{label}</div>
+											{selectedKeys.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">{selectedKeys.map((soundKey) => <div key={soundKey} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#262e36] border border-[#3d4a57] text-xs"><span className="truncate max-w-[15rem]">{selectedSounds[soundKey]?.name || soundTypes[soundKey]?.name || soundKey}</span><button onClick={() => removeEntityEffectSound(eventName, soundKey)} className="text-[#8291a1] hover:text-red-400"><X size={12} /></button></div>)}</div>}
+											<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) updateEntityEffectSound(eventName,key,true); e.target.value=''; }} className="w-full bg-[#262e36] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="" disabled>+ Add a sound...</option>{Object.entries(soundTypes).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).filter(([key])=>!selectedKeys.includes(key)).map(([key,sound])=><option key={key} value={key}>{sound?.name || key}</option>)}</select>
+										</div>
+									);
+								})}
 							</section>
 						)}
 
