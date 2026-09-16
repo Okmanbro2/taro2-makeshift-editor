@@ -753,6 +753,7 @@ export default function GameContentEditor() {
 	const [fileError, setFileError] = useState('');
 	const [activeTab, setActiveTab] = useState('unitTypes');
 	const [selectedKey, setSelectedKey] = useState(null);
+	const [selectedEntityKeys, setSelectedEntityKeys] = useState([]);
 	const [selectedFolderId, setSelectedFolderId] = useState(null);
 	const [collapsed, setCollapsed] = useState({}); 
 	const [selectedScriptFolderId, setSelectedScriptFolderId] = useState(null);
@@ -991,9 +992,65 @@ export default function GameContentEditor() {
 		setSavedMsg('');
 	}
 
-	function selectEntity(key) {
+	function selectEntity(key, event) {
+		if (event?.shiftKey) {
+			setSelectedEntityKeys((keys) => {
+				const base = keys.length ? keys : (selectedKey ? [selectedKey] : []);
+				return base.includes(key) ? base.filter((k) => k !== key) : [...base, key];
+			});
+			setSelectedKey(null);
+			setDraft(null);
+			return;
+		}
+		setSelectedEntityKeys([]);
 		setSelectedKey(key);
 		loadDraftFromEntity(key, categoryMap[key] || {});
+	}
+
+	function bulkMoveEntities(newFolderId) {
+		if (!newFolderId || selectedEntityKeys.length === 0) return;
+		const keys = selectedEntityKeys.filter((key) => categoryMap[key]);
+		if (!keys.length) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.folders) next.data.folders = {};
+			keys.forEach((key) => {
+				next.data.folders[key] = {
+					...(next.data.folders[key] || {}),
+					type: activeTabDef.folderType,
+					parent: newFolderId,
+					closed: false,
+				};
+			});
+			return next;
+		});
+		setSelectedEntityKeys([]);
+		setSelectedFolderId(newFolderId === activeTabDef.root ? null : newFolderId);
+	}
+
+	function bulkDeleteEntities() {
+		const keys = selectedEntityKeys.filter((key) => categoryMap[key]);
+		if (!keys.length) return;
+		const noun = activeTabDef.label.slice(0, -1).toLowerCase();
+		if (!window.confirm(`Delete ${keys.length} ${noun}${keys.length === 1 ? '' : 's'}? This can't be undone in the tool.`)) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			keys.forEach((key) => {
+				delete next.data[activeTab][key];
+				if (next.data.folders) delete next.data.folders[key];
+			});
+			return next;
+		});
+		setSelectedEntityKeys([]);
+		setSelectedKey(null);
+		setDraft(null);
+	}
+
+	function toggleAllVisibleEntities() {
+		const visibleKeys = filteredEntries.map(([key]) => key);
+		setSelectedEntityKeys((keys) => keys.length === visibleKeys.length && visibleKeys.every((key) => keys.includes(key)) ? [] : visibleKeys);
+		setSelectedKey(null);
+		setDraft(null);
 	}
 
 	function startNew(baseKey) {
@@ -1012,6 +1069,7 @@ export default function GameContentEditor() {
 		const newKey = generateKey();
 		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
+		setSelectedEntityKeys([]);
 		setSelectedKey(newKey);
 		setDraft({
 			key: newKey,
@@ -1457,6 +1515,7 @@ export default function GameContentEditor() {
 			if (next.data.folders) delete next.data.folders[selectedKey];
 			return next;
 		});
+		setSelectedEntityKeys([]);
 		setSelectedKey(null);
 		setDraft(null);
 	}
@@ -2067,10 +2126,10 @@ export default function GameContentEditor() {
 					) : (
 						<button
 							key={child.id}
-							onClick={() => selectEntity(child.id)}
+							onClick={(e) => selectEntity(child.id, e)}
 							style={{ paddingLeft: 8 + (depth + 1) * 14 + 17 }}
 							className={`w-full text-left pr-3 py-2 border-b border-[#323d48] transition-colors ${
-								selectedKey === child.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
+								selectedEntityKeys.includes(child.id) ? 'bg-[#1a56da]/20' : selectedKey === child.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 							}`}
 						>
 							<div className="text-sm text-[#e1e6ea] truncate">{categoryMap[child.id]?.name || '(unnamed)'}</div>
@@ -2224,6 +2283,7 @@ export default function GameContentEditor() {
 								onClick={() => {
 									setActiveTab(t.key);
 									setSelectedKey(null);
+									setSelectedEntityKeys([]);
 									setSelectedFolderId(null);
 									setDraft(null);
 									setGroupDraft(null);
@@ -2354,15 +2414,38 @@ export default function GameContentEditor() {
 										</div>
 									)}
 								</div>
+								{selectedEntityKeys.length > 0 && (
+									<div className="px-3 py-2 border-b border-[#3d4a57] bg-[#20272e]">
+										<div className="flex items-center gap-2">
+											<span className="text-xs text-[#a3adb8] flex-1">{selectedEntityKeys.length} selected</span>
+											<button type="button" onClick={toggleAllVisibleEntities} className="text-xs text-[#8291a1] hover:text-[#c5ccd3]">
+												{selectedEntityKeys.length === filteredEntries.length && filteredEntries.length > 0 ? 'Clear visible' : 'Select visible'}
+											</button>
+											<select
+												value=""
+												onChange={(e) => e.target.value && bulkMoveEntities(e.target.value)}
+												className="bg-[#262e36] border border-[#3d4a57] rounded text-xs text-[#a3adb8] px-1.5 py-1 max-w-[130px]"
+											>
+												<option value="" disabled>Move to...</option>
+												{folderOptions.map((f) => (
+													<option key={f.id} value={f.id}>{'—'.repeat(f.depth)} {f.name}</option>
+												))}
+											</select>
+											<button type="button" title="Delete selected" onClick={bulkDeleteEntities} className="p-1.5 text-[#8291a1] hover:text-red-400">
+												<Trash2 size={13} />
+											</button>
+										</div>
+									</div>
+								)}
 								<div className="flex-1 overflow-y-auto">
 									{search.trim() ? (
 										<>
 											{filteredEntries.map(([key, entity]) => (
 												<button
 													key={key}
-													onClick={() => selectEntity(key)}
+													onClick={(e) => selectEntity(key, e)}
 													className={`w-full text-left px-3 py-2 border-b border-[#323d48] transition-colors ${
-														selectedKey === key ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
+														selectedEntityKeys.includes(key) ? 'bg-[#1a56da]/20' : selectedKey === key ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 													}`}
 												>
 													<div className="text-sm text-[#e1e6ea] truncate">{entity?.name || '(unnamed)'}</div>
@@ -2381,9 +2464,9 @@ export default function GameContentEditor() {
 												) : (
 													<button
 														key={node.id}
-														onClick={() => selectEntity(node.id)}
+														onClick={(e) => selectEntity(node.id, e)}
 														className={`w-full text-left px-3 py-2 border-b border-[#323d48] transition-colors ${
-															selectedKey === node.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
+															selectedEntityKeys.includes(node.id) ? 'bg-[#1a56da]/20' : selectedKey === node.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 														}`}
 													>
 														<div className="text-sm text-[#e1e6ea] truncate">{categoryMap[node.id]?.name || '(unnamed)'}</div>
