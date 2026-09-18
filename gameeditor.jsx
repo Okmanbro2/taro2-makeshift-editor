@@ -1590,9 +1590,8 @@ export default function GameContentEditor() {
 		setShopDraft((d) => ({ ...d, [field]: value }));
 	}
 
-	function addShopEntry(kind) {
-		if (!shopDraft) return;
-		const id = generateKey();
+	function addShopEntry(kind, id) {
+		if (!shopDraft || !id || shopDraft[kind]?.[id]) return;
 		const current = shopDraft[kind] || {};
 		const orders = Object.values(current).map((v) => Number(v?.order)).filter(Number.isFinite);
 		const order = orders.length ? Math.max(...orders) + 1 : 0;
@@ -1623,9 +1622,6 @@ export default function GameContentEditor() {
 		setShopEntryDraft((d) => ({ ...d, [section]: { ...(d[section] || {}), [field]: value } }));
 	}
 
-	function updateShopEntryMap(section, key, value) {
-		setShopEntryDraft((d) => ({ ...d, [section]: { ...(d[section] || {}), [key]: value } }));
-	}
 
 	function removeShopEntryMap(section, key) {
 		setShopEntryDraft((d) => {
@@ -3402,7 +3398,7 @@ export default function GameContentEditor() {
 									{shopEntries.length === 0 && <div className="text-sm text-[#637588] text-center py-8 px-4">Nothing here yet.</div>}
 								</div>
 							</div>
-\n							<div className="flex-1 overflow-y-auto p-6">
+							<div className="flex-1 overflow-y-auto p-6">
 								{!shopDraft ? (
 									<div className="text-[#637588] text-sm mt-16 text-center">Select a shop on the left, or create a new one.</div>
 								) : (
@@ -3418,19 +3414,19 @@ export default function GameContentEditor() {
 												<button onClick={saveShopDraft} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"><Save size={13} /> Save to working copy</button>
 											</div>
 										</div>
-\n										{savedMsg && <div className="mb-5 text-sm text-emerald-400 bg-emerald-950/30 border border-emerald-900 rounded-md px-3 py-2">{savedMsg}</div>}
-\n										<section className="mb-7">
+										{savedMsg && <div className="mb-5 text-sm text-emerald-400 bg-emerald-950/30 border border-emerald-900 rounded-md px-3 py-2">{savedMsg}</div>}
+										<section className="mb-7">
 											<h3 className="text-sm font-medium text-[#c5ccd3] mb-3">General</h3>
 											<div className="space-y-4">
 												<div><label className="block text-xs text-[#8291a1] mb-1">Description</label><textarea rows={4} value={shopDraft.description} onChange={(e) => updateShopField('description', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]" /></div>
 												<div><label className="block text-xs text-[#8291a1] mb-1">Dismissible</label><div className="flex w-80"><button onClick={() => updateShopField('dismissible', true)} className={`flex-1 px-3 py-2 text-sm rounded-l-md ${shopDraft.dismissible ? 'bg-[#1a56da] text-white' : 'bg-[#697581] text-white'}`}>True</button><button onClick={() => updateShopField('dismissible', false)} className={`flex-1 px-3 py-2 text-sm rounded-r-md ${!shopDraft.dismissible ? 'bg-[#1a56da] text-white' : 'bg-[#697581] text-white'}`}>False</button></div></div>
 											</div>
 										</section>
-\n										{[['itemTypes','Item Types','item'],['unitTypes','Unit Types','unit']].map(([kind,label,short]) => {
+										{[['itemTypes','Item Types','item'],['unitTypes','Unit Types','unit']].map(([kind,label,short]) => {
 											const list = shopEntryList(shopDraft, kind);
 											const collection = kind === 'itemTypes' ? itemTypes : (gameData?.data?.unitTypes || {});
 											return <section key={kind} className="mb-7">
-												<div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-[#c5ccd3]">{label}</h3><button onClick={() => addShopEntry(kind)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da]"><Plus size={12} /> Add {short}</button></div>
+												<div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-[#c5ccd3]">{label}</h3><select defaultValue="" onChange={(e) => { const id = e.target.value; if (id) addShopEntry(kind, id); e.target.value = ''; }} className="w-56 bg-[#323d48] border border-dashed border-[#48596a] rounded-md px-2.5 py-1.5 text-xs text-[#a3adb8]"><option value="">+ Add {short}...</option>{Object.entries(collection).sort((a, b) => (a[1]?.name || a[0]).localeCompare(b[1]?.name || b[0])).filter(([id]) => !shopDraft?.[kind]?.[id]).map(([id, value]) => <option key={id} value={id}>{value?.name || id}</option>)}</select></div>
 												<div className="space-y-1.5">
 													{list.map(([id, entry], index) => <div key={id} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-2">
 														<span className="text-[#8291a1] cursor-move">☰</span><button onClick={() => openShopEntry(kind, id)} className="flex-1 min-w-0 text-left"><div className="text-sm text-[#e1e6ea] truncate">{collection[id]?.name || id}</div><div className="text-xs text-[#637588] truncate">{entry?.isPurchasable === false ? 'hidden from shop' : 'shown in shop'}</div></button><button onClick={() => moveShopEntry(-1, kind, id)} disabled={index === 0} className="text-[#8291a1] hover:text-[#1a56da] disabled:opacity-20"><ChevronRight size={13} className="-rotate-90" /></button><button onClick={() => moveShopEntry(1, kind, id)} disabled={index === list.length - 1} className="text-[#8291a1] hover:text-[#1a56da] disabled:opacity-20"><ChevronRight size={13} className="rotate-90" /></button><button onClick={() => { if (!window.confirm('Remove this entry from the shop?')) return; setShopDraft((d) => { const next = { ...d, [kind]: { ...(d[kind] || {}) } }; delete next[kind][id]; return next; }); if (shopEntryDraft?.id === id) setShopEntryDraft(null); }} className="text-[#637588] hover:text-red-400"><X size={14} /></button>
@@ -3439,7 +3435,7 @@ export default function GameContentEditor() {
 												</div>
 											</section>;
 										})}
-\n										<details className="mb-7">
+										<details className="mb-7">
 											<summary className="text-sm font-medium text-[#c5ccd3] cursor-pointer select-none">More</summary>
 											<div className="mt-3 space-y-3">
 												<div><label className="block text-xs text-[#8291a1] mb-1">CSS Class</label><input value={shopDraft.shopClass} onChange={(e) => updateShopField('shopClass', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm" /></div>
@@ -3449,7 +3445,7 @@ export default function GameContentEditor() {
 							</div>
 						)}
 						</div>
-\n						{shopEntryDraft && (
+						{shopEntryDraft && (
 							<div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-5">
 								<div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-[#262e36] border border-[#48596a] rounded-md shadow-2xl">
 									<div className="flex items-center justify-between px-4 py-3 border-b border-[#48596a]"><div className="font-medium">{shopEntryDraft.kind === 'itemTypes' ? itemTypes[shopEntryDraft.id]?.name : (gameData?.data?.unitTypes || {})[shopEntryDraft.id]?.name || shopEntryDraft.id}</div><button onClick={() => setShopEntryDraft(null)} className="text-[#8291a1] hover:text-white"><X size={17} /></button></div>
@@ -3458,7 +3454,7 @@ export default function GameContentEditor() {
 										<div className="flex items-center gap-2"><label className="text-xs text-[#8291a1]">Hide if unaffordable</label><div className="flex w-44"><button onClick={() => updateShopEntryField('hideIfUnaffordable', true)} className={`flex-1 px-2 py-1.5 text-xs rounded-l ${shopEntryDraft.hideIfUnaffordable ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>True</button><button onClick={() => updateShopEntryField('hideIfUnaffordable', false)} className={`flex-1 px-2 py-1.5 text-xs rounded-r ${!shopEntryDraft.hideIfUnaffordable ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>False</button></div></div>
 										<div className="flex items-center gap-2"><label className="text-xs text-[#8291a1]">Display in shop</label><div className="flex w-44"><button onClick={() => updateShopEntryField('isPurchasable', true)} className={`flex-1 px-2 py-1.5 text-xs rounded-l ${shopEntryDraft.isPurchasable ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>True</button><button onClick={() => updateShopEntryField('isPurchasable', false)} className={`flex-1 px-2 py-1.5 text-xs rounded-r ${!shopEntryDraft.isPurchasable ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>False</button></div></div>
 										{shopEntryDraft.kind === 'itemTypes' && <><div className="flex items-center gap-2"><label className="text-xs text-[#8291a1]">Replace item in target slot</label><div className="flex w-44"><button onClick={() => updateShopEntryField('replaceItemInTargetSlot', true)} className={`flex-1 px-2 py-1.5 text-xs rounded-l ${shopEntryDraft.replaceItemInTargetSlot ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>True</button><button onClick={() => updateShopEntryField('replaceItemInTargetSlot', false)} className={`flex-1 px-2 py-1.5 text-xs rounded-r ${!shopEntryDraft.replaceItemInTargetSlot ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>False</button></div></div><div><label className="block text-xs text-[#8291a1] mb-1">Default quantity</label><input value={shopEntryDraft.quantity ?? ''} onChange={(e) => updateShopEntryField('quantity', e.target.value)} placeholder="default quantity" className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-1.5 text-sm" /></div></>}
-										<div><label className="block text-xs text-[#8291a1] mb-1">Price · Player Attributes</label><div className="space-y-1.5">{Object.entries(shopEntryDraft.price?.playerAttributes || {}).map(([key,value]) => <div key={key} className="flex items-center gap-2"><span className="flex-1 text-xs truncate">{attributeTypes[key]?.name || key}</span><input type="number" value={value ?? 0} onChange={(e) => updateShopEntryMap('pricePlayerAttributes', key, Number(e.target.value))} className="w-24 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" /><button onClick={() => { const next = deepClone(shopEntryDraft.price?.playerAttributes || {}); delete next[key]; setShopEntryDraft((d) => ({ ...d, price: { ...(d.price || {}), playerAttributes: next } })); }} className="text-[#637588] hover:text-red-400"><X size={13} /></button></div>)}<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) setShopEntryDraft((d) => ({ ...d, price: { ...(d.price || {}), playerAttributes: { ...((d.price || {}).playerAttributes || {}), [key]: 0 } } })); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add player attribute...</option>{shopAttributeOptions.filter(([key]) => !(shopEntryDraft.price?.playerAttributes || {})[key]).map(([key,attr]) => <option key={key} value={key}>{attr?.name || key}</option>)}</select></div></div>
+										<div><label className="block text-xs text-[#8291a1] mb-1">Price · Player Attributes</label><div className="space-y-1.5">{Object.entries(shopEntryDraft.price?.playerAttributes || {}).map(([key,value]) => <div key={key} className="flex items-center gap-2"><span className="flex-1 text-xs truncate">{attributeTypes[key]?.name || key}</span><input type="number" value={value ?? 0} onChange={(e) => setShopEntryDraft((d) => ({ ...d, price: { ...(d.price || {}), playerAttributes: { ...((d.price || {}).playerAttributes || {}), [key]: Number(e.target.value) } } }))} className="w-24 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" /><button onClick={() => { const next = deepClone(shopEntryDraft.price?.playerAttributes || {}); delete next[key]; setShopEntryDraft((d) => ({ ...d, price: { ...(d.price || {}), playerAttributes: next } })); }} className="text-[#637588] hover:text-red-400"><X size={13} /></button></div>)}<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) setShopEntryDraft((d) => ({ ...d, price: { ...(d.price || {}), playerAttributes: { ...((d.price || {}).playerAttributes || {}), [key]: 0 } } })); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add player attribute...</option>{shopAttributeOptions.filter(([key]) => !(shopEntryDraft.price?.playerAttributes || {})[key]).map(([key,attr]) => <option key={key} value={key}>{attr?.name || key}</option>)}</select></div></div>
 										<div><label className="block text-xs text-[#8291a1] mb-1">Price · Item Types (recipes)</label><div className="flex flex-wrap gap-1.5 mb-2">{(shopEntryDraft.price?.requiredItemTypes || []).map((key) => <span key={key} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#323d48] border border-[#3d4a57] text-xs">{itemTypes[key]?.name || key}<button onClick={() => toggleShopRequiredItem('price', key)} className="text-[#637588] hover:text-red-400"><X size={11} /></button></span>)}</div><select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) toggleShopRequiredItem('price',key); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add item type...</option>{shopItemOptions.filter(([key]) => !(shopEntryDraft.price?.requiredItemTypes || []).includes(key)).map(([key,item]) => <option key={key} value={key}>{item?.name || key}</option>)}</select></div>
 
 										<div><label className="block text-xs text-[#8291a1] mb-1">Requirements · Player Attributes</label><div className="space-y-1.5">{Object.entries(shopEntryDraft.requirement?.playerAttributes || {}).map(([key,value]) => <div key={key} className="flex items-center gap-2"><span className="flex-1 text-xs truncate">{attributeTypes[key]?.name || key}</span><input type="number" value={value?.value ?? value ?? 0} onChange={(e) => setShopEntryDraft((d) => ({ ...d, requirement: { ...(d.requirement || {}), playerAttributes: { ...((d.requirement || {}).playerAttributes || {}), [key]: { ...(typeof value === 'object' ? value : { type: 'atleast' }), value: Number(e.target.value) || 0 } } } }))} className="w-24 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" /><button onClick={() => { const next = deepClone(shopEntryDraft.requirement?.playerAttributes || {}); delete next[key]; setShopEntryDraft((d) => ({ ...d, requirement: { ...(d.requirement || {}), playerAttributes: next } })); }} className="text-[#637588] hover:text-red-400"><X size={13} /></button></div>)}<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) setShopEntryDraft((d) => ({ ...d, requirement: { ...(d.requirement || {}), playerAttributes: { ...((d.requirement || {}).playerAttributes || {}), [key]: { type: 'atleast', value: 0 } } } })); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add player attribute...</option>{shopAttributeOptions.filter(([key]) => !(shopEntryDraft.requirement?.playerAttributes || {})[key]).map(([key,attr]) => <option key={key} value={key}>{attr?.name || key}</option>)}</select></div></div>
