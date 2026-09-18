@@ -13,6 +13,7 @@ const REFERENCE_TABS = [
 	{ key: 'sounds', label: 'Sounds' },
 	{ key: 'playerTypes', label: 'Player Types' },
 ];
+const SHOP_TAB = { key: 'shops', label: 'Shops' };
 const GROUP_TABS = [
 	{ key: 'unitTypeGroups', label: 'Unit Type Groups', dataType: 'unitTypeGroup', collection: 'unitTypes' },
 	{ key: 'itemTypeGroups', label: 'Item Type Groups', dataType: 'itemTypeGroup', collection: 'itemTypes' },
@@ -764,6 +765,8 @@ export default function GameContentEditor() {
 	const [dialogueDraft, setDialogueDraft] = useState(null);
 	const [draft, setDraft] = useState(null);
 	const [groupDraft, setGroupDraft] = useState(null);
+	const [shopDraft, setShopDraft] = useState(null);
+	const [shopEntryDraft, setShopEntryDraft] = useState(null);
 	const [advancedText, setAdvancedText] = useState('');
 	const [advancedError, setAdvancedError] = useState('');
 	const [search, setSearch] = useState('');
@@ -815,6 +818,20 @@ export default function GameContentEditor() {
 	const isGroupTab = GROUP_TABS.some((t) => t.key === activeTab);
 	const activeGroupDef = GROUP_TABS.find((t) => t.key === activeTab);
 	const groupMemberCollection = gameData?.data?.[activeGroupDef?.collection] || {};
+	const isShopsTab = activeTab === 'shops';
+	const shopsCollection = gameData?.data?.shops || {};
+	const shopAttributeOptions = useMemo(() => Object.entries(attributeTypes).sort((a, b) => (a[1]?.name || a[0]).localeCompare(b[1]?.name || b[0])), [attributeTypes]);
+	const shopItemOptions = useMemo(() => Object.entries(itemTypes).sort((a, b) => (a[1]?.name || a[0]).localeCompare(b[1]?.name || b[0])), [itemTypes]);
+	const shopUnitOptions = useMemo(() => Object.entries(gameData?.data?.unitTypes || {}).sort((a, b) => (a[1]?.name || a[0]).localeCompare(b[1]?.name || b[0])), [gameData]);
+	const shopEntries = useMemo(() => {
+		if (!isShopsTab || !gameData) return [];
+		const entries = Object.entries(shopsCollection);
+		entries.sort((a, b) => (a[1]?.name || '').localeCompare(b[1]?.name || ''));
+		if (!search.trim()) return entries;
+		const q = search.toLowerCase();
+		return entries.filter(([k, v]) => (v?.name || '').toLowerCase().includes(q) || k.toLowerCase().includes(q));
+	}, [isShopsTab, gameData, shopsCollection, search]);
+
 
 	const filteredEntries = useMemo(() => {
 		const entries = Object.entries(categoryMap);
@@ -1518,6 +1535,192 @@ export default function GameContentEditor() {
 		setSelectedEntityKeys([]);
 		setSelectedKey(null);
 		setDraft(null);
+	}
+
+	function shopEntryList(shop, kind) {
+		const source = shop?.[kind] || {};
+		return Object.entries(source).sort((a, b) => {
+			const ao = Number.isFinite(Number(a[1]?.order)) ? Number(a[1].order) : Number.MAX_SAFE_INTEGER;
+			const bo = Number.isFinite(Number(b[1]?.order)) ? Number(b[1].order) : Number.MAX_SAFE_INTEGER;
+			return ao - bo;
+		});
+	}
+
+	function selectShop(key) {
+		const shop = shopsCollection[key];
+		if (!shop) return;
+		const { name, description, dismissible, itemTypes, unitTypes, shopClass, streamMode, ...rest } = shop;
+		setSelectedKey(key);
+		setShopEntryDraft(null);
+		setShopDraft({
+			key,
+			name: name || '',
+			description: description ?? '',
+			dismissible: dismissible !== false,
+			itemTypes: deepClone(itemTypes) || {},
+			unitTypes: deepClone(unitTypes) || {},
+			shopClass: shopClass || '',
+			streamMode: streamMode ?? 1,
+			rest: deepClone(rest) || {},
+			isNew: false,
+		});
+		setSavedMsg('');
+	}
+
+	function startNewShop() {
+		const key = generateKey();
+		setSelectedKey(key);
+		setShopEntryDraft(null);
+		setShopDraft({
+			key,
+			name: 'New Shop',
+			description: '',
+			dismissible: true,
+			itemTypes: {},
+			unitTypes: {},
+			shopClass: '',
+			streamMode: 1,
+			rest: {},
+			isNew: true,
+		});
+		setSavedMsg('');
+	}
+
+	function updateShopField(field, value) {
+		setShopDraft((d) => ({ ...d, [field]: value }));
+	}
+
+	function addShopEntry(kind) {
+		if (!shopDraft) return;
+		const id = generateKey();
+		const current = shopDraft[kind] || {};
+		const orders = Object.values(current).map((v) => Number(v?.order)).filter(Number.isFinite);
+		const order = orders.length ? Math.max(...orders) + 1 : 0;
+		const entry = {
+			price: { playerAttributes: {}, requiredItemTypes: [] },
+			requirement: { playerAttributes: {}, requiredItemTypes: [] },
+			isPurchasable: true,
+		hideIfUnaffordable: false,
+		hideIfRequirementNotMet: false,
+		order,
+		...(kind === 'itemTypes' ? { quantity: '', replaceItemInTargetSlot: false } : {}),
+		};
+		setShopDraft((d) => ({ ...d, [kind]: { ...(d[kind] || {}), [id]: entry } }));
+		setShopEntryDraft({ kind, id, ...deepClone(entry) });
+	}
+
+	function openShopEntry(kind, id) {
+		const entry = shopDraft?.[kind]?.[id];
+		if (!entry) return;
+		setShopEntryDraft({ kind, id, ...deepClone(entry) });
+	}
+
+	function updateShopEntryField(field, value) {
+		setShopEntryDraft((d) => ({ ...d, [field]: value }));
+	}
+
+	function updateShopEntryNested(section, field, value) {
+		setShopEntryDraft((d) => ({ ...d, [section]: { ...(d[section] || {}), [field]: value } }));
+	}
+
+	function updateShopEntryMap(section, key, value) {
+		setShopEntryDraft((d) => ({ ...d, [section]: { ...(d[section] || {}), [key]: value } }));
+	}
+
+	function removeShopEntryMap(section, key) {
+		setShopEntryDraft((d) => {
+			const next = { ...(d[section] || {}) };
+			delete next[key];
+			return { ...d, [section]: next };
+		});
+	}
+
+	function toggleShopRequiredItem(section, key) {
+		setShopEntryDraft((d) => {
+			const current = Array.isArray(d?.[section]?.requiredItemTypes) ? d[section].requiredItemTypes.slice() : [];
+			const next = current.includes(key) ? current.filter((x) => x !== key) : [...current, key];
+			return { ...d, [section]: { ...(d[section] || {}), requiredItemTypes: next } };
+		});
+	}
+
+	function saveShopEntryDraft() {
+		if (!shopDraft || !shopEntryDraft) return;
+		const { kind, id, ...entry } = deepClone(shopEntryDraft);
+		if (entry.price && typeof entry.price === 'object') delete entry.price.coins;
+		setShopDraft((d) => ({ ...d, [kind]: { ...(d[kind] || {}), [id]: entry } }));
+		setShopEntryDraft(null);
+	}
+
+	function deleteShopEntry() {
+		if (!shopDraft || !shopEntryDraft) return;
+		const { kind, id } = shopEntryDraft;
+		if (!window.confirm('Remove this entry from the shop?')) return;
+		setShopDraft((d) => {
+			const next = { ...(d[kind] || {}) };
+			delete next[id];
+			return { ...d, [kind]: next };
+		});
+		setShopEntryDraft(null);
+	}
+
+	function moveShopEntry(direction, explicitKind = null, explicitId = null) {
+		if (!shopDraft) return;
+		const kind = explicitKind || shopEntryDraft?.kind;
+		const id = explicitId || shopEntryDraft?.id;
+		if (!kind || !id) return;
+		const list = shopEntryList(shopDraft, kind);
+		const index = list.findIndex(([key]) => key === id);
+		const target = index + direction;
+		if (index < 0 || target < 0 || target >= list.length) return;
+		const a = list[index][0];
+		const b = list[target][0];
+		setShopDraft((d) => {
+			const next = deepClone(d);
+			const ao = next[kind][a]?.order ?? index;
+			const bo = next[kind][b]?.order ?? target;
+			next[kind][a].order = bo;
+			next[kind][b].order = ao;
+			return next;
+		});
+	}
+
+	function saveShopDraft() {
+		if (!shopDraft?.name.trim()) {
+			alert('This shop needs a name.');
+			return;
+		}
+		if (shopEntryDraft) saveShopEntryDraft();
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.shops) next.data.shops = {};
+			next.data.shops[shopDraft.key] = {
+				...(shopDraft.rest || {}),
+				name: shopDraft.name,
+				description: shopDraft.description,
+				dismissible: !!shopDraft.dismissible,
+				itemTypes: deepClone(shopDraft.itemTypes) || {},
+				unitTypes: deepClone(shopDraft.unitTypes) || {},
+				shopClass: shopDraft.shopClass || '',
+				streamMode: shopDraft.streamMode ?? 1,
+			};
+			return next;
+		});
+		setShopDraft((d) => ({ ...d, isNew: false }));
+		setShopEntryDraft(null);
+		setSavedMsg('Saved to the working copy in this tool. Download the file below to keep it.');
+	}
+
+	function deleteShop() {
+		if (!shopDraft?.key) return;
+		if (!window.confirm('Remove this shop from the working copy? Existing scripts that reference it will no longer find it.')) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			delete next.data.shops[shopDraft.key];
+			return next;
+		});
+		setSelectedKey(null);
+		setShopDraft(null);
+		setShopEntryDraft(null);
 	}
 
 	function selectGroup(key) {
@@ -2299,6 +2502,27 @@ export default function GameContentEditor() {
 								<span className="text-[#637588] ml-1.5 text-xs">{Object.keys(gameData?.data?.[t.key] || {}).length}</span>
 							</button>
 						))}
+						<button
+							onClick={() => {
+							setActiveTab(SHOP_TAB.key);
+							setSelectedKey(null);
+							setSelectedEntityKeys([]);
+							setSelectedFolderId(null);
+							setDraft(null);
+							setGroupDraft(null);
+							setShopDraft(null);
+							setShopEntryDraft(null);
+							setSearch('');
+						}}
+						className={`w-full text-left px-4 py-1.5 text-sm border-l-2 transition-colors ${
+							activeTab === SHOP_TAB.key
+								? 'border-[#1a56da] text-[#1a56da] bg-[#323d48]'
+								: 'border-transparent text-[#a3adb8] hover:text-[#e1e6ea] hover:bg-[#323d48]/50'
+						}`}
+						>
+							{SHOP_TAB.label}
+							<span className="text-[#637588] ml-1.5 text-xs">{Object.keys(gameData?.data?.shops || {}).length}</span>
+						</button>
 						<div className="px-4 text-xs uppercase tracking-wide text-[#637588] mt-5 mb-1.5">Reference</div>
 						{REFERENCE_TABS.map((t) => (
 							<button
@@ -3157,6 +3381,93 @@ export default function GameContentEditor() {
 									</div>
 								)}
 							</div>
+						</>
+					) : isShopsTab ? (
+						<>
+							<div className="w-64 shrink-0 border-r border-[#3d4a57] flex flex-col">
+								<div className="p-3 border-b border-[#3d4a57]">
+									<div className="relative">
+										<Search size={13} className="absolute left-2.5 top-2.5 text-[#637588]" />
+										<input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="w-full bg-[#323d48] border border-[#48596a] rounded-md pl-8 pr-2 py-1.5 text-sm placeholder-[#637588] focus:outline-none focus:border-[#1a56da]" />
+									</div>
+									<button onClick={startNewShop} className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 mt-2 rounded-md border border-dashed border-[#48596a] text-sm text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da] transition-colors"><Plus size={14} /> New shop</button>
+								</div>
+								<div className="flex-1 overflow-y-auto">
+									{shopEntries.map(([key, shop]) => (
+										<button key={key} onClick={() => selectShop(key)} className={`w-full text-left px-3 py-2 border-b border-[#323d48] transition-colors ${selectedKey === key ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'}`}>
+											<div className="text-sm text-[#e1e6ea] truncate">{shop?.name || '(unnamed)'}</div>
+											<div className="text-xs text-[#637588] truncate">{Object.keys(shop?.itemTypes || {}).length} items · {Object.keys(shop?.unitTypes || {}).length} units</div>
+										</button>
+									))}
+									{shopEntries.length === 0 && <div className="text-sm text-[#637588] text-center py-8 px-4">Nothing here yet.</div>}
+								</div>
+							</div>
+\n							<div className="flex-1 overflow-y-auto p-6">
+								{!shopDraft ? (
+									<div className="text-[#637588] text-sm mt-16 text-center">Select a shop on the left, or create a new one.</div>
+								) : (
+									<div className="max-w-4xl">
+										<div className="flex items-center justify-between mb-4">
+											<div className="flex-1">
+												<label className="block text-xs text-[#8291a1] mb-1">Name</label>
+												<input value={shopDraft.name} onChange={(e) => updateShopField('name', e.target.value)} className="text-lg font-semibold bg-transparent border-b border-transparent hover:border-[#48596a] focus:border-[#1a56da] focus:outline-none px-0.5 w-full" />
+												<div className="text-xs text-[#637588] font-mono mt-1">{shopDraft.key} {shopDraft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}</div>
+											</div>
+											<div className="flex gap-2 ml-4">
+												{!shopDraft.isNew && <button onClick={deleteShop} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-900 text-red-400 text-sm hover:bg-red-950/40 transition-colors"><Trash2 size={13} /> Delete</button>}
+												<button onClick={saveShopDraft} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"><Save size={13} /> Save to working copy</button>
+											</div>
+										</div>
+\n										{savedMsg && <div className="mb-5 text-sm text-emerald-400 bg-emerald-950/30 border border-emerald-900 rounded-md px-3 py-2">{savedMsg}</div>}
+\n										<section className="mb-7">
+											<h3 className="text-sm font-medium text-[#c5ccd3] mb-3">General</h3>
+											<div className="space-y-4">
+												<div><label className="block text-xs text-[#8291a1] mb-1">Description</label><textarea rows={4} value={shopDraft.description} onChange={(e) => updateShopField('description', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]" /></div>
+												<div><label className="block text-xs text-[#8291a1] mb-1">Dismissible</label><div className="flex w-80"><button onClick={() => updateShopField('dismissible', true)} className={`flex-1 px-3 py-2 text-sm rounded-l-md ${shopDraft.dismissible ? 'bg-[#1a56da] text-white' : 'bg-[#697581] text-white'}`}>True</button><button onClick={() => updateShopField('dismissible', false)} className={`flex-1 px-3 py-2 text-sm rounded-r-md ${!shopDraft.dismissible ? 'bg-[#1a56da] text-white' : 'bg-[#697581] text-white'}`}>False</button></div></div>
+											</div>
+										</section>
+\n										{[['itemTypes','Item Types','item'],['unitTypes','Unit Types','unit']].map(([kind,label,short]) => {
+											const list = shopEntryList(shopDraft, kind);
+											const collection = kind === 'itemTypes' ? itemTypes : (gameData?.data?.unitTypes || {});
+											return <section key={kind} className="mb-7">
+												<div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-[#c5ccd3]">{label}</h3><button onClick={() => addShopEntry(kind)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da]"><Plus size={12} /> Add {short}</button></div>
+												<div className="space-y-1.5">
+													{list.map(([id, entry], index) => <div key={id} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-2">
+														<span className="text-[#8291a1] cursor-move">☰</span><button onClick={() => openShopEntry(kind, id)} className="flex-1 min-w-0 text-left"><div className="text-sm text-[#e1e6ea] truncate">{collection[id]?.name || id}</div><div className="text-xs text-[#637588] truncate">{entry?.isPurchasable === false ? 'hidden from shop' : 'shown in shop'}</div></button><button onClick={() => moveShopEntry(-1, kind, id)} disabled={index === 0} className="text-[#8291a1] hover:text-[#1a56da] disabled:opacity-20"><ChevronRight size={13} className="-rotate-90" /></button><button onClick={() => moveShopEntry(1, kind, id)} disabled={index === list.length - 1} className="text-[#8291a1] hover:text-[#1a56da] disabled:opacity-20"><ChevronRight size={13} className="rotate-90" /></button><button onClick={() => { if (!window.confirm('Remove this entry from the shop?')) return; setShopDraft((d) => { const next = { ...d, [kind]: { ...(d[kind] || {}) } }; delete next[kind][id]; return next; }); if (shopEntryDraft?.id === id) setShopEntryDraft(null); }} className="text-[#637588] hover:text-red-400"><X size={14} /></button>
+													</div>)}
+													{list.length === 0 && <div className="text-xs text-[#637588] border border-dashed border-[#3d4a57] rounded-md p-3">No {short}s in this shop yet.</div>}
+												</div>
+											</section>;
+										})}
+\n										<details className="mb-7">
+											<summary className="text-sm font-medium text-[#c5ccd3] cursor-pointer select-none">More</summary>
+											<div className="mt-3 space-y-3">
+												<div><label className="block text-xs text-[#8291a1] mb-1">CSS Class</label><input value={shopDraft.shopClass} onChange={(e) => updateShopField('shopClass', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm" /></div>
+												<div><label className="block text-xs text-[#8291a1] mb-1">Stream mode</label><input type="number" value={shopDraft.streamMode} onChange={(e) => updateShopField('streamMode', Number(e.target.value) || 0)} className="w-32 bg-[#323d48] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm" /></div>
+											</div>
+										</details>
+							</div>
+						)}
+						</div>
+\n						{shopEntryDraft && (
+							<div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-5">
+								<div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-[#262e36] border border-[#48596a] rounded-md shadow-2xl">
+									<div className="flex items-center justify-between px-4 py-3 border-b border-[#48596a]"><div className="font-medium">{shopEntryDraft.kind === 'itemTypes' ? itemTypes[shopEntryDraft.id]?.name : (gameData?.data?.unitTypes || {})[shopEntryDraft.id]?.name || shopEntryDraft.id}</div><button onClick={() => setShopEntryDraft(null)} className="text-[#8291a1] hover:text-white"><X size={17} /></button></div>
+									<div className="p-4 space-y-5">
+										<div className="flex items-center gap-2"><label className="text-xs text-[#8291a1]">Hide if requirement not met</label><div className="flex w-44"><button onClick={() => updateShopEntryField('hideIfRequirementNotMet', true)} className={`flex-1 px-2 py-1.5 text-xs rounded-l ${shopEntryDraft.hideIfRequirementNotMet ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>True</button><button onClick={() => updateShopEntryField('hideIfRequirementNotMet', false)} className={`flex-1 px-2 py-1.5 text-xs rounded-r ${!shopEntryDraft.hideIfRequirementNotMet ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>False</button></div></div>
+										<div className="flex items-center gap-2"><label className="text-xs text-[#8291a1]">Hide if unaffordable</label><div className="flex w-44"><button onClick={() => updateShopEntryField('hideIfUnaffordable', true)} className={`flex-1 px-2 py-1.5 text-xs rounded-l ${shopEntryDraft.hideIfUnaffordable ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>True</button><button onClick={() => updateShopEntryField('hideIfUnaffordable', false)} className={`flex-1 px-2 py-1.5 text-xs rounded-r ${!shopEntryDraft.hideIfUnaffordable ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>False</button></div></div>
+										<div className="flex items-center gap-2"><label className="text-xs text-[#8291a1]">Display in shop</label><div className="flex w-44"><button onClick={() => updateShopEntryField('isPurchasable', true)} className={`flex-1 px-2 py-1.5 text-xs rounded-l ${shopEntryDraft.isPurchasable ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>True</button><button onClick={() => updateShopEntryField('isPurchasable', false)} className={`flex-1 px-2 py-1.5 text-xs rounded-r ${!shopEntryDraft.isPurchasable ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>False</button></div></div>
+										{shopEntryDraft.kind === 'itemTypes' && <><div className="flex items-center gap-2"><label className="text-xs text-[#8291a1]">Replace item in target slot</label><div className="flex w-44"><button onClick={() => updateShopEntryField('replaceItemInTargetSlot', true)} className={`flex-1 px-2 py-1.5 text-xs rounded-l ${shopEntryDraft.replaceItemInTargetSlot ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>True</button><button onClick={() => updateShopEntryField('replaceItemInTargetSlot', false)} className={`flex-1 px-2 py-1.5 text-xs rounded-r ${!shopEntryDraft.replaceItemInTargetSlot ? 'bg-[#1a56da] text-white' : 'bg-[#697581]'}`}>False</button></div></div><div><label className="block text-xs text-[#8291a1] mb-1">Default quantity</label><input value={shopEntryDraft.quantity ?? ''} onChange={(e) => updateShopEntryField('quantity', e.target.value)} placeholder="default quantity" className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-1.5 text-sm" /></div></>}
+										<div><label className="block text-xs text-[#8291a1] mb-1">Price · Player Attributes</label><div className="space-y-1.5">{Object.entries(shopEntryDraft.price?.playerAttributes || {}).map(([key,value]) => <div key={key} className="flex items-center gap-2"><span className="flex-1 text-xs truncate">{attributeTypes[key]?.name || key}</span><input type="number" value={value ?? 0} onChange={(e) => updateShopEntryMap('pricePlayerAttributes', key, Number(e.target.value))} className="w-24 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" /><button onClick={() => { const next = deepClone(shopEntryDraft.price?.playerAttributes || {}); delete next[key]; setShopEntryDraft((d) => ({ ...d, price: { ...(d.price || {}), playerAttributes: next } })); }} className="text-[#637588] hover:text-red-400"><X size={13} /></button></div>)}<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) setShopEntryDraft((d) => ({ ...d, price: { ...(d.price || {}), playerAttributes: { ...((d.price || {}).playerAttributes || {}), [key]: 0 } } })); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add player attribute...</option>{shopAttributeOptions.filter(([key]) => !(shopEntryDraft.price?.playerAttributes || {})[key]).map(([key,attr]) => <option key={key} value={key}>{attr?.name || key}</option>)}</select></div></div>
+										<div><label className="block text-xs text-[#8291a1] mb-1">Price · Item Types (recipes)</label><div className="flex flex-wrap gap-1.5 mb-2">{(shopEntryDraft.price?.requiredItemTypes || []).map((key) => <span key={key} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#323d48] border border-[#3d4a57] text-xs">{itemTypes[key]?.name || key}<button onClick={() => toggleShopRequiredItem('price', key)} className="text-[#637588] hover:text-red-400"><X size={11} /></button></span>)}</div><select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) toggleShopRequiredItem('price',key); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add item type...</option>{shopItemOptions.filter(([key]) => !(shopEntryDraft.price?.requiredItemTypes || []).includes(key)).map(([key,item]) => <option key={key} value={key}>{item?.name || key}</option>)}</select></div>
+
+										<div><label className="block text-xs text-[#8291a1] mb-1">Requirements · Player Attributes</label><div className="space-y-1.5">{Object.entries(shopEntryDraft.requirement?.playerAttributes || {}).map(([key,value]) => <div key={key} className="flex items-center gap-2"><span className="flex-1 text-xs truncate">{attributeTypes[key]?.name || key}</span><input type="number" value={value?.value ?? value ?? 0} onChange={(e) => setShopEntryDraft((d) => ({ ...d, requirement: { ...(d.requirement || {}), playerAttributes: { ...((d.requirement || {}).playerAttributes || {}), [key]: { ...(typeof value === 'object' ? value : { type: 'atleast' }), value: Number(e.target.value) || 0 } } } }))} className="w-24 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" /><button onClick={() => { const next = deepClone(shopEntryDraft.requirement?.playerAttributes || {}); delete next[key]; setShopEntryDraft((d) => ({ ...d, requirement: { ...(d.requirement || {}), playerAttributes: next } })); }} className="text-[#637588] hover:text-red-400"><X size={13} /></button></div>)}<select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) setShopEntryDraft((d) => ({ ...d, requirement: { ...(d.requirement || {}), playerAttributes: { ...((d.requirement || {}).playerAttributes || {}), [key]: { type: 'atleast', value: 0 } } } })); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add player attribute...</option>{shopAttributeOptions.filter(([key]) => !(shopEntryDraft.requirement?.playerAttributes || {})[key]).map(([key,attr]) => <option key={key} value={key}>{attr?.name || key}</option>)}</select></div></div>
+										<div><label className="block text-xs text-[#8291a1] mb-1">Requirements · Item Types (recipes)</label><div className="flex flex-wrap gap-1.5 mb-2">{(shopEntryDraft.requirement?.requiredItemTypes || []).map((key) => <span key={key} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#323d48] border border-[#3d4a57] text-xs">{itemTypes[key]?.name || key}<button onClick={() => toggleShopRequiredItem('requirement', key)} className="text-[#637588] hover:text-red-400"><X size={11} /></button></span>)}</div><select defaultValue="" onChange={(e) => { const key=e.target.value; if(key) toggleShopRequiredItem('requirement',key); e.target.value=''; }} className="w-full bg-[#323d48] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add item type...</option>{shopItemOptions.filter(([key]) => !(shopEntryDraft.requirement?.requiredItemTypes || []).includes(key)).map(([key,item]) => <option key={key} value={key}>{item?.name || key}</option>)}</select></div>
+											<div className="flex items-center justify-between pt-2"><button onClick={deleteShopEntry} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-900 text-red-400 text-sm hover:bg-red-950/40"><Trash2 size={13} /> Delete</button><div className="flex gap-2"><button onClick={() => moveShopEntry(-1)} className="px-2.5 py-1.5 rounded-md border border-[#48596a] text-xs">Move up</button><button onClick={() => moveShopEntry(1)} className="px-2.5 py-1.5 rounded-md border border-[#48596a] text-xs">Move down</button><button onClick={() => setShopEntryDraft(null)} className="px-3 py-1.5 rounded-md bg-[#697581] text-sm">Cancel</button><button onClick={saveShopEntryDraft} className="px-3 py-1.5 rounded-md bg-[#1a56da] text-white text-sm font-medium">Save</button></div></div>
+										</div>
+								</div>
+							</div>
+						)}
 						</>
 					) : isGroupTab ? (
 						<>
