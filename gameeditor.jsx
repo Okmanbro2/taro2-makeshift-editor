@@ -21,28 +21,6 @@ const GROUP_TABS = [
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
 
-// A fresh animation with sensible defaults - loopCount left at 0/empty on
-// purpose, since an empty loop count means "play forever" (see the Animations
-// editor UI below).
-function DEFAULT_ANIMATION() {
-	return {
-		frames: [1],
-		framesPerSecond: 0,
-		loopCount: 0,
-		duration: null,
-		fadeOutTime: 0,
-		forceCompleteAnimation: false,
-		playAnimationForItems: false,
-		replayDelay: { min: 0, max: 0 },
-	};
-}
-
-const BODY_TYPES = [
-	{ value: 'dynamic', label: 'dynamic - can be moved by any internal/external influences' },
-	{ value: 'static', label: 'static - can only be moved by "move entity" action' },
-	{ value: 'kinematic', label: 'kinematic - can only be moved by "set velocity" or "move entity" actions' },
-];
-
 const DEFAULT_UNIT_CONTROLS = {
 	movementMethod: 'velocity',
 	movementControlScheme: 'wasd',
@@ -769,285 +747,6 @@ function ScriptTreeView({ script, gameData, onJumpToScript, onOp, onAddAction, o
 	);
 }
 
-function StateEditorModal({ stateKey, initialData, availableAnimations, availableBodies, soundOptions, particleOptions, onSave, onCancel }) {
-	const [form, setForm] = useState(() => ({
-		name: stateKey === '__new__' ? '' : stateKey,
-		animation: initialData?.animation || availableAnimations[0] || '',
-		body: initialData?.body || 'none',
-		particles: initialData?.particles || '',
-		sound: initialData?.sound || '',
-	}));
-
-	function set(field, value) {
-		setForm((f) => ({ ...f, [field]: value }));
-	}
-
-	return (
-		<div className="fixed inset-0 z-[10000] flex items-start justify-center bg-black/50 pt-20" onClick={onCancel}>
-			<div className="w-[420px] max-w-[92vw] rounded-lg border border-[#48596a] bg-[#323d48] shadow-xl" onClick={(e) => e.stopPropagation()}>
-				<div className="flex items-center justify-between px-5 py-4 border-b border-[#3d4a57]">
-					<h2 className="text-base font-semibold">{stateKey === '__new__' ? 'Add new state' : 'Edit state'}</h2>
-					<button onClick={onCancel} className="text-[#8291a1] hover:text-[#e1e6ea]"><X size={16} /></button>
-				</div>
-				<div className="px-5 py-4 space-y-3">
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1">Name</label>
-						<input
-							value={form.name}
-							onChange={(e) => set('name', e.target.value)}
-							placeholder="default"
-							className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
-						/>
-					</div>
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1 flex items-center gap-1">Animation</label>
-						<select
-							value={form.animation}
-							onChange={(e) => set('animation', e.target.value)}
-							className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
-						>
-							{availableAnimations.length === 0 && <option value="">(no animations yet - add one first)</option>}
-							{availableAnimations.map((name) => <option key={name} value={name}>{name}</option>)}
-						</select>
-					</div>
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1">Body</label>
-						<select
-							value={form.body}
-							onChange={(e) => set('body', e.target.value)}
-							className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
-						>
-							<option value="none">none</option>
-							{availableBodies.map((name) => <option key={name} value={name}>{name}</option>)}
-						</select>
-						<p className="text-[11px] text-[#637588] mt-1">Whichever bodies this unit/item/projectile currently has (see Body &amp; size below) show up here.</p>
-					</div>
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1">Particles</label>
-						<select
-							value={form.particles}
-							onChange={(e) => set('particles', e.target.value)}
-							className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
-						>
-							<option value="">(none)</option>
-							{Object.entries(particleOptions).sort((a, b) => (a[1]?.name || '').localeCompare(b[1]?.name || '')).map(([id, v]) => (
-								<option key={id} value={id}>{v?.name || id}</option>
-							))}
-						</select>
-					</div>
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1">Sound</label>
-						<select
-							value={form.sound}
-							onChange={(e) => set('sound', e.target.value)}
-							className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
-						>
-							<option value="">(none)</option>
-							{Object.entries(soundOptions).sort((a, b) => (a[1]?.name || '').localeCompare(b[1]?.name || '')).map(([id, v]) => (
-								<option key={id} value={id}>{v?.name || id}</option>
-							))}
-						</select>
-					</div>
-				</div>
-				<div className="flex justify-end gap-2 px-5 py-4 border-t border-[#3d4a57]">
-					<button onClick={onCancel} className="px-3 py-1.5 rounded-md border border-[#48596a] text-sm hover:bg-[#3d4a57] transition-colors">Cancel</button>
-					<button
-						onClick={() => onSave(stateKey, { ...form, body: form.body === 'none' ? null : form.body })}
-						className="px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"
-					>
-						Save
-					</button>
-				</div>
-			</div>
-		</div>
-	);
-}
-
-function AnimationEditorModal({ animationKey, initialData, onSave, onCancel }) {
-	const base = initialData || DEFAULT_ANIMATION();
-	const [form, setForm] = useState(() => ({
-		name: animationKey === '__new__' ? '' : animationKey,
-		frames: Array.isArray(base.frames) && base.frames.length ? [...base.frames] : [1],
-		framesPerSecond: base.framesPerSecond ?? 0,
-		loopCount: base.loopCount ?? 0,
-		duration: base.duration ?? '',
-		fadeOutTime: base.fadeOutTime ?? 0,
-		forceCompleteAnimation: !!base.forceCompleteAnimation,
-		playAnimationForItems: !!base.playAnimationForItems,
-		replayDelay: { min: base.replayDelay?.min ?? 0, max: base.replayDelay?.max ?? 0 },
-	}));
-
-	function set(field, value) {
-		setForm((f) => ({ ...f, [field]: value }));
-	}
-
-	function setFrame(index, value) {
-		setForm((f) => {
-			const next = [...f.frames];
-			next[index] = Number(value) || 0;
-			return { ...f, frames: next };
-		});
-	}
-
-	function addFrame() {
-		setForm((f) => ({ ...f, frames: [...f.frames, (f.frames[f.frames.length - 1] ?? 0) + 1] }));
-	}
-
-	function removeFrame(index) {
-		setForm((f) => (f.frames.length <= 1 ? f : { ...f, frames: f.frames.filter((_, i) => i !== index) }));
-	}
-
-	function toggle(field) {
-		return (
-			<div className="flex rounded-md overflow-hidden border border-[#3d4a57] w-fit">
-				<button
-					type="button"
-					onClick={() => set(field, true)}
-					className={`px-3 py-1 text-xs font-medium ${form[field] ? 'bg-[#1a56da] text-[#262e36]' : 'bg-[#262e36] text-[#8291a1]'}`}
-				>
-					True
-				</button>
-				<button
-					type="button"
-					onClick={() => set(field, false)}
-					className={`px-3 py-1 text-xs font-medium ${!form[field] ? 'bg-[#1a56da] text-[#262e36]' : 'bg-[#262e36] text-[#8291a1]'}`}
-				>
-					False
-				</button>
-			</div>
-		);
-	}
-
-	return (
-		<div className="fixed inset-0 z-[10000] flex items-start justify-center bg-black/50 pt-16 overflow-y-auto pb-16" onClick={onCancel}>
-			<div className="w-[460px] max-w-[92vw] rounded-lg border border-[#48596a] bg-[#323d48] shadow-xl" onClick={(e) => e.stopPropagation()}>
-				<div className="flex items-center justify-between px-5 py-4 border-b border-[#3d4a57]">
-					<h2 className="text-base font-semibold">{animationKey === '__new__' ? 'Add new animation' : 'Edit animation'}</h2>
-					<button onClick={onCancel} className="text-[#8291a1] hover:text-[#e1e6ea]"><X size={16} /></button>
-				</div>
-				<div className="px-5 py-4 space-y-3 max-h-[65vh] overflow-y-auto">
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1">Name</label>
-						<input
-							value={form.name}
-							onChange={(e) => set('name', e.target.value)}
-							placeholder="default"
-							className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#1a56da]"
-						/>
-					</div>
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1">Frames</label>
-						<div className="flex flex-wrap items-center gap-1.5">
-							{form.frames.map((frame, i) => (
-								<div key={i} className="flex items-center gap-1 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-1">
-									<input
-										type="number"
-										value={frame}
-										onChange={(e) => setFrame(i, e.target.value)}
-										className="w-12 bg-transparent text-xs focus:outline-none"
-									/>
-									{form.frames.length > 1 && (
-										<button onClick={() => removeFrame(i)} className="text-[#637588] hover:text-red-400"><X size={11} /></button>
-									)}
-								</div>
-							))}
-							<button
-								onClick={addFrame}
-								className="flex items-center justify-center w-7 h-7 rounded bg-[#1a56da] text-[#262e36] hover:bg-[#1a56da]"
-							>
-								<Plus size={13} />
-							</button>
-						</div>
-						<p className="text-[11px] text-[#637588] mt-1">Each number is a frame index in this entity's sprite sheet (see Cell sheet above). Works best with multi-column sheets - think effect-style sprites.</p>
-					</div>
-					<div className="grid grid-cols-2 gap-3">
-						<div>
-							<label className="block text-xs text-[#8291a1] mb-1">Frames per second</label>
-							<input
-								type="number"
-								value={form.framesPerSecond}
-								onChange={(e) => set('framesPerSecond', Number(e.target.value) || 0)}
-								className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm"
-							/>
-						</div>
-						<div>
-							<label className="block text-xs text-[#8291a1] mb-1">Loop count</label>
-							<input
-								type="number"
-								value={form.loopCount}
-								onChange={(e) => set('loopCount', Number(e.target.value) || 0)}
-								placeholder="empty = infinite"
-								className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm"
-							/>
-						</div>
-					</div>
-					<p className="text-[11px] text-[#637588] -mt-2">If loop count is 0/empty, the animation plays infinitely.</p>
-					<div className="grid grid-cols-2 gap-3">
-						<div>
-							<label className="block text-xs text-[#8291a1] mb-1">Duration</label>
-							<input
-								value={form.duration}
-								onChange={(e) => set('duration', e.target.value === '' ? '' : Number(e.target.value) || 0)}
-								placeholder="default"
-								className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm"
-							/>
-						</div>
-						<div>
-							<label className="block text-xs text-[#8291a1] mb-1">Fade out time</label>
-							<input
-								type="number"
-								value={form.fadeOutTime}
-								onChange={(e) => set('fadeOutTime', Number(e.target.value) || 0)}
-								className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm"
-							/>
-						</div>
-					</div>
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1">Force complete animation</label>
-						{toggle('forceCompleteAnimation')}
-					</div>
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1">Play animation for items</label>
-						{toggle('playAnimationForItems')}
-					</div>
-					<div>
-						<label className="block text-xs text-[#8291a1] mb-1">Replay delay</label>
-						<div className="flex gap-3">
-							<div className="flex-1">
-								<span className="block text-[10px] text-[#637588] mb-0.5">Min</span>
-								<input
-									type="number"
-									value={form.replayDelay.min}
-									onChange={(e) => set('replayDelay', { ...form.replayDelay, min: Number(e.target.value) || 0 })}
-									className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm"
-								/>
-							</div>
-							<div className="flex-1">
-								<span className="block text-[10px] text-[#637588] mb-0.5">Max</span>
-								<input
-									type="number"
-									value={form.replayDelay.max}
-									onChange={(e) => set('replayDelay', { ...form.replayDelay, max: Number(e.target.value) || 0 })}
-									className="w-full bg-[#262e36] border border-[#3d4a57] rounded-md px-2.5 py-1.5 text-sm"
-								/>
-							</div>
-						</div>
-					</div>
-				</div>
-				<div className="flex justify-end gap-2 px-5 py-4 border-t border-[#3d4a57]">
-					<button onClick={onCancel} className="px-3 py-1.5 rounded-md border border-[#48596a] text-sm hover:bg-[#3d4a57] transition-colors">Cancel</button>
-					<button
-						onClick={() => onSave(animationKey, { ...form, duration: form.duration === '' ? null : form.duration })}
-						className="px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:bg-[#1a56da] transition-colors"
-					>
-						Save
-					</button>
-				</div>
-			</div>
-		</div>
-	);
-}
-
 export default function GameContentEditor() {
 	const [gameData, setGameData] = useState(null);
 	const [editingPlayerTypeKey, setEditingPlayerTypeKey] = useState(null);
@@ -1076,10 +775,8 @@ export default function GameContentEditor() {
 	const [savedMsg, setSavedMsg] = useState('');
 	const [gridPreview, setGridPreview] = useState({ cols: 1, rows: 1 });
 	const [selectedBodyName, setSelectedBodyName] = useState('default');
-	const [selectedStateName, setSelectedStateName] = useState('default');
 	const [selectedAnimationName, setSelectedAnimationName] = useState('default');
-	const [editingStateKey, setEditingStateKey] = useState(null); // name of the state being edited in the modal, or '__new__', or null (closed)
-	const [editingAnimationKey, setEditingAnimationKey] = useState(null); // same idea, for animations
+	const [selectedStateKey, setSelectedStateKey] = useState('');
 	const [selectedEntityScriptKey, setSelectedEntityScriptKey] = useState('');
 	const [entityScriptViewMode, setEntityScriptViewMode] = useState('tree'); 
 	const [spriteNatural, setSpriteNatural] = useState(null); 
@@ -1117,6 +814,7 @@ export default function GameContentEditor() {
 	const attributeTypes = gameData?.data?.attributeTypes || {};
 	const playerAttributeTypes = attributeTypes;
 	const soundTypes = gameData?.data?.sound || {};
+	const particleTypes = gameData?.data?.particleTypes || {};
 	const playerTypes = gameData?.data?.playerTypes || {};
 	const folders = gameData?.data?.folders || {};
 
@@ -1278,10 +976,8 @@ export default function GameContentEditor() {
 	}
 
 	function loadDraftFromEntity(key, entity) {
-		const { name, attributes, variables, cellSheet, bodies, states, animations, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = entity;
-		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
-		const clonedAnimations = deepClone(animations) || { default: DEFAULT_ANIMATION() };
-		const clonedStates = deepClone(states) || { default: { name: 'default', animation: 'default', body: Object.keys(clonedBodies)[0] || 'default', particles: {}, sound: {} } };
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = entity;
+		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX, 'z-index': { layer: 3, depth: 1 } } };
 		setDraft({
 			key,
 			name: name || '',
@@ -1289,8 +985,8 @@ export default function GameContentEditor() {
 			variables: deepClone(variables) || {},
 			cellSheet: { ...(deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 }), columnCount: Math.max(1, Number(cellSheet?.columnCount) || 1), rowCount: Math.max(1, Number(cellSheet?.rowCount) || 1) },
 			bodies: clonedBodies,
-			states: clonedStates,
-			animations: clonedAnimations,
+			animations: deepClone(entity.animations) || { default: { name: 'default', frames: [1], loopCount: 0, framesPerSecond: 0 } },
+			states: deepClone(entity.states) || { [generateKey()]: { name: 'default', animation: 'default', body: 'default', particles: {}, sound: {} } },
 			effects: activeTab === 'itemTypes' ? (deepClone(effects) || { use: { sound: {} }, create: { sound: {} }, destroy: { sound: {} } }) : deepClone(effects),
 			...(activeTab === 'unitTypes'
 				? {
@@ -1310,8 +1006,8 @@ export default function GameContentEditor() {
 			isNew: false,
 		});
 		setSelectedBodyName(clonedBodies.default ? 'default' : Object.keys(clonedBodies)[0]);
-		setSelectedStateName(clonedStates.default ? 'default' : Object.keys(clonedStates)[0]);
-		setSelectedAnimationName(clonedAnimations.default ? 'default' : Object.keys(clonedAnimations)[0]);
+		setSelectedAnimationName(entity.animations?.default ? 'default' : Object.keys(entity.animations || { default: {} })[0]);
+		setSelectedStateKey(Object.keys(entity.states || {})[0] || '');
 		setSelectedEntityScriptKey('');
 		setSpriteNatural(null);
 		setGridPreview({ cols: cellSheet?.columnCount || 1, rows: cellSheet?.rowCount || 1 });
@@ -1395,10 +1091,10 @@ export default function GameContentEditor() {
 		};
 		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
 		const newKey = generateKey();
-		const { name, attributes, variables, cellSheet, bodies, states, animations, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
-		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX } };
-		const clonedAnimations = deepClone(animations) || { default: DEFAULT_ANIMATION() };
-		const clonedStates = deepClone(states) || { default: { name: 'default', animation: 'default', body: Object.keys(clonedBodies)[0] || 'default', particles: {}, sound: {} } };
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
+		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX, 'z-index': { layer: 3, depth: 1 } } };
+		const clonedAnimations = deepClone(base.animations) || { default: { name: 'default', frames: [1], loopCount: 0, framesPerSecond: 0 } };
+		const clonedStates = deepClone(base.states) || { [generateKey()]: { name: 'default', animation: 'default', body: 'default', particles: {}, sound: {} } };
 		setSelectedEntityKeys([]);
 		setSelectedKey(newKey);
 		setDraft({
@@ -1408,8 +1104,8 @@ export default function GameContentEditor() {
 			variables: deepClone(variables) || {},
 			cellSheet: { ...(deepClone(cellSheet) || { url: '', columnCount: 1, rowCount: 1 }), columnCount: Math.max(1, Number(cellSheet?.columnCount) || 1), rowCount: Math.max(1, Number(cellSheet?.rowCount) || 1) },
 			bodies: clonedBodies,
-			states: clonedStates,
 			animations: clonedAnimations,
+			states: clonedStates,
 			effects: activeTab === 'itemTypes' ? (deepClone(effects) || { use: { sound: {} }, create: { sound: {} }, destroy: { sound: {} } }) : deepClone(effects),
 			scripts: deepClone(scripts) || {},
 			controls: activeTab === 'unitTypes' ? (Object.keys(controls || {}).length ? deepClone(controls) : deepClone(DEFAULT_UNIT_CONTROLS)) : (deepClone(controls) || {}),
@@ -1426,8 +1122,8 @@ export default function GameContentEditor() {
 			isNew: true,
 		});
 		setSelectedBodyName(clonedBodies.default ? 'default' : Object.keys(clonedBodies)[0]);
-		setSelectedStateName(clonedStates.default ? 'default' : Object.keys(clonedStates)[0]);
 		setSelectedAnimationName(clonedAnimations.default ? 'default' : Object.keys(clonedAnimations)[0]);
+		setSelectedStateKey(Object.keys(clonedStates)[0] || '');
 		setSelectedEntityScriptKey('');
 		setSpriteNatural(null);
 		setGridPreview({ cols: cellSheet?.columnCount || 1, rows: cellSheet?.rowCount || 1 });
@@ -1528,39 +1224,12 @@ export default function GameContentEditor() {
 		}));
 	}
 
-	// For fields that aren't plain numbers (type is a string, billboardEffect is
-	// a bool, layer is free text, offset is itself an {x,y} pair) - kept
-	// separate from updateBodySize above so that one doesn't accidentally
-	// Number()-coerce a string or boolean.
-	function updateBodyField(field, value) {
-		setDraft((d) => ({
-			...d,
-			bodies: {
-				...d.bodies,
-				[selectedBodyName]: { ...d.bodies[selectedBodyName], [field]: value },
-			},
-		}));
-	}
-
-	function updateBodyOffset(axis, value) {
-		setDraft((d) => ({
-			...d,
-			bodies: {
-				...d.bodies,
-				[selectedBodyName]: {
-					...d.bodies[selectedBodyName],
-					offset: { ...(d.bodies[selectedBodyName]?.offset || { x: 0, y: 0 }), [axis]: Number(value) || 0 },
-				},
-			},
-		}));
-	}
-
 	function addBody() {
 		const name = prompt('New body name (e.g. crouching):');
 		if (!name || draft.bodies[name]) return;
 		setDraft((d) => ({
 			...d,
-			bodies: { ...d.bodies, [name]: { type: 'dynamic', width: TILE_PX, height: TILE_PX } },
+			bodies: { ...d.bodies, [name]: { type: 'dynamic', width: TILE_PX, height: TILE_PX, 'z-index': { layer: 3, depth: 1 } } },
 		}));
 		setSelectedBodyName(name);
 	}
@@ -1574,98 +1243,79 @@ export default function GameContentEditor() {
 		setDraft((d) => {
 			const next = { ...d.bodies };
 			delete next[name];
-			return { ...d, bodies: next };
+			const states = Object.fromEntries(Object.entries(d.states || {}).map(([key, state]) => [key, state?.body === name ? { ...state, body: 'none' } : state]));
+			return { ...d, bodies: next, states };
 		});
 		if (selectedBodyName === name) setSelectedBodyName(remaining[0]);
 	}
 
-	// ---- States ----
-	// A state ties together an animation + a body (+ optional particles/sound)
-	// under one name - e.g. a "flying" state might use the "flap" animation
-	// and the "airborne" body. See DEFAULT_ANIMATION/the states modal below.
-	function openNewStateModal() {
-		setEditingStateKey('__new__');
+	function updateBodyField(field, value) {
+		setDraft((d) => ({ ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...(d.bodies?.[selectedBodyName] || {}), [field]: value } } }));
 	}
 
-	function saveStateFromModal(originalKey, stateData) {
-		const key = (stateData.name || '').trim();
-		if (!key) {
-			alert('States need a name.');
-			return;
-		}
-		if (key !== originalKey && draft.states[key]) {
-			alert(`A state named "${key}" already exists.`);
-			return;
-		}
-		setDraft((d) => {
-			const next = { ...d.states };
-			if (originalKey && originalKey !== '__new__' && originalKey !== key) delete next[originalKey];
-			next[key] = { ...stateData, name: key };
-			return { ...d, states: next };
-		});
-		setSelectedStateName(key);
-		setEditingStateKey(null);
+	function updateBodyZIndex(field, value) {
+		setDraft((d) => ({ ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...(d.bodies?.[selectedBodyName] || {}), 'z-index': { ...((d.bodies?.[selectedBodyName] || {})['z-index'] || {}), [field]: Number(value) || 0 } } } }));
 	}
 
-	function removeState(name) {
-		const remaining = Object.keys(draft.states).filter((k) => k !== name);
-		if (remaining.length === 0) {
-			alert("Can't remove the last state - every unit/item/projectile needs at least one.");
-			return;
-		}
-		if (!confirm(`Remove state "${name}"? Any script referencing it by name will need updating.`)) return;
-		setDraft((d) => {
-			const next = { ...d.states };
-			delete next[name];
-			return { ...d, states: next };
-		});
-		if (selectedStateName === name) setSelectedStateName(remaining[0]);
-	}
-
-	// ---- Animations ----
-	function openNewAnimationModal() {
-		setEditingAnimationKey('__new__');
-	}
-
-	function saveAnimationFromModal(originalKey, animData) {
-		const key = (animData.name || '').trim();
-		if (!key) {
-			alert('Animations need a name.');
-			return;
-		}
-		if (key !== originalKey && draft.animations[key]) {
-			alert(`An animation named "${key}" already exists.`);
-			return;
-		}
-		setDraft((d) => {
-			const next = { ...d.animations };
-			if (originalKey && originalKey !== '__new__' && originalKey !== key) delete next[originalKey];
-			const { name, ...rest } = animData;
-			next[key] = rest;
-			return { ...d, animations: next };
-		});
-		setSelectedAnimationName(key);
-		setEditingAnimationKey(null);
+	function addAnimation() {
+		if (!draft) return;
+		let name = prompt('New animation name (e.g. attack):');
+		if (!name) return;
+		name = name.trim();
+		if (!name || draft.animations?.[name]) return;
+		setDraft((d) => ({ ...d, animations: { ...(d.animations || {}), [name]: { name, frames: [1], framesPerSecond: 0, loopCount: 0 } } }));
+		setSelectedAnimationName(name);
 	}
 
 	function removeAnimation(name) {
-		const remaining = Object.keys(draft.animations).filter((k) => k !== name);
-		if (remaining.length === 0) {
-			alert("Can't remove the last animation - every unit/item/projectile needs at least one.");
-			return;
-		}
-		const usedByStates = Object.entries(draft.states || {}).filter(([, s]) => s.animation === name).map(([k]) => k);
-		if (usedByStates.length > 0) {
-			alert(`Can't remove "${name}" - it's still used by state(s): ${usedByStates.join(', ')}. Point those at a different animation first.`);
-			return;
-		}
-		if (!confirm(`Remove animation "${name}"?`)) return;
-		setDraft((d) => {
-			const next = { ...d.animations };
-			delete next[name];
-			return { ...d, animations: next };
-		});
-		if (selectedAnimationName === name) setSelectedAnimationName(remaining[0]);
+		const names = Object.keys(draft.animations || {});
+		if (names.length <= 1) return alert("Can't remove the last animation.");
+		if (!window.confirm(`Remove animation "${name}"? States using it will be changed to an empty animation.`)) return;
+		setDraft((d) => { const next = { ...(d.animations || {}) }; delete next[name]; const states = Object.fromEntries(Object.entries(d.states || {}).map(([key, state]) => [key, state?.animation === name ? { ...state, animation: '' } : state])); return { ...d, animations: next, states }; });
+		setSelectedAnimationName(names.find((n) => n !== name) || '');
+	}
+
+	function updateAnimationField(field, value) {
+		setDraft((d) => ({ ...d, animations: { ...(d.animations || {}), [selectedAnimationName]: { ...(d.animations?.[selectedAnimationName] || {}), [field]: value } } }));
+	}
+
+	function addAnimationFrame() {
+		setDraft((d) => ({ ...d, animations: { ...(d.animations || {}), [selectedAnimationName]: { ...(d.animations?.[selectedAnimationName] || {}), frames: [...(d.animations?.[selectedAnimationName]?.frames || []), 1] } } }));
+	}
+
+	function updateAnimationFrame(index, value) {
+		setDraft((d) => { const animation = d.animations?.[selectedAnimationName]; if (!animation) return d; const frames = [...(animation.frames || [])]; frames[index] = Math.max(1, Number(value) || 1); return { ...d, animations: { ...(d.animations || {}), [selectedAnimationName]: { ...animation, frames } } }; });
+	}
+
+	function removeAnimationFrame(index) {
+		setDraft((d) => { const animation = d.animations?.[selectedAnimationName]; if (!animation) return d; const frames = (animation.frames || []).filter((_, i) => i !== index); return { ...d, animations: { ...(d.animations || {}), [selectedAnimationName]: { ...animation, frames: frames.length ? frames : [1] } } }; });
+	}
+
+	function addState() {
+		if (!draft) return;
+		let name = prompt('New state name (e.g. damaged):');
+		if (!name) return;
+		name = name.trim();
+		const key = generateKey();
+		const state = { name, animation: selectedAnimationName || Object.keys(draft.animations || {})[0] || '', body: Object.keys(draft.bodies || {})[0] || 'none', particles: {}, sound: {} };
+		setDraft((d) => ({ ...d, states: { ...(d.states || {}), [key]: state } }));
+		setSelectedStateKey(key);
+	}
+
+	function removeState(key) {
+		const keys = Object.keys(draft.states || {});
+		if (keys.length <= 1) return alert("Can't remove the last state.");
+		if (!window.confirm(`Remove state "${draft.states?.[key]?.name || key}"?`)) return;
+		setDraft((d) => { const next = { ...(d.states || {}) }; delete next[key]; return { ...d, states: next }; });
+		setSelectedStateKey(keys.find((k) => k !== key) || '');
+	}
+
+	function updateStateField(field, value) {
+		setDraft((d) => ({ ...d, states: { ...(d.states || {}), [selectedStateKey]: { ...(d.states?.[selectedStateKey] || {}), [field]: value } } }));
+	}
+
+	function toggleStateMapValue(section, key) {
+		setDraft((d) => { const state = d.states?.[selectedStateKey]; if (!state) return d; const next = { ...(state[section] || {}) }; if (next[key] !== undefined) delete next[key]; else next[key] = true; return { ...d, states: { ...(d.states || {}), [selectedStateKey]: { ...state, [section]: next } } }; });
 	}
 
 	function updateDraftField(field, value) {
@@ -1920,8 +1570,8 @@ export default function GameContentEditor() {
 			variables: draft.variables,
 			cellSheet: finalCellSheet,
 			bodies: draft.bodies,
-			states: draft.states,
-			animations: draft.animations,
+			animations: deepClone(draft.animations) || {},
+			states: deepClone(draft.states) || {},
 			controls: deepClone(draft.controls) || {},
 			...(draft.effects !== undefined ? { effects: deepClone(draft.effects) } : {}),
 			scripts: Object.fromEntries(Object.entries(draft.scripts || {}).map(([key, value]) => {
@@ -3650,7 +3300,31 @@ export default function GameContentEditor() {
 
 										{}
 										<section className="mb-7">
-											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Body &amp; size</h3>
+				\t\t\t\t\t\t<section className="mb-7">
+\t\t\t\t\t\t\t<div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-[#c5ccd3]">States</h3><button onClick={addState} className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8]"><Plus size={12}/> state</button></div>
+\t\t\t\t\t\t\t<div className="flex flex-wrap gap-1.5 mb-3">{Object.entries(draft.states || {}).map(([key,state])=><button key={key} onClick={()=>setSelectedStateKey(key)} className={`text-left px-2.5 py-1.5 rounded-md border text-xs ${selectedStateKey===key?'bg-[#1a56da] border-[#1a56da] text-[#262e36]':'bg-[#323d48] border-[#48596a] text-[#c5ccd3]'}`}><div className="font-medium">{state?.name||key}</div><div className="text-[10px] opacity-70">{state?.animation||'none'} · {state?.body||'none'}</div></button>)}</div>
+\t\t\t\t\t\t\t{draft.states?.[selectedStateKey] && (()=>{ const state=draft.states[selectedStateKey]; const particles=Object.keys(state.particles||{}); const sounds=Object.keys(state.sound||{}); return <div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3 space-y-3">
+\t\t\t\t\t\t\t\t<div className="grid grid-cols-1 md:grid-cols-3 gap-2"><div><label className="block text-[11px] text-[#8291a1] mb-1">Name</label><input value={state.name||''} onChange={e=>updateStateField('name',e.target.value)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"/></div><div><label className="block text-[11px] text-[#8291a1] mb-1">Animation</label><select value={state.animation||''} onChange={e=>updateStateField('animation',e.target.value)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="">none</option>{Object.entries(draft.animations||{}).map(([key,a])=><option key={key} value={key}>{a?.name||key}</option>)}</select></div><div><label className="block text-[11px] text-[#8291a1] mb-1">Body</label><select value={state.body||'none'} onChange={e=>updateStateField('body',e.target.value)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="none">none</option>{Object.keys(draft.bodies||{}).map(key=><option key={key} value={key}>{key}</option>)}</select></div></div>
+\t\t\t\t\t\t\t\t<div><label className="block text-[11px] text-[#8291a1] mb-1">Particles</label><div className="flex flex-wrap gap-1.5 mb-1.5">{particles.map(key=><span key={key} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#262e36] border border-[#48596a] text-xs">{particleTypes?.[key]?.name||key}<button onClick={()=>toggleStateMapValue('particles',key)}><X size={11}/></button></span>)}</div><select defaultValue="" onChange={e=>{const key=e.target.value;if(key)toggleStateMapValue('particles',key);e.target.value=''}} className="w-full bg-[#262e36] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add particle type...</option>{Object.entries(particleTypes||{}).filter(([key])=>!particles.includes(key)).sort((a,b)=>(a[1]?.name||a[0]).localeCompare(b[1]?.name||b[0])).map(([key,v])=><option key={key} value={key}>{v?.name||key}</option>)}</select></div>
+\t\t\t\t\t\t\t\t<div><label className="block text-[11px] text-[#8291a1] mb-1">Sound</label><div className="flex flex-wrap gap-1.5 mb-1.5">{sounds.map(key=><span key={key} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#262e36] border border-[#48596a] text-xs">{soundTypes?.[key]?.name||key}<button onClick={()=>toggleStateMapValue('sound',key)}><X size={11}/></button></span>)}</div><select defaultValue="" onChange={e=>{const key=e.target.value;if(key)toggleStateMapValue('sound',key);e.target.value=''}} className="w-full bg-[#262e36] border border-dashed border-[#48596a] rounded px-2 py-1.5 text-xs"><option value="">+ Add sound...</option>{Object.entries(soundTypes||{}).filter(([key])=>!sounds.includes(key)).sort((a,b)=>(a[1]?.name||a[0]).localeCompare(b[1]?.name||b[0])).map(([key,v])=><option key={key} value={key}>{v?.name||key}</option>)}</select></div>
+\t\t\t\t\t\t\t\t<div className="flex justify-end"><button onClick={()=>removeState(selectedStateKey)} className="flex items-center gap-1 px-2.5 py-1 rounded border border-red-900 text-red-400 text-xs"><Trash2 size={12}/> Remove state</button></div>
+\t\t\t\t\t\t\t</div> })()}
+\t\t\t\t\t\t</section>
+
+\t\t\t\t\t\t<section className="mb-7">
+\t\t\t\t\t\t\t<div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-[#c5ccd3]">Animations</h3><button onClick={addAnimation} className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8]"><Plus size={12}/> animation</button></div>
+\t\t\t\t\t\t\t<div className="flex flex-wrap gap-1.5 mb-3">{Object.entries(draft.animations||{}).map(([key,a])=><button key={key} onClick={()=>setSelectedAnimationName(key)} className={`text-left px-2.5 py-1.5 rounded-md border text-xs ${selectedAnimationName===key?'bg-[#1a56da] border-[#1a56da] text-[#262e36]':'bg-[#323d48] border-[#48596a] text-[#c5ccd3]'}`}><div className="font-medium">{a?.name||key}</div><div className="text-[10px] opacity-70">{(a?.frames||[]).length} frame{(a?.frames||[]).length===1?'':'s'}</div></button>)}</div>
+\t\t\t\t\t\t\t{draft.animations?.[selectedAnimationName] && (()=>{ const a=draft.animations[selectedAnimationName]; return <div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3 space-y-3">
+\t\t\t\t\t\t\t\t<div className="grid grid-cols-1 md:grid-cols-2 gap-2"><div><label className="block text-[11px] text-[#8291a1] mb-1">Name</label><input value={a.name||''} onChange={e=>updateAnimationField('name',e.target.value)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"/></div><div><label className="block text-[11px] text-[#8291a1] mb-1">Frames per second</label><input type="number" min="0" value={a.framesPerSecond??0} onChange={e=>updateAnimationField('framesPerSecond',Number(e.target.value)||0)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"/></div></div>
+\t\t\t\t\t\t\t\t<div><div className="flex items-center justify-between mb-1"><label className="text-[11px] text-[#8291a1]">Frames</label><button onClick={addAnimationFrame} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[11px]"><Plus size={11}/> frame</button></div><div className="flex flex-wrap gap-1.5">{(a.frames||[]).map((frame,index)=><div key={index} className="flex items-center gap-1 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-1"><input type="number" min="1" value={frame??1} onChange={e=>updateAnimationFrame(index,e.target.value)} className="w-14 bg-transparent text-xs outline-none"/><button onClick={()=>removeAnimationFrame(index)} className="text-[#637588]"><X size={11}/></button></div>)}</div></div>
+\t\t\t\t\t\t\t\t<div className="grid grid-cols-1 md:grid-cols-2 gap-2"><div><label className="block text-[11px] text-[#8291a1] mb-1">Loop count</label><input type="number" min="0" value={a.loopCount===''?'':(a.loopCount??0)} onChange={e=>updateAnimationField('loopCount',e.target.value===''?'':Math.max(0,Number(e.target.value)||0))} placeholder="blank = infinite" className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"/><p className="text-[10px] text-[#637588] mt-1">Blank = infinite loop form.</p></div><div><label className="block text-[11px] text-[#8291a1] mb-1">Duration</label><input value={a.duration??''} onChange={e=>updateAnimationField('duration',e.target.value)} placeholder="optional / default" className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"/></div></div>
+\t\t\t\t\t\t\t\t<div className="grid grid-cols-1 md:grid-cols-2 gap-2"><div><label className="block text-[11px] text-[#8291a1] mb-1">Fade out time</label><input type="number" min="0" value={a.fadeOutTime??''} onChange={e=>updateAnimationField('fadeOutTime',e.target.value===''?'':Number(e.target.value)||0)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"/></div><div><label className="block text-[11px] text-[#8291a1] mb-1">Replay delay · Min / Max</label><div className="flex gap-2"><input type="number" min="0" value={a.replayDelay?.min??''} onChange={e=>updateAnimationField('replayDelay',{...(a.replayDelay||{}),min:e.target.value===''?0:Number(e.target.value)||0,max:a.replayDelay?.max??0})} className="w-1/2 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm" placeholder="Min"/><input type="number" min="0" value={a.replayDelay?.max??''} onChange={e=>updateAnimationField('replayDelay',{...(a.replayDelay||{}),min:a.replayDelay?.min??0,max:e.target.value===''?0:Number(e.target.value)||0})} className="w-1/2 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm" placeholder="Max"/></div></div></div>
+\t\t\t\t\t\t\t\t<div className="flex flex-wrap gap-4 text-xs text-[#c5ccd3]"><label className="flex items-center gap-1.5"><input type="checkbox" checked={!!a.forceCompleteAnimation} onChange={e=>updateAnimationField('forceCompleteAnimation',e.target.checked)}/> Force complete animation</label><label className="flex items-center gap-1.5"><input type="checkbox" checked={!!a.playAnimationForItems} onChange={e=>updateAnimationField('playAnimationForItems',e.target.checked)}/> Play animation for items</label></div>
+\t\t\t\t\t\t\t\t<div className="flex justify-end"><button onClick={()=>removeAnimation(selectedAnimationName)} className="flex items-center gap-1 px-2.5 py-1 rounded border border-red-900 text-red-400 text-xs"><Trash2 size={12}/> Remove animation</button></div>
+\t\t\t\t\t\t\t</div> })()}
+\t\t\t\t\t\t</section>
+
+							<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Body &amp; size</h3>
 											<div className="flex flex-wrap items-center gap-1.5 mb-3">
 												{Object.keys(draft.bodies).map((bodyName) => (
 													<span
@@ -3707,93 +3381,13 @@ export default function GameContentEditor() {
 																/>
 															</div>
 														</div>
-
-														<div className="mb-3">
-															<label className="block text-xs text-[#8291a1] mb-1 flex items-center gap-1">Type</label>
-															<select
-																value={draft.bodies[selectedBodyName].type || 'dynamic'}
-																onChange={(e) => updateBodyField('type', e.target.value)}
-																className="w-64 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-xs"
-															>
-																{BODY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-															</select>
-														</div>
-
-														<div className="flex gap-3 mb-3">
-															<div>
-																<label className="block text-xs text-[#8291a1] mb-1">Z-index</label>
-																<input
-																	type="number"
-																	value={draft.bodies[selectedBodyName].zIndex ?? 0}
-																	onChange={(e) => updateBodyField('zIndex', Number(e.target.value) || 0)}
-																	className="w-20 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"
-																/>
-															</div>
-															<div>
-																<label className="block text-xs text-[#8291a1] mb-1">Layer</label>
-																<input
-																	list="body-layer-suggestions"
-																	value={draft.bodies[selectedBodyName].layer || ''}
-																	onChange={(e) => updateBodyField('layer', e.target.value)}
-																	placeholder="trees"
-																	className="w-32 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"
-																/>
-																<datalist id="body-layer-suggestions">
-																	<option value="trees" />
-																	<option value="walls" />
-																	<option value="floor" />
-																	<option value="floor2" />
-																</datalist>
-															</div>
-														</div>
-
-														<div className="mb-3">
-															<label className="block text-xs text-[#8291a1] mb-1">Offset</label>
-															<div className="flex gap-3">
-																<div>
-																	<span className="block text-[10px] text-[#637588] mb-0.5">X</span>
-																	<input
-																		type="number"
-																		value={draft.bodies[selectedBodyName].offset?.x ?? 0}
-																		onChange={(e) => updateBodyOffset('x', e.target.value)}
-																		className="w-20 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"
-																	/>
-																</div>
-																<div>
-																	<span className="block text-[10px] text-[#637588] mb-0.5">Y</span>
-																	<input
-																		type="number"
-																		value={draft.bodies[selectedBodyName].offset?.y ?? 0}
-																		onChange={(e) => updateBodyOffset('y', e.target.value)}
-																		className="w-20 bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"
-																	/>
-																</div>
-															</div>
-														</div>
-
-														<div className="mb-3">
-															<label className="block text-xs text-[#8291a1] mb-1">Billboard effect</label>
-															<div className="flex rounded-md overflow-hidden border border-[#3d4a57] w-fit">
-																<button
-																	type="button"
-																	onClick={() => updateBodyField('billboardEffect', true)}
-																	className={`px-3 py-1 text-xs font-medium ${draft.bodies[selectedBodyName].billboardEffect ? 'bg-[#1a56da] text-[#262e36]' : 'bg-[#262e36] text-[#8291a1]'}`}
-																>
-																	True
-																</button>
-																<button
-																	type="button"
-																	onClick={() => updateBodyField('billboardEffect', false)}
-																	className={`px-3 py-1 text-xs font-medium ${!draft.bodies[selectedBodyName].billboardEffect ? 'bg-[#1a56da] text-[#262e36]' : 'bg-[#262e36] text-[#8291a1]'}`}
-																>
-																	False
-																</button>
-															</div>
-														</div>
-
-														<p className="text-xs text-[#637588] max-w-[15rem]">
-															1 tile = {TILE_PX}×{TILE_PX}px. Remaining physics settings (gravity, rotation, friction,
-															etc.) are still editable in Advanced below.
+														<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+											<div><label className="block text-xs text-[#8291a1] mb-1">Type</label><select value={draft.bodies[selectedBodyName].type || 'dynamic'} onChange={(e) => updateBodyField('type', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="dynamic">dynamic - can be moved by any internal/external influences</option><option value="kinematic">kinematic - can only be moved by any internal/external influences</option><option value="static">static - can only be moved by 'move entity' action</option><option value="spriteOnly">sprite-only - can only be moved by 'set velocity' or 'move entity' actions</option></select></div>
+											<div><label className="block text-xs text-[#8291a1] mb-1">Z-index</label><div className="grid grid-cols-2 gap-2"><div><label className="block text-[10px] text-[#637588] mb-1">Layer</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.layer ?? 0} onChange={(e) => updateBodyZIndex('layer',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div><div><label className="block text-[10px] text-[#637588] mb-1">Depth</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.depth ?? 0} onChange={(e) => updateBodyZIndex('depth',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div></div></div>
+										</div>
+										<p className="text-xs text-[#637588] max-w-[15rem]">
+															1 tile = {TILE_PX}×{TILE_PX}px. Other physics settings for this body (type, gravity,
+															rotation, etc.) are still editable in Advanced below.
 														</p>
 													</div>
 
