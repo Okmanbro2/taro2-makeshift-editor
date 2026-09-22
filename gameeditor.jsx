@@ -3490,6 +3490,7 @@ export default function GameContentEditor() {
 															1 tile = {TILE_PX}×{TILE_PX}px. Other physics settings for this body (type, gravity,
 															rotation, etc.) are still editable in Advanced below.
 														</p>
+														</div>
 													</div>
 
 													{(() => {
