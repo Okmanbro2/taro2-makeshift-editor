@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap } from 'lucide-react';
+import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2 } from 'lucide-react';
 
 const ENTITY_TABS = [
 	{ key: 'unitTypes', label: 'Units', folderType: 'unit', root: 'units' },
@@ -778,6 +778,10 @@ export default function GameContentEditor() {
 	const [selectedAnimationName, setSelectedAnimationName] = useState('default');
 	const [selectedStateKey, setSelectedStateKey] = useState('');
 	const [showFramePicker, setShowFramePicker] = useState(false);
+	const [previewPlaying, setPreviewPlaying] = useState(true);
+	const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
+	const previewLoopRef = useRef(0);
+	const [scriptViewerOpen, setScriptViewerOpen] = useState(false);
 	const [selectedEntityScriptKey, setSelectedEntityScriptKey] = useState('');
 	const [entityScriptViewMode, setEntityScriptViewMode] = useState('tree'); 
 	const [spriteNatural, setSpriteNatural] = useState(null); 
@@ -1278,6 +1282,46 @@ export default function GameContentEditor() {
 
 	function updateAnimationField(field, value) {
 		setDraft((d) => ({ ...d, animations: { ...(d.animations || {}), [selectedAnimationName]: { ...(d.animations?.[selectedAnimationName] || {}), [field]: value } } }));
+	}
+
+	const previewAnimation = draft?.animations?.[selectedAnimationName];
+	const previewFrames = Array.isArray(previewAnimation?.frames) && previewAnimation.frames.length ? previewAnimation.frames : [1];
+
+	useEffect(() => {
+		setPreviewFrameIndex(0);
+		previewLoopRef.current = 0;
+		setPreviewPlaying(true);
+	}, [selectedAnimationName]);
+
+	useEffect(() => {
+		if (!previewPlaying || previewFrames.length <= 1) return;
+		const fps = Math.max(0, Number(previewAnimation?.framesPerSecond) || 0);
+		if (fps <= 0) return;
+		const delay = Math.max(16, 1000 / fps);
+		const timer = window.setInterval(() => {
+			setPreviewFrameIndex((current) => {
+				if (current < previewFrames.length - 1) return current + 1;
+				const loopCount = previewAnimation?.loopCount;
+				if (loopCount === '' || loopCount === null || loopCount === undefined) {
+					previewLoopRef.current += 1;
+					return 0;
+				}
+				const maxLoops = Math.max(0, Number(loopCount) || 0);
+				if (previewLoopRef.current < maxLoops) {
+					previewLoopRef.current += 1;
+					return 0;
+				}
+				setPreviewPlaying(false);
+				return current;
+			});
+		}, delay);
+		return () => window.clearInterval(timer);
+	}, [previewPlaying, selectedAnimationName, previewAnimation?.framesPerSecond, previewAnimation?.loopCount, previewFrames.length]);
+
+	function restartAnimationPreview() {
+		previewLoopRef.current = 0;
+		setPreviewFrameIndex(0);
+		setPreviewPlaying(true);
 	}
 
 	function addAnimationFrame(frameNumber = 1) {
@@ -3150,7 +3194,7 @@ export default function GameContentEditor() {
 						{}
 		<section className="mb-7">
 			<div className="flex items-center justify-between mb-2">
-				<h3 className="text-sm font-medium text-[#c5ccd3]">Scripts</h3>
+				<div className="flex items-center gap-2"><h3 className="text-sm font-medium text-[#c5ccd3]">Scripts</h3>{selectedEntityScriptKey && draft?.scripts?.[selectedEntityScriptKey] && <button type="button" onClick={()=>setScriptViewerOpen(true)} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#a3adb8] hover:border-[#8291a1]"><Maximize2 size={11}/> Large viewer</button>}</div>
 				{selectedEntityScriptKey && draft?.scripts?.[selectedEntityScriptKey] && <div className="flex rounded-md border border-[#3d4a57] overflow-hidden text-xs">
 					<button onClick={() => setEntityScriptViewMode('tree')} className={`px-2.5 py-1 ${entityScriptViewMode === 'tree' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}>Tree view</button>
 					<button onClick={() => setEntityScriptViewMode('raw')} className={`px-2.5 py-1 ${entityScriptViewMode === 'raw' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}>Raw JSON</button>
@@ -3312,7 +3356,25 @@ export default function GameContentEditor() {
 						<section className="mb-7">
 							<div className="flex items-center justify-between mb-2"><h3 className="text-sm font-medium text-[#c5ccd3]">Animations</h3><button onClick={addAnimation} className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8]"><Plus size={12}/> animation</button></div>
 							<div className="flex flex-wrap gap-1.5 mb-3">{Object.entries(draft.animations||{}).map(([key,a])=><button key={key} onClick={()=>setSelectedAnimationName(key)} className={`text-left px-2.5 py-1.5 rounded-md border text-xs ${selectedAnimationName===key?'bg-[#1a56da] border-[#1a56da] text-[#262e36]':'bg-[#323d48] border-[#48596a] text-[#c5ccd3]'}`}><div className="font-medium">{a?.name||key}</div><div className="text-[10px] opacity-70">{(a?.frames||[]).length} frame{(a?.frames||[]).length===1?'':'s'}</div></button>)}</div>
-							{draft.animations?.[selectedAnimationName] && (()=>{ const a=draft.animations[selectedAnimationName]; return <div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3 space-y-3">
+							{draft.animations?.[selectedAnimationName] && (()=>{ const a=draft.animations[selectedAnimationName]; const cols=Math.max(1,Number(draft.cellSheet?.columnCount)||1); const rows=Math.max(1,Number(draft.cellSheet?.rowCount)||1); const frameNum=Math.max(1,Number(previewFrames[previewFrameIndex])||1); const zero=frameNum-1; const col=zero%cols; const row=Math.floor(zero/cols); const hasSprite=!!draft.cellSheet?.url; return <div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3 space-y-3">
+								<div className="flex flex-col md:flex-row gap-3">
+									<div className="w-full md:w-44 shrink-0">
+										<div className="text-[11px] text-[#8291a1] mb-1">Live preview</div>
+										<div className="relative aspect-square rounded-md border border-[#48596a] bg-[#1f252c] overflow-hidden flex items-center justify-center">
+											{hasSprite ? <img src={resolveAssetUrl(draft.cellSheet.url)} alt="animation preview" draggable={false} style={{position:'absolute',left:`-${col*100}%`,top:`-${row*100}%`,width:`${cols*100}%`,height:`${rows*100}%`,maxWidth:'none',maxHeight:'none',imageRendering:'pixelated'}} /> : <span className="text-xs text-[#637588] text-center px-3">Set a sprite sheet URL to preview the animation.</span>}
+											<div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/70 text-[10px] text-white">Frame {frameNum} · {previewFrameIndex+1}/{previewFrames.length}</div>
+										</div>
+										<div className="flex items-center gap-1.5 mt-2">
+											<button type="button" onClick={()=>setPreviewPlaying(v=>!v)} className="flex items-center gap-1 px-2 py-1 rounded border border-[#48596a] text-[11px] text-[#a3adb8] hover:text-[#c5ccd3]">{previewPlaying ? <Square size={10}/> : <Play size={10}/>} {previewPlaying ? 'Pause' : 'Play'}</button>
+											<button type="button" onClick={restartAnimationPreview} className="px-2 py-1 rounded border border-[#48596a] text-[11px] text-[#a3adb8] hover:text-[#c5ccd3]">Restart</button>
+										</div>
+										<div className="text-[10px] text-[#637588] mt-1.5">{Number(a.framesPerSecond)||0} FPS · {a.loopCount===''?'infinite':`${Number(a.loopCount)||0} loop${Number(a.loopCount)||0===1?'':'s'}`}</div>
+									</div>
+									<div className="flex-1 min-w-0 text-xs text-[#8291a1] py-1">
+										<p className="mb-1 text-[#a3adb8]">The preview uses the same sprite-sheet cells and frame order as this animation.</p>
+										<p>Add frames below by clicking the actual sprite image. The frame number is assigned automatically.</p>
+									</div>
+								</div>
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-2"><div><label className="block text-[11px] text-[#8291a1] mb-1">Name</label><input value={a.name||''} onChange={e=>updateAnimationField('name',e.target.value)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"/></div><div><label className="block text-[11px] text-[#8291a1] mb-1">Frames per second</label><input type="number" min="0" value={a.framesPerSecond??0} onChange={e=>updateAnimationField('framesPerSecond',Number(e.target.value)||0)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"/></div></div>
 								<div>
 									<div className="flex items-center justify-between mb-1"><label className="text-[11px] text-[#8291a1]">Frames</label><button onClick={()=>setShowFramePicker(v=>!v)} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[11px]"><Plus size={11}/> frame</button></div>
@@ -3390,7 +3452,7 @@ export default function GameContentEditor() {
 														</div>
 														<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
 											<div><label className="block text-xs text-[#8291a1] mb-1">Type</label><select value={draft.bodies[selectedBodyName].type || 'dynamic'} onChange={(e) => updateBodyField('type', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="dynamic">dynamic - can be moved by any internal/external influences</option><option value="kinematic">kinematic - can only be moved by any internal/external influences</option><option value="static">static - can only be moved by 'move entity' action</option><option value="spriteOnly">sprite-only - can only be moved by 'set velocity' or 'move entity' actions</option></select></div>
-											<div><label className="block text-xs text-[#8291a1] mb-1">Z-index</label><div className="grid grid-cols-2 gap-2"><div><label className="block text-[10px] text-[#637588] mb-1">Layer</label><select value={draft.bodies[selectedBodyName]['z-index']?.layer ?? 3} onChange={(e) => updateBodyZIndex('layer',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"><option value="1">floor</option><option value="2">floor2</option><option value="3">walls</option><option value="4">trees</option><option value="5">trees2</option></select></div><div><label className="block text-[10px] text-[#637588] mb-1">Depth</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.depth ?? 0} onChange={(e) => updateBodyZIndex('depth',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div></div><p className="text-[10px] text-[#637588] mt-1">Layer chooses the broad render group; Depth controls ordering within that layer. These labels are based on the layer usage already present in this game.</p></div>
+											<div><label className="block text-xs text-[#8291a1] mb-1">Z-index</label><div className="grid grid-cols-2 gap-2"><div><label className="block text-[10px] text-[#637588] mb-1">Layer</label><select value={draft.bodies[selectedBodyName]['z-index']?.layer ?? 3} onChange={(e) => updateBodyZIndex('layer',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"><option value="1">floor</option><option value="2">floor2</option><option value="3">debris</option><option value="4">walls</option><option value="5">trees</option></select></div><div><label className="block text-[10px] text-[#637588] mb-1">Depth</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.depth ?? 0} onChange={(e) => updateBodyZIndex('depth',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div></div><p className="text-[10px] text-[#637588] mt-1">Layer chooses the broad render group; Depth controls ordering within that layer. These labels are based on the layer usage already present in this game.</p></div>
 										</div>
 										<p className="text-xs text-[#637588] max-w-[15rem]">
 															1 tile = {TILE_PX}×{TILE_PX}px. Other physics settings for this body (type, gravity,
@@ -3869,7 +3931,7 @@ export default function GameContentEditor() {
 										)}
 
 										<div className="flex items-center justify-between mb-2">
-											<h3 className="text-sm font-medium text-[#c5ccd3]">Triggers, conditions &amp; actions</h3>
+											<div className="flex items-center gap-2"><h3 className="text-sm font-medium text-[#c5ccd3]">Triggers, conditions &amp; actions</h3><button type="button" onClick={()=>setScriptViewerOpen(true)} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#a3adb8] hover:border-[#8291a1]"><Maximize2 size={11}/> Large viewer</button></div>
 											<div className="flex rounded-md border border-[#3d4a57] overflow-hidden text-xs">
 												<button
 													onClick={() => setScriptViewMode('tree')}
@@ -4455,6 +4517,38 @@ export default function GameContentEditor() {
 						</div>
 					</div>
 				);
+			})()}
+
+			{scriptViewerOpen && (() => {
+				const isGlobal = isScriptsTab;
+				const viewerScript = isGlobal ? (scriptDraftParsed?.value || null) : (() => {
+					const current = draft?.scripts?.[selectedEntityScriptKey];
+					if (!current) return null;
+					const raw = current._editorBodyText ?? JSON.stringify((({ _editorBodyText, ...body }) => body)(current), null, 2);
+					try { return raw.trim() ? JSON.parse(raw) : { triggers: [], conditions: [], actions: [] }; } catch { return null; }
+				})();
+				const viewerTitle = isGlobal ? (scriptDraft?.name || 'Script viewer') : (draft?.scripts?.[selectedEntityScriptKey]?.name || 'Entity script viewer');
+				return <div className="fixed inset-0 z-50 bg-black/70 p-3 md:p-6">
+					<div className="h-full w-full max-w-[1600px] mx-auto bg-[#262e36] border border-[#48596a] rounded-lg shadow-2xl flex flex-col overflow-hidden">
+						<div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#3d4a57]">
+							<div className="min-w-0"><div className="font-medium text-[#e1e6ea] truncate">{viewerTitle}</div><div className="text-[10px] text-[#637588]">Large script viewer · nested branches can scroll horizontally instead of pushing the editor off-screen.</div></div>
+							<div className="flex items-center gap-2"><button type="button" onClick={()=>setScriptViewerOpen(false)} className="flex items-center gap-1 px-2.5 py-1.5 rounded border border-[#48596a] text-xs text-[#a3adb8] hover:text-[#c5ccd3]"><Minimize2 size={12}/> Close</button></div>
+						</div>
+						<div className="flex-1 overflow-auto p-4">
+							{viewerScript ? <div className="min-w-max bg-[#323d48] border border-[#3d4a57] rounded-md p-4">
+								<ScriptTreeView
+									script={viewerScript}
+									gameData={gameData}
+									onJumpToScript={(id)=>{ if(id && scriptsCollection[id]) { setScriptViewerOpen(false); selectScript(id); } }}
+									onOp={isGlobal ? ((path,operation,payload)=>{ const next=applyScriptOp(viewerScript,path,operation,payload); setScriptDraft(d=>({...d,bodyText:JSON.stringify(next,null,2)})); }) : ((path,operation,payload)=>{ const next=applyScriptOp(viewerScript,path,operation,payload); updateEntityScriptBody(selectedEntityScriptKey,JSON.stringify(next,null,2)); })}
+									onAddAction={isGlobal ? addScriptAction : (listPath,index,action)=>{ const next=applyScriptOp(viewerScript,listPath,'insert',{index,value:action}); updateEntityScriptBody(selectedEntityScriptKey,JSON.stringify(next,null,2)); }}
+									onAddCondition={isGlobal ? addScriptCondition : (listPath,index)=>{ const next=applyScriptOp(viewerScript,listPath,'insert',{index,value:defaultActionForType('condition',gameData)}); updateEntityScriptBody(selectedEntityScriptKey,JSON.stringify(next,null,2)); }}
+									onAddTrigger={isGlobal ? addScriptTrigger : (trigger)=>{ const next=deepClone(viewerScript); if(!Array.isArray(next.triggers)) next.triggers=[]; next.triggers.push(trigger); updateEntityScriptBody(selectedEntityScriptKey,JSON.stringify(next,null,2)); }}
+								/>
+							</div> : <div className="text-sm text-red-400 p-4">This script cannot currently be displayed as a tree. Use Raw JSON in the main editor to inspect or repair it.</div>}
+						</div>
+					</div>
+				</div>;
 			})()}
 
 			{showNewModal && (
