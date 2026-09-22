@@ -1258,6 +1258,23 @@ export default function GameContentEditor() {
 		setDraft((d) => ({ ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...(d.bodies?.[selectedBodyName] || {}), [field]: value } } }));
 	}
 
+	function updateBodyCollisionField(field, value) {
+		setDraft((d) => {
+			const body = d.bodies?.[selectedBodyName] || {};
+			return { ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...body, collidesWith: { ...(body.collidesWith || {}), [field]: !!value } } } };
+		});
+	}
+
+	function updateBodyFixtureSensor(index, value) {
+		setDraft((d) => {
+			const body = d.bodies?.[selectedBodyName] || {};
+			const fixtures = Array.isArray(body.fixtures) ? body.fixtures.slice() : [];
+			if (!fixtures[index]) return d;
+			fixtures[index] = { ...fixtures[index], isSensor: !!value };
+			return { ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...body, fixtures } } };
+		});
+	}
+
 	function updateBodyZIndex(field, value) {
 		setDraft((d) => ({ ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...(d.bodies?.[selectedBodyName] || {}), 'z-index': { ...((d.bodies?.[selectedBodyName] || {})['z-index'] || {}), [field]: Number(value) || 0 } } } }));
 	}
@@ -3452,7 +3469,22 @@ export default function GameContentEditor() {
 														</div>
 														<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
 											<div><label className="block text-xs text-[#8291a1] mb-1">Type</label><select value={draft.bodies[selectedBodyName].type || 'dynamic'} onChange={(e) => updateBodyField('type', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="dynamic">dynamic - can be moved by any internal/external influences</option><option value="kinematic">kinematic - can only be moved by any internal/external influences</option><option value="static">static - can only be moved by 'move entity' action</option><option value="spriteOnly">sprite-only - can only be moved by 'set velocity' or 'move entity' actions</option></select></div>
-											<div><label className="block text-xs text-[#8291a1] mb-1">Z-index</label><div className="grid grid-cols-2 gap-2"><div><label className="block text-[10px] text-[#637588] mb-1">Layer</label><select value={draft.bodies[selectedBodyName]['z-index']?.layer ?? 3} onChange={(e) => updateBodyZIndex('layer',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"><option value="1">floor</option><option value="2">floor2</option><option value="3">debris</option><option value="4">walls</option><option value="5">trees</option></select></div><div><label className="block text-[10px] text-[#637588] mb-1">Depth</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.depth ?? 0} onChange={(e) => updateBodyZIndex('depth',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div></div><p className="text-[10px] text-[#637588] mt-1">Layer chooses the broad render group; Depth controls ordering within that layer. These labels are based on the layer usage already present in this game.</p></div>
+											<div><label className="block text-xs text-[#8291a1] mb-1">Z-index</label><div className="grid grid-cols-2 gap-2"><div><label className="block text-[10px] text-[#637588] mb-1">Layer</label><select value={draft.bodies[selectedBodyName]['z-index']?.layer ?? 3} onChange={(e) => updateBodyZIndex('layer',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"><option value="1">floor</option><option value="2">floor2</option><option value="3">debris</option><option value="4">walls</option><option value="5">trees</option></select></div><div><label className="block text-[10px] text-[#637588] mb-1">Depth</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.depth ?? 0} onChange={(e) => updateBodyZIndex('depth',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div></div><p className="text-[10px] text-[#637588] mt-1">Layer chooses the broad render group; Depth controls ordering within that layer. These labels are based on the layer usage already present in this game.</p>
+														<div className="mt-4 border-t border-[#3d4a57] pt-3">
+															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Collision</h4>
+															<p className="text-[10px] text-[#637588] mb-2">Choose which kinds of entities this body can collide with.</p>
+															<div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+																{[['units','Units'],['items','Items'],['projectiles','Projectiles'],['walls','Walls'],['debris','Debris']].map(([key,label]) => (
+																	<label key={key} className="flex items-center gap-2 text-xs text-[#a3adb8] cursor-pointer">
+																		<input type="checkbox" checked={draft.bodies[selectedBodyName].collidesWith?.[key] === true} onChange={(e) => updateBodyCollisionField(key, e.target.checked)} className="accent-[#1a56da]" /> {label}
+																	</label>
+																))}
+															</div>
+															<label className="flex items-center gap-2 text-xs text-[#a3adb8] cursor-pointer mt-2">
+																<input type="checkbox" checked={draft.bodies[selectedBodyName]['constantSpeed +DestroyedOnCollisionWithWall/unit'] === true} onChange={(e) => updateBodyField('constantSpeed +DestroyedOnCollisionWithWall/unit', e.target.checked)} className="accent-[#1a56da]" /> Constant speed: destroy on wall/unit collision
+															</label>
+															{Array.isArray(draft.bodies[selectedBodyName].fixtures) && draft.bodies[selectedBodyName].fixtures.length > 0 && <div className="mt-3"><div className="text-[10px] uppercase tracking-wide text-[#637588] mb-1.5">Fixtures</div>{draft.bodies[selectedBodyName].fixtures.map((fixture, index) => <label key={index} className="flex items-center justify-between gap-3 py-1 text-xs text-[#a3adb8]"><span>Fixture {index + 1} · {fixture?.shape?.type || 'unknown shape'}</span><input type="checkbox" checked={fixture?.isSensor === true} onChange={(e) => updateBodyFixtureSensor(index, e.target.checked)} className="accent-[#1a56da]" /></label>)}</div>}
+															</div>
 										</div>
 										<p className="text-xs text-[#637588] max-w-[15rem]">
 															1 tile = {TILE_PX}×{TILE_PX}px. Other physics settings for this body (type, gravity,
