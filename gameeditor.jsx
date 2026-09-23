@@ -992,9 +992,6 @@ const ENGINE_FUNCTION_SCHEMAS = {
 };
 const ENGINE_FUNCTION_TYPES = Object.keys(ENGINE_FUNCTION_SCHEMAS);
 
-// Build the function vocabulary from the engine schema first, then merge in any
-// function shapes found in existing scripts. This keeps the editor aware of
-// supported-but-currently-unused functions without losing legacy/custom ones.
 function getFunctionVocabulary(gameData) {
 	const byName = new Map();
 	for (const [name, schema] of Object.entries(ENGINE_FUNCTION_SCHEMAS || {})) {
@@ -1204,6 +1201,27 @@ function ScriptValueEditor({ value, gameData, onChange, depth = 0, expectedKind 
 	}
 	return <span className="text-xs text-[#8291a1] italic">{String(value)}</span>;
 }
+
+function ScriptFieldInput({ kind, value, gameData, onChange }) {
+	if (kind === 'variableName') {
+		const variables = Object.keys(gameData?.data?.variables || {}).sort();
+		return <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="max-w-[240px] bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs">
+			<option value="">(choose variable)</option>{variables.map((name) => <option key={name} value={name}>{name}</option>)}
+		</select>;
+	}
+	const collectionKey = ID_KIND_COLLECTIONS[kind];
+	if (collectionKey) {
+		const options = Object.entries(gameData?.data?.[collectionKey] || {}).map(([id, v]) => ({ id, name: v.name || v.folderName || id })).sort((a, b) => a.name.localeCompare(b.name));
+		if (typeof value === 'object' && value !== null) return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+		return <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="max-w-[240px] bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="">(none)</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>;
+	}
+	if (kind === 'xy') { if (!value || typeof value !== 'object' || typeof value.x !== 'number' || typeof value.y !== 'number') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; return <span className="flex items-center gap-1"><span className="text-[10px] text-[#637588]">x</span><input type="number" value={value.x} onChange={(e) => onChange({ ...value, x: Number(e.target.value) })} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /><span className="text-[10px] text-[#637588]">y</span><input type="number" value={value.y} onChange={(e) => onChange({ ...value, y: Number(e.target.value) })} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /></span>; }
+	if (kind === 'boolean') return typeof value === 'boolean' ? <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="accent-[#1a56da]" /> : <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+	if (kind === 'number') return typeof value === 'number' ? <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-24 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /> : <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+	if (kind === 'string') return typeof value === 'string' ? <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="w-40 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /> : <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+	return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+}
+
 
 function ScriptFunctionEditor({ value, gameData, onChange, depth = 0 }) {
 	const [pickerOpen, setPickerOpen] = useState(false);
