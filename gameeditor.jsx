@@ -1202,18 +1202,81 @@ function ScriptValueEditor({ value, gameData, onChange, depth = 0, expectedKind 
 	return <span className="text-xs text-[#8291a1] italic">{String(value)}</span>;
 }
 
+function getScriptReferenceInfo(kind, gameData) {
+	const map = {
+		itemTypeId: ['itemTypes', 'Item type'],
+		unitTypeId: ['unitTypes', 'Unit type'],
+		projectileTypeId: ['projectileTypes', 'Projectile type'],
+		playerTypeId: ['playerTypes', 'Player type'],
+		attributeId: ['attributeTypes', 'Attribute'],
+		scriptId: ['scripts', 'Script'],
+		dialogueId: ['dialogues', 'Dialogue'],
+		shopId: ['shops', 'Shop'],
+		soundId: ['sounds', 'Sound'],
+		musicId: ['music', 'Music'],
+		particleTypeId: ['particleTypes', 'Particle type'],
+		stateId: ['states', 'State'],
+	};
+	const info = map[kind];
+	if (!info) return null;
+	let collection = gameData?.data?.[info[0]] || {};
+	if (kind === 'attributeId' && !Object.keys(collection).length) collection = gameData?.data?.attributes || {};
+	return { key: info[0], label: info[1], collection };
+}
+
+function scriptReferenceOptions(kind, gameData) {
+	const info = getScriptReferenceInfo(kind, gameData);
+	if (!info) return [];
+	return Object.entries(info.collection || {}).map(([id, value]) => ({
+		id,
+		name: value?.name || value?.folderName || value?.displayName || id,
+	})).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+function ScriptReferenceField({ kind, value, gameData, onChange }) {
+	const info = getScriptReferenceInfo(kind, gameData);
+	const options = scriptReferenceOptions(kind, gameData);
+	const [query, setQuery] = useState('');
+	const selected = options.find((option) => option.id === value);
+	const q = query.trim().toLowerCase();
+	const filtered = options.filter((option) => !q || option.name.toLowerCase().includes(q) || option.id.toLowerCase().includes(q));
+	return <div className="w-full rounded-md border border-[#3d4a57] bg-[#252d35] overflow-hidden">
+		<div className="px-2 py-1.5 border-b border-[#3d4a57]">
+			<div className="flex items-center gap-2 mb-1.5">
+				<Search size={12} className="text-[#637588] shrink-0" />
+				<input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${info?.label?.toLowerCase() || 'values'}...`} className="flex-1 bg-[#20272e] border border-[#48596a] rounded px-2 py-1 text-xs outline-none" />
+			</div>
+			{selected && <div className="text-[10px] text-[#8291a1] px-1">Selected: <span className="text-[#c5ccd3]">{selected.name}</span> <span className="font-mono text-[#637588]">{selected.id}</span></div>}
+		</div>
+		<div className="max-h-[220px] overflow-y-auto p-1">
+			{filtered.map((option) => <button key={option.id} type="button" onClick={() => onChange(option.id)} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48] ${option.id === value ? 'bg-[#303b47]' : ''}`}>
+				<div className="text-xs text-[#c5ccd3]">{option.name}</div>
+				<div className="text-[9px] font-mono text-[#637588] mt-0.5">{option.id}</div>
+			</button>)}
+			{!filtered.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching {info?.label?.toLowerCase() || 'values'}.</div>}
+		</div>
+	</div>;
+}
+
+function ScriptVariableField({ value, gameData, onChange }) {
+	const [query, setQuery] = useState('');
+	const variables = Object.keys(gameData?.data?.variables || {}).sort();
+	const q = query.trim().toLowerCase();
+	const filtered = variables.filter((name) => !q || name.toLowerCase().includes(q));
+	return <div className="w-full rounded-md border border-[#3d4a57] bg-[#252d35] overflow-hidden">
+		<div className="p-1.5 border-b border-[#3d4a57] flex items-center gap-2"><Search size={12} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search variables..." className="flex-1 bg-[#20272e] border border-[#48596a] rounded px-2 py-1 text-xs outline-none" /></div>
+		<div className="max-h-[220px] overflow-y-auto p-1">
+			{filtered.map((name) => <button key={name} type="button" onClick={() => onChange(name)} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] ${name === value ? 'bg-[#303b47]' : ''}`}>{name}</button>)}
+			{!filtered.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching variables.</div>}
+		</div>
+	</div>;
+}
+
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
-	if (kind === 'variableName') {
-		const variables = Object.keys(gameData?.data?.variables || {}).sort();
-		return <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="max-w-[240px] bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs">
-			<option value="">(choose variable)</option>{variables.map((name) => <option key={name} value={name}>{name}</option>)}
-		</select>;
-	}
-	const collectionKey = ID_KIND_COLLECTIONS[kind];
-	if (collectionKey) {
-		const options = Object.entries(gameData?.data?.[collectionKey] || {}).map(([id, v]) => ({ id, name: v.name || v.folderName || id })).sort((a, b) => a.name.localeCompare(b.name));
+	if (kind === 'variableName') return <ScriptVariableField value={value} gameData={gameData} onChange={onChange} />;
+	if (getScriptReferenceInfo(kind, gameData)) {
 		if (typeof value === 'object' && value !== null) return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
-		return <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="max-w-[240px] bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="">(none)</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>;
+		return <ScriptReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
 	}
 	if (kind === 'xy') { if (!value || typeof value !== 'object' || typeof value.x !== 'number' || typeof value.y !== 'number') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; return <span className="flex items-center gap-1"><span className="text-[10px] text-[#637588]">x</span><input type="number" value={value.x} onChange={(e) => onChange({ ...value, x: Number(e.target.value) })} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /><span className="text-[10px] text-[#637588]">y</span><input type="number" value={value.y} onChange={(e) => onChange({ ...value, y: Number(e.target.value) })} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /></span>; }
 	if (kind === 'boolean') return typeof value === 'boolean' ? <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="accent-[#1a56da]" /> : <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
@@ -1221,7 +1284,6 @@ function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	if (kind === 'string') return typeof value === 'string' ? <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="w-40 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /> : <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
 	return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
 }
-
 
 const SCRIPT_FUNCTION_PHRASES = {
 	getValueOfPlayerVariable: (fields) => <>value of player variable <ScriptInlineFunctionField field="variable" fields={fields} /> for <ScriptInlineFunctionField field="player" fields={fields} /></>,
