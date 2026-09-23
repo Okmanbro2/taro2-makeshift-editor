@@ -1174,11 +1174,11 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	};
 	const quickGroups = SCRIPT_VALUE_GROUPS.map((group) => ({ ...group, functions: group.functions.filter((name) => matches(name)) })).filter((group) => group.functions.length);
 	const otherFunctions = functionVocabulary.filter((entry) => !SCRIPT_VALUE_GROUPS.some((g) => g.functions.includes(entry.name)) && matches(entry.name)).slice(0, 80);
-	return <div className="absolute z-[80] left-0 top-full mt-1 w-[360px] max-h-[430px] overflow-hidden bg-[#20272e] border border-[#48596a] rounded-lg shadow-2xl">
+	return <div className="absolute z-[80] left-0 top-full mt-1 w-[360px] max-h-[340px] overflow-hidden bg-[#20272e] border border-[#48596a] rounded-lg shadow-2xl">
 		<div className="p-2 border-b border-[#3d4a57]">
 			<div className="flex items-center gap-2"><Search size={13} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="What value do you want?" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none" /><button type="button" onClick={onClose} className="text-[#637588] hover:text-[#c5ccd3]"><X size={13} /></button></div>
 		</div>
-		<div className="max-h-[365px] overflow-y-auto p-1.5 space-y-1">
+		<div className="max-h-[275px] overflow-y-auto p-1.5 space-y-1">
 			{expected === 'variable' && <div className="mb-1"><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">Variables</div>{variableNames.filter((x) => !q || x.toLowerCase().includes(q)).map((name) => <button key={name} type="button" onClick={() => { onChange({ function: 'getVariable', variableName: name }); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-[#323d48] text-[#c5ccd3]">{name}</button>)}</div>}
 			{quickGroups.map((group) => <div key={group.label}><div className="px-2 py-1 text-[10px] uppercase tracking-wide" style={{ color: group.color }}>{group.label}</div>{group.functions.slice(0, 24).map((name) => <button key={name} type="button" onClick={() => { onChange(createFunctionValue(name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{functionDisplayName(name)}</span><span className="text-[9px] text-[#637588] font-mono">{(getFunctionEntry(gameData, name)?.schema || []).length ? 'has options' : ''}</span></button>)}</div>)}
 			{otherFunctions.length > 0 && <div><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">More functions</div>{otherFunctions.map((entry) => <button key={entry.name} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48]">{functionDisplayName(entry.name)}</button>)}</div>}
@@ -1248,7 +1248,7 @@ function ScriptReferenceField({ kind, value, gameData, onChange }) {
 			</div>
 			{selected && <div className="text-[10px] text-[#8291a1] px-1">Selected: <span className="text-[#c5ccd3]">{selected.name}</span> <span className="font-mono text-[#637588]">{selected.id}</span></div>}
 		</div>
-		<div className="max-h-[220px] overflow-y-auto p-1">
+		<div className="max-h-[180px] overflow-y-auto p-1">
 			{filtered.map((option) => <button key={option.id} type="button" onClick={() => onChange(option.id)} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48] ${option.id === value ? 'bg-[#303b47]' : ''}`}>
 				<div className="text-xs text-[#c5ccd3]">{option.name}</div>
 				<div className="text-[9px] font-mono text-[#637588] mt-0.5">{option.id}</div>
@@ -1265,7 +1265,7 @@ function ScriptVariableField({ value, gameData, onChange }) {
 	const filtered = variables.filter((name) => !q || name.toLowerCase().includes(q));
 	return <div className="w-full rounded-md border border-[#3d4a57] bg-[#252d35] overflow-hidden">
 		<div className="p-1.5 border-b border-[#3d4a57] flex items-center gap-2"><Search size={12} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search variables..." className="flex-1 bg-[#20272e] border border-[#48596a] rounded px-2 py-1 text-xs outline-none" /></div>
-		<div className="max-h-[220px] overflow-y-auto p-1">
+		<div className="max-h-[180px] overflow-y-auto p-1">
 			{filtered.map((name) => <button key={name} type="button" onClick={() => onChange(name)} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] ${name === value ? 'bg-[#303b47]' : ''}`}>{name}</button>)}
 			{!filtered.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching variables.</div>}
 		</div>
@@ -1273,7 +1273,7 @@ function ScriptVariableField({ value, gameData, onChange }) {
 }
 
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
-	if (kind === 'variableName') return <ScriptVariableField value={value} gameData={gameData} onChange={onChange} />;
+	if (kind === 'variableName' || kind === 'variable') return <ScriptVariableField value={value} gameData={gameData} onChange={onChange} />;
 	if (getScriptReferenceInfo(kind, gameData)) {
 		if (typeof value === 'object' && value !== null) return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
 		return <ScriptReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
@@ -1370,7 +1370,7 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0 }) {
 			{value?.function && (schema.length || extraKeys.length) > 0 && <button type="button" title="Advanced fields" onClick={() => setAdvanced((v) => !v)} className={`ml-auto shrink-0 px-1.5 py-0.5 rounded text-[10px] border ${advanced ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#637588] hover:text-[#c5ccd3]'}`}>•••</button>}
 		</div>
 		{pickerOpen && <ScriptValuePicker expectedKind="valueExpr" value={value} gameData={gameData} onChange={(next) => onChange(next)} onClose={() => setPickerOpen(false)} />}
-		{activeField && <div className="absolute z-[90] left-2 top-full mt-1 w-[360px] bg-[#20272e] border border-[#48596a] rounded-lg shadow-2xl p-2">
+		{activeField && <div className="mt-1.5 rounded-md border border-[#3d4a57] bg-[#252d35] p-2">
 			<div className="flex items-center justify-between mb-1.5"><span className="text-[10px] uppercase tracking-wide text-[#637588]">Edit {readableType(activeField)}</span><button type="button" onClick={() => setActiveField(null)} className="text-[#637588] hover:text-[#c5ccd3]"><X size={12} /></button></div>
 			<ScriptFieldInput kind={schema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, value?.[activeField])} value={value?.[activeField]} gameData={gameData} onChange={(next) => { setField(activeField, next); setActiveField(null); }} />
 		</div>}
@@ -1425,7 +1425,17 @@ function ScriptConditionEditor({ value, gameData, onChange }) {
 function ScriptAddMenu({ label, options, onSelect, categorized = true }) { const [open, setOpen] = useState(false); const [query, setQuery] = useState(''); const filtered = options.filter((o) => !query || o.label.toLowerCase().includes(query.toLowerCase()) || (o.category || '').toLowerCase().includes(query.toLowerCase())); const groups = categorized ? filtered.reduce((acc, option) => { const key = option.category || 'Other'; (acc[key] ||= []).push(option); return acc; }, {}) : { '': filtered }; return <div className="relative inline-block"><button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da]"><Plus size={13} /> {label}</button>{open && <div className="absolute z-40 mt-1 left-0 w-80 max-h-96 overflow-hidden bg-[#262e36] border border-[#48596a] rounded-md shadow-xl p-1"><div className="p-1"><div className="relative"><Search size={12} className="absolute left-2 top-2 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${label.toLowerCase()}...`} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-7 py-1.5 text-xs" /></div></div><div className="max-h-80 overflow-y-auto">{Object.entries(groups).map(([category, items]) => <div key={category}>{categorized && <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">{category}</div>}{items.map((option) => <button key={option.value} type="button" onClick={() => { setOpen(false); setQuery(''); onSelect(option.value); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48]">{option.label}</button>)}</div>)}{!filtered.length && <div className="px-2 py-3 text-xs text-[#637588] italic">No matches.</div>}</div></div>}</div>; }
 function scriptCategory(type) { const t = String(type || '').toLowerCase(); if (/^(for|repeat|while|break|continue|return|if|condition)/.test(t)) return 'Control flow'; if (/(player|chat|dialogue|shop|website|camera|ui|modal)/.test(t)) return 'Players & UI'; if (/(unit|entity|ai|attack|move|velocity|force|stun|heal|damage|attribute|owner)/.test(t)) return 'Units & entities'; if (/(item|inventory|slot|purchase)/.test(t)) return 'Items'; if (/projectile/.test(t)) return 'Projectiles'; if (/(variable|data|save|load)/.test(t)) return 'Variables & data'; if (/(sound|music|particle|animation)/.test(t)) return 'Effects'; if (/(map|tile|region)/.test(t)) return 'Map & regions'; return 'Other'; }
 function triggerCategory(type) { const t = String(type || '').toLowerCase(); if (/player/.test(t)) return 'Players'; if (/item/.test(t)) return 'Items'; if (/projectile/.test(t)) return 'Projectiles'; if (/unit|entity/.test(t)) return 'Units & entities'; return 'Game'; }
-function inferScriptFieldKind(key, value) { if (ID_KIND_COLLECTIONS[`${key}Id`]) return `${key}Id`; const map = { itemType: 'itemTypeId', unitType: 'unitTypeId', projectileType: 'projectileTypeId', attribute: 'attributeId', playerType: 'playerTypeId', script: 'scriptId', dialogue: 'dialogueId', shop: 'shopId', sound: 'soundId', music: 'musicId', particleType: 'particleTypeId', state: 'stateId' }; if (map[key]) return map[key]; if (typeof value === 'boolean') return 'boolean'; if (typeof value === 'number') return 'number'; if (typeof value === 'string') return 'string'; return 'valueExpr'; }
+function inferScriptFieldKind(key, value) {
+	if (key === 'variableName') return 'variableName';
+	if (ID_KIND_COLLECTIONS[`${key}Id`]) return `${key}Id`;
+	const map = { itemType: 'itemTypeId', unitType: 'unitTypeId', projectileType: 'projectileTypeId', attribute: 'attributeId', playerType: 'playerTypeId', script: 'scriptId', dialogue: 'dialogueId', shop: 'shopId', sound: 'soundId', music: 'musicId', particleType: 'particleTypeId', state: 'stateId' };
+	if (map[key]) return map[key];
+	if (key === 'variable') return 'variable';
+	if (typeof value === 'boolean') return 'boolean';
+	if (typeof value === 'number') return 'number';
+	if (typeof value === 'string') return 'string';
+	return 'valueExpr';
+}
 function getActionFieldSchema(type, gameData) {
 	if (ACTION_FIELD_SCHEMAS[type]) return ACTION_FIELD_SCHEMAS[type];
 	if (ENGINE_ACTION_FIELD_SCHEMAS[type]) return ENGINE_ACTION_FIELD_SCHEMAS[type];
@@ -1445,142 +1455,123 @@ function getActionFieldSchema(type, gameData) {
 }
 function defaultActionForType(type, gameData) { if (type === 'condition') return { type: 'condition', conditions: [{ operandType: 'boolean', operator: '==' }, true, true], then: [], else: [] }; if (type === 'runScript') return { type: 'runScript', scriptName: '', isEntityScript: false }; const schema = getActionFieldSchema(type, gameData); if (schema) { const out = { type }; for (const field of schema) out[field.key] = defaultValueForScriptField(field.kind); if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) out.actions = []; return out; } if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) return { type, actions: [] }; return { type }; }
 
+
+const SCRIPT_ACTION_PHRASES = {
+	setVariable: (action, fields) => <><ScriptActionInlineField field="variableName" action={action} fields={fields} /> = <ScriptActionInlineField field="value" action={action} fields={fields} /></>,
+	setEntityVariable: (action, fields) => <><ScriptActionInlineField field="variable" action={action} fields={fields} /> of <ScriptActionInlineField field="entity" action={action} fields={fields} /> = <ScriptActionInlineField field="value" action={action} fields={fields} /></>,
+	setEntityAttribute: (action, fields) => <>set <ScriptActionInlineField field="attribute" action={action} fields={fields} /> of <ScriptActionInlineField field="entity" action={action} fields={fields} /> to <ScriptActionInlineField field="value" action={action} fields={fields} /></>,
+	setPlayerAttribute: (action, fields) => <>set <ScriptActionInlineField field="attribute" action={action} fields={fields} /> of <ScriptActionInlineField field="player" action={action} fields={fields} /> to <ScriptActionInlineField field="value" action={action} fields={fields} /></>,
+	createUnitAtPosition: (action, fields) => <>create <ScriptActionInlineField field="unitType" action={action} fields={fields} /> for <ScriptActionInlineField field="entity" action={action} fields={fields} /> at <ScriptActionInlineField field="position" action={action} fields={fields} /> facing <ScriptActionInlineField field="angle" action={action} fields={fields} /></>,
+	createItemAtPositionWithQuantity: (action, fields) => <>create <ScriptActionInlineField field="itemType" action={action} fields={fields} /> at <ScriptActionInlineField field="position" action={action} fields={fields} /> with quantity <ScriptActionInlineField field="quantity" action={action} fields={fields} /></>,
+	createItemWithMaxQuantityAtPosition: (action, fields) => <>create <ScriptActionInlineField field="itemType" action={action} fields={fields} /> at <ScriptActionInlineField field="position" action={action} fields={fields} /> with max quantity</>,
+	createProjectileAtPosition: (action, fields) => <>create <ScriptActionInlineField field="projectileType" action={action} fields={fields} /> at <ScriptActionInlineField field="position" action={action} fields={fields} /> from <ScriptActionInlineField field="unit" action={action} fields={fields} /> facing <ScriptActionInlineField field="angle" action={action} fields={fields} /></>,
+	applyForceOnEntityAngle: (action, fields) => <>apply force <ScriptActionInlineField field="force" action={action} fields={fields} /> to <ScriptActionInlineField field="entity" action={action} fields={fields} /> at <ScriptActionInlineField field="angle" action={action} fields={fields} />°</>,
+	applyForceOnEntityXY: (action, fields) => <>apply force <ScriptActionInlineField field="force" action={action} fields={fields} /> to <ScriptActionInlineField field="entity" action={action} fields={fields} /> on XY <ScriptActionInlineField field="forceX" action={action} fields={fields} /></>,
+	destroyEntity: (action, fields) => <>destroy <ScriptActionInlineField field="entity" action={action} fields={fields} /></>,
+	changeUnitType: (action, fields) => <>change <ScriptActionInlineField field="unit" action={action} fields={fields} /> to <ScriptActionInlineField field="unitType" action={action} fields={fields} /></>,
+	changeDescriptionOfItem: (action, fields) => <>change description of <ScriptActionInlineField field="item" action={action} fields={fields} /> to <ScriptActionInlineField field="string" action={action} fields={fields} /></>,
+	dropItemAtPosition: (action, fields) => <>drop <ScriptActionInlineField field="item" action={action} fields={fields} /> at <ScriptActionInlineField field="position" action={action} fields={fields} /></>,
+	aiAttackUnit: (action, fields) => <><ScriptActionInlineField field="unit" action={action} fields={fields} /> attack <ScriptActionInlineField field="targetUnit" action={action} fields={fields} /></>,
+	aiMoveToPosition: (action, fields) => <><ScriptActionInlineField field="unit" action={action} fields={fields} /> move to <ScriptActionInlineField field="position" action={action} fields={fields} /></>,
+	runScript: (action, fields) => <>run <ScriptActionInlineField field="scriptName" action={action} fields={fields} /></>,
+};
+
+function ScriptActionInlineField({ field: fieldKey, action, fields }) {
+	const field = fields.schema.find((f) => f.key === fieldKey) || { key: fieldKey, kind: inferScriptFieldKind(fieldKey, action?.[fieldKey]) };
+	if (action?.[fieldKey] === undefined && !fields.schema.some((f) => f.key === fieldKey)) return null;
+	const label = inlineFieldText(field, action?.[fieldKey], fields.gameData);
+	return <button type="button" onClick={() => fields.setActiveField(fieldKey)} className="inline-flex items-center align-middle mx-0.5 px-1.5 py-0.5 rounded-md bg-[#303b47] border border-[#506174] text-[#85B7EB] text-[11px] font-sans whitespace-nowrap hover:border-[#85B7EB] hover:bg-[#364453]">{label}</button>;
+}
+
+function describeActionReadable(action, gameData, setActiveField, schema) {
+	const phrase = SCRIPT_ACTION_PHRASES[action?.type];
+	const fields = { gameData, schema, setActiveField };
+	if (phrase) return phrase(action, fields);
+	const parts = schema.filter((f) => action?.[f.key] !== undefined).map((f) => <ScriptActionInlineField key={f.key} field={f.key} action={action} fields={fields} />);
+	return <><span>{readableType(action?.type || 'unknown action')}</span>{parts.length > 0 && <>{' '}{parts}</>}</>;
+}
+
 function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp, siblingCount, indexInParent }) {
 	const [open, setOpen] = useState(depth < 2);
 	const [fieldsOpen, setFieldsOpen] = useState(false);
+	const [activeField, setActiveField] = useState(null);
 	if (!action || typeof action !== 'object') return null;
 
 	let color = SCRIPT_NODE_COLORS.action;
-	let label;
-	let children = null; 
+	let label = null;
+	let children = null;
+	const fieldSchema = action.type === 'condition' ? null : getActionFieldSchema(action.type, gameData);
+	const actionFields = { gameData, schema: fieldSchema || [], setActiveField };
 
 	if (action.type === 'condition') {
 		color = SCRIPT_NODE_COLORS.condition;
-		label = `if ${describeCondition(action.conditions, gameData)}`;
+		label = <><span className="text-[#c5ccd3]">if</span> <span className="text-[#85B7EB]">{describeCondition(action.conditions, gameData)}</span></>;
 		children = [{ heading: null, actions: action.then || [], basePath: [...path, 'then'] }];
 		if (action.else && action.else.length) children.push({ heading: 'else', actions: action.else, basePath: [...path, 'else'] });
 	} else if (action.type === 'runScript') {
 		color = SCRIPT_NODE_COLORS.script;
-		const target = resolveIdName(action.scriptName, gameData);
-		label = `run script: ${target ? target.name : action.scriptName}`;
-	} else if (action.type === 'setVariable') {
+		label = describeActionReadable(action, gameData, setActiveField, fieldSchema || []);
+	} else if (action.type === 'setVariable' || action.type === 'setEntityVariable') {
 		color = SCRIPT_NODE_COLORS.variable;
-		label = `${action.variableName} = ${describeValue(action.value, gameData)}`;
-	} else if (action.type === 'setEntityVariable') {
-		color = SCRIPT_NODE_COLORS.variable;
-		label = `${describeValue(action.variable, gameData)} of ${describeValue(action.entity, gameData)} = ${describeValue(action.value, gameData)}`;
+		label = describeActionReadable(action, gameData, setActiveField, fieldSchema || []);
 	} else if (action.type === 'return' || action.type === 'break' || action.type === 'continue') {
 		color = SCRIPT_NODE_COLORS.control;
 		label = readableType(action.type);
 	} else if (Array.isArray(action.actions)) {
-
 		color = SCRIPT_NODE_COLORS.control;
-		const rangeBit =
-			action.entityGroup !== undefined
-				? ` over ${describeValue(action.entityGroup, gameData)}`
-				: action.start !== undefined
-					? ` (${action.variableName} from ${describeValue(action.start, gameData)} to ${describeValue(action.stop, gameData)})`
-					: '';
-		label = `${readableType(action.type)}${rangeBit}`;
+		const rangeBit = action.entityGroup !== undefined ? <> over <ScriptActionInlineField field="entityGroup" action={action} fields={actionFields} /></> : action.start !== undefined ? <> (<ScriptActionInlineField field="variableName" action={action} fields={actionFields} /> from <ScriptActionInlineField field="start" action={action} fields={actionFields} /> to <ScriptActionInlineField field="stop" action={action} fields={actionFields} />)</> : null;
+		label = <><span>{readableType(action.type)}</span>{rangeBit}</>;
 		children = [{ heading: null, actions: action.actions, basePath: [...path, 'actions'] }];
 	} else {
-		const parts = GENERIC_ACTION_PARAM_KEYS.filter((k) => action[k] !== undefined).map(
-			(k) => `${k}: ${describeValue(action[k], gameData)}`
-		);
-		label = `${readableType(action.type || 'unknown action')}${parts.length ? ' — ' + parts.join(', ') : ''}`;
+		label = describeActionReadable(action, gameData, setActiveField, fieldSchema || []);
 	}
 
 	const hasChildren = !!children;
-	const fieldSchema = action.type === 'condition' ? null : getActionFieldSchema(action.type, gameData);
 	const canMoveUp = indexInParent > 0;
 	const canMoveDown = indexInParent < siblingCount - 1;
+	const showEditor = fieldsOpen && fieldSchema && fieldSchema.length > 0 && action.type !== 'condition';
 
 	return (
 		<div style={{ marginLeft: depth * 16 }}>
-			<div className="flex items-center gap-1.5 py-1 px-1.5 rounded hover:bg-[#323d48]/60 group">
-				<span
-					className="flex items-center gap-1.5 flex-1 min-w-0"
-					style={{ cursor: hasChildren || action.type === 'runScript' ? 'pointer' : 'default' }}
-					onClick={() => {
-						if (hasChildren) setOpen((o) => !o);
-						else if (action.type === 'runScript' && onJumpToScript) onJumpToScript(action.scriptName);
-					}}
-				>
-					<span style={{ width: 7, height: 7, borderRadius: 2, background: color, flexShrink: 0 }} />
+			<div className="flex items-start gap-1.5 py-1 px-1.5 rounded hover:bg-[#323d48]/60 group">
+				<span className="flex items-start gap-1.5 flex-1 min-w-0">
+					<span style={{ width: 7, height: 7, borderRadius: 2, background: color, flexShrink: 0, marginTop: 4 }} />
 					{hasChildren ? (
-						open ? <ChevronDown size={13} className="text-[#637588] shrink-0" /> : <ChevronRight size={13} className="text-[#637588] shrink-0" />
-					) : (
-						<span style={{ width: 13, display: 'inline-block', flexShrink: 0 }} />
-					)}
-					<span className={`text-xs font-mono truncate ${action.disabled ? 'line-through text-[#637588]' : 'text-[#c5ccd3]'}`}>{label}</span>
-					{action.disabled && (
-						<span className="text-[10px] text-red-400 border border-red-900 rounded px-1 shrink-0">disabled</span>
-					)}
+						<button type="button" onClick={() => setOpen((o) => !o)} className="shrink-0 p-0.5 text-[#637588] hover:text-[#c5ccd3]">{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button>
+					) : <span style={{ width: 17, display: 'inline-block', flexShrink: 0 }} />}
+					<div className={`min-w-0 flex-1 text-xs leading-6 ${action.disabled ? 'line-through text-[#637588]' : 'text-[#c5ccd3]'}`}>
+						{label}
+						{action.disabled && <span className="ml-1 text-[10px] text-red-400 border border-red-900 rounded px-1 no-underline">disabled</span>}
+					</div>
 					{action.type === 'runScript' && <ExternalLinkIcon />}
 				</span>
-				{onOp && (
-					<span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-						<ScriptAddMenu label="" options={collectScriptVocabulary(gameData).actions.map((type) => ({ value: type, label: readableType(type), category: scriptCategory(type) }))} onSelect={(type) => onOp(path.slice(0, -1), 'insert', { index: indexInParent + 1, value: defaultActionForType(type, gameData) })} />
-						{((fieldSchema && fieldSchema.length > 0) || action.type === 'condition') && (
-							<button
-								title="Edit fields"
-								onClick={() => setFieldsOpen((o) => !o)}
-								className={`p-1 rounded hover:bg-[#3d4a57] ${fieldsOpen ? 'text-[#1a56da]' : 'text-[#637588]'}`}
-							>
-								<Pencil size={11} />
-							</button>
-						)}
-						<button title="Move up" disabled={!canMoveUp} onClick={() => onOp(path, 'moveUp')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] disabled:opacity-30 disabled:hover:bg-transparent text-[10px] leading-none w-[19px] h-[19px]">
-							▲
-						</button>
-						<button title="Move down" disabled={!canMoveDown} onClick={() => onOp(path, 'moveDown')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] disabled:opacity-30 disabled:hover:bg-transparent text-[10px] leading-none w-[19px] h-[19px]">
-							▼
-						</button>
-						<button title={action.disabled ? 'Enable' : 'Disable'} onClick={() => onOp(path, 'toggleDisabled')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]">
-							<Square size={11} />
-						</button>
-						<button title="Duplicate" onClick={() => onOp(path, 'duplicate')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]">
-							<Copy size={11} />
-						</button>
-						<button title="Delete" onClick={() => onOp(path, 'delete')} className="p-1 rounded hover:bg-red-950/40 text-red-400">
-							<Trash2 size={11} />
-						</button>
-					</span>
-				)}
+				{onOp && <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+					<ScriptAddMenu label="" options={collectScriptVocabulary(gameData).actions.map((type) => ({ value: type, label: readableType(type), category: scriptCategory(type) }))} onSelect={(type) => onOp(path.slice(0, -1), 'insert', { index: indexInParent + 1, value: defaultActionForType(type, gameData) })} />
+					{((fieldSchema && fieldSchema.length > 0) || action.type === 'condition') && <button title="Edit fields" onClick={() => { setFieldsOpen((o) => !o); setActiveField(null); }} className={`p-1 rounded hover:bg-[#3d4a57] ${fieldsOpen ? 'text-[#1a56da]' : 'text-[#637588]'}`}><Pencil size={11} /></button>}
+					<button title="Move up" disabled={!canMoveUp} onClick={() => onOp(path, 'moveUp')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] disabled:opacity-30 text-[10px] leading-none w-[19px] h-[19px]">▲</button>
+					<button title="Move down" disabled={!canMoveDown} onClick={() => onOp(path, 'moveDown')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] disabled:opacity-30 text-[10px] leading-none w-[19px] h-[19px]">▼</button>
+					<button title={action.disabled ? 'Enable' : 'Disable'} onClick={() => onOp(path, 'toggleDisabled')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><Square size={11} /></button>
+					<button title="Duplicate" onClick={() => onOp(path, 'duplicate')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><Copy size={11} /></button>
+					<button title="Delete" onClick={() => onOp(path, 'delete')} className="p-1 rounded hover:bg-red-950/40 text-red-400"><Trash2 size={11} /></button>
+				</span>}
 			</div>
-			{action.type === 'condition' && fieldsOpen && (
-				<div className="space-y-1 py-1" style={{ marginLeft: (depth + 1) * 16 }}>
-					<ScriptConditionEditor value={action.conditions} gameData={gameData} onChange={(v) => onOp([...path, 'conditions'], 'setField', v)} />
-				</div>
-			)}
-			{fieldsOpen && fieldSchema && (
-				<div className="space-y-1 py-1" style={{ marginLeft: (depth + 1) * 16 }}>
-					{fieldSchema.map((f) => (
-						<div key={f.key} className="flex items-center gap-2">
-							<span className="text-[10px] text-[#8291a1] w-28 shrink-0 truncate">{f.key}</span>
-							<ScriptFieldInput kind={f.kind} value={action[f.key]} gameData={gameData} onChange={(v) => onOp([...path, f.key], 'setField', v)} />
-						</div>
-					))}
-				</div>
-			)}
-			{hasChildren && open && (
-				<div>
-					{children.map((section, i) => (
-						<div key={i}>
-							{section.heading && <div className="text-[10px] uppercase tracking-wide text-[#637588]" style={{ marginLeft: (depth + 1) * 16 }}>{section.heading}</div>}
-							<div className="flex items-center gap-1.5 py-1" style={{ marginLeft: (depth + 1) * 16 }}>
-								<ScriptAddMenu label="Add action" options={collectScriptVocabulary(gameData).actions.map((type) => ({ value: type, label: readableType(type), category: scriptCategory(type) }))} onSelect={(type) => onOp?.(section.basePath, 'insert', { index: section.actions.length, value: defaultActionForType(type, gameData) })} />
-								<button type="button" onClick={() => onOp?.(section.basePath, 'insert', { index: section.actions.length, value: defaultActionForType('condition', gameData) })} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#8291a1] hover:text-[#85B7EB]"><Plus size={11} /> Condition</button>
-							</div>
-							{section.actions.length === 0 ? (
-								<div className="text-xs text-[#637588] italic" style={{ marginLeft: (depth + 1) * 16 }}>(nothing)</div>
-							) : section.actions.map((a, i2) => (
-								<ScriptActionNode key={i2} action={a} gameData={gameData} depth={depth + 1} onJumpToScript={onJumpToScript} path={[...section.basePath, i2]} onOp={onOp} siblingCount={section.actions.length} indexInParent={i2} />
-							))}
-						</div>
-					))}
-				</div>
-			)}
+			{action.type === 'condition' && fieldsOpen && <div className="py-1" style={{ marginLeft: (depth + 1) * 16 }}><ScriptConditionEditor value={action.conditions} gameData={gameData} onChange={(v) => onOp([...path, 'conditions'], 'setField', v)} /></div>}
+			{showEditor && <div className="mt-1 mb-1 rounded-md border border-[#3d4a57] bg-[#252d35] p-2" style={{ marginLeft: (depth + 1) * 16 }}>
+				{activeField ? <>
+					<div className="flex items-center justify-between mb-1.5"><span className="text-[10px] uppercase tracking-wide text-[#637588]">Edit {readableType(activeField)}</span><button type="button" onClick={() => setActiveField(null)} className="text-[#637588] hover:text-[#c5ccd3]"><X size={12} /></button></div>
+					<ScriptFieldInput kind={fieldSchema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, action?.[activeField])} value={action?.[activeField]} gameData={gameData} onChange={(v) => { onOp([...path, activeField], 'setField', v); setActiveField(null); }} />
+				</> : <div className="text-[10px] text-[#637588]">Click a blue value above to edit it.</div>}
+			</div>}
+			{hasChildren && open && <div>
+				{children.map((section, i) => <div key={i}>
+					{section.heading && <div className="text-[10px] uppercase tracking-wide text-[#637588]" style={{ marginLeft: (depth + 1) * 16 }}>{section.heading}</div>}
+					<div className="flex items-center gap-1.5 py-1" style={{ marginLeft: (depth + 1) * 16 }}>
+						<ScriptAddMenu label="Add action" options={collectScriptVocabulary(gameData).actions.map((type) => ({ value: type, label: readableType(type), category: scriptCategory(type) }))} onSelect={(type) => onOp?.(section.basePath, 'insert', { index: section.actions.length, value: defaultActionForType(type, gameData) })} />
+						<button type="button" onClick={() => onOp?.(section.basePath, 'insert', { index: section.actions.length, value: defaultActionForType('condition', gameData) })} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#8291a1] hover:text-[#85B7EB]"><Plus size={11} /> Condition</button>
+					</div>
+					{section.actions.length === 0 ? <div className="text-xs text-[#637588] italic" style={{ marginLeft: (depth + 1) * 16 }}>(nothing)</div> : section.actions.map((a, i2) => <ScriptActionNode key={i2} action={a} gameData={gameData} depth={depth + 1} onJumpToScript={onJumpToScript} path={[...section.basePath, i2]} onOp={onOp} siblingCount={section.actions.length} indexInParent={i2} />)}
+				</div>)}
+			</div>}
 		</div>
 	);
 }
