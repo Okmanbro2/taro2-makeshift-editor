@@ -332,8 +332,8 @@ const ACTION_FIELD_SCHEMAS = {
 	closeShopForPlayer: [{ key: 'player', kind: 'valueExpr' }],
 	createEntityForPlayerAtPositionWithDimensions: [{ key: 'actionId', kind: 'string' }, { key: 'angle', kind: 'valueExpr' }, { key: 'entity', kind: 'unitTypeId' }, { key: 'entityType', kind: 'string' }, { key: 'height', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }, { key: 'width', kind: 'valueExpr' }],
 	createFloatingText: [{ key: 'color', kind: 'string' }, { key: 'position', kind: 'valueExpr' }, { key: 'text', kind: 'valueExpr' }],
-	createProjectileAtPosition: [{ key: 'actionId', kind: 'string' }, { key: 'angle', kind: 'valueExpr' }, { key: 'force', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }, { key: 'projectileType', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
-	createUnitAtPosition: [{ key: 'actionId', kind: 'string' }, { key: 'angle', kind: 'valueExpr' }, { key: 'entity', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }, { key: 'unitType', kind: 'valueExpr' }],
+	createProjectileAtPosition: [{ key: 'actionId', kind: 'string' }, { key: 'angle', kind: 'valueExpr' }, { key: 'force', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }, { key: 'projectileType', kind: 'projectileTypeId' }, { key: 'unit', kind: 'valueExpr' }],
+	createUnitAtPosition: [{ key: 'actionId', kind: 'string' }, { key: 'angle', kind: 'valueExpr' }, { key: 'entity', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }, { key: 'unitType', kind: 'unitTypeId' }],
 	decreaseVariableByNumber: [{ key: 'number', kind: 'valueExpr' }, { key: 'variable', kind: 'string' }],
 	destroyEntity: [{ key: 'entity', kind: 'valueExpr' }, { key: 'runOnClient', kind: 'boolean' }],
 	disableAI: [{ key: 'unit', kind: 'valueExpr' }],
@@ -394,7 +394,7 @@ const ACTION_FIELD_SCHEMAS = {
 	showUiTextForEveryone: [{ key: 'target', kind: 'string' }],
 	showUiTextForPlayer: [{ key: 'entity', kind: 'valueExpr' }, { key: 'target', kind: 'string' }],
 	showUnitToPlayer: [{ key: 'entity', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
-	spawnItem: [{ key: 'actionId', kind: 'string' }, { key: 'itemType', kind: 'valueExpr' }, { key: 'position', kind: 'valueExpr' }],
+	spawnItem: [{ key: 'actionId', kind: 'string' }, { key: 'itemType', kind: 'itemTypeId' }, { key: 'position', kind: 'valueExpr' }],
 	stopMusicForPlayer: [{ key: 'player', kind: 'valueExpr' }],
 	stunUnit: [{ key: 'unit', kind: 'valueExpr' }],
 	transformRegionDimensions: [{ key: 'height', kind: 'valueExpr' }, { key: 'region', kind: 'valueExpr' }, { key: 'width', kind: 'valueExpr' }, { key: 'x', kind: 'valueExpr' }, { key: 'y', kind: 'valueExpr' }],
@@ -453,14 +453,553 @@ function defaultValueForScriptField(kind) {
 
 const SCRIPT_CONTAINER_ACTION_TYPES = new Set(['for', 'repeat', 'while', 'forAllUnits', 'forAllItems', 'forAllPlayers', 'forAllEntities', 'forAllUnitTypes', 'forAllItemTypes', 'forAllProjectiles', 'forAllRegions']);
 
+// library of alexandria
+const ENGINE_TRIGGER_TYPES = ["ThisItemsQuantityBecomesZero", "adPlayBlocked", "adPlayCompleted", "adPlayFailed", "adPlaySkipped", "coinSendFailureDueToDailyLimit", "coinSendFailureDueToInsufficientCoins", "entityAStarPathFindingFailed", "entityAttributeBecomesFull", "entityAttributeBecomesZero", "entityCreated", "entityCreatedGlobal", "entityEntersRegion", "entityGetsAttacked", "entityLeavesRegion", "entityTouchesItem", "entityTouchesProjectile", "entityTouchesUnit", "entityTouchesWall", "gameStart", "htmlUiClick", "initEntityDestroy", "itemIsUsed", "itemTouchesWall", "onPostResponse", "playerCustomInput", "playerGetsNewHighscore", "playerJoinsGame", "playerLeavesGame", "playerPurchasesItem", "playerPurchasesUnit", "projectileTouchesWall", "questAdded", "questCompleted", "questProgressCompleted", "questProgressUpdated", "questRemoved", "sendCoinsSuccess", "thisItemChangesInventorySlot", "thisItemIsDropped", "thisItemIsPickedUp", "thisItemIsSelected", "thisItemStartsBeingUsed", "thisItemStopsBeingUsed", "thisUnitDroppedAnItem", "thisUnitMovesItemInInventory", "thisUnitPicksUpItem", "thisUnitSelectsItem", "thisUnitStartsUsingAnItem", "thisUnitStopsUsingAnItem", "thisUnitUsesItem", "unitAStarPathFindingFailed", "unitAttacksUnit", "unitDroppedAnItem", "unitPicksUpItem", "unitSelectsInventorySlot", "unitSelectsItem", "unitStartsMoving", "unitStartsUsingAnItem", "unitStopsMoving", "unitStopsUsingAnItem", "unitTouchesWall", "unitUsesItem", "whenDataReceivedFromClient", "whenDataReceivedFromServer", "whenPlayerClickTradeOption", "whenPlayerDropsItemToCanvas"];
+const ENGINE_ACTION_FIELD_SCHEMAS = {
+  "addAttributeBuffToUnit": [{"key":"attribute","kind":"attributeId"},{"key":"entity","kind":"valueExpr"},{"key":"time","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "addBotPlayer": [{"key":"name","kind":"valueExpr"}],
+  "addChatFilter": [{"key":"words","kind":"valueExpr"}],
+  "addClassToUIElement": [{"key":"className","kind":"valueExpr"},{"key":"elementId","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "addNumberElement": [{"key":"key","kind":"valueExpr"},{"key":"object","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "addObjectElement": [{"key":"key","kind":"valueExpr"},{"key":"object","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "addPercentageAttributeBuffToUnit": [{"key":"attribute","kind":"attributeId"},{"key":"entity","kind":"valueExpr"},{"key":"time","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "addPlayerToPlayerGroup": [{"key":"player","kind":"valueExpr"},{"key":"playerGroup","kind":"valueExpr"}],
+  "addQuestToPlayer": [{"key":"description","kind":"valueExpr"},{"key":"goal","kind":"valueExpr"},{"key":"name","kind":"valueExpr"},{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "addStringElement": [{"key":"key","kind":"valueExpr"},{"key":"object","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "addUnitToUnitGroup": [{"key":"unit","kind":"valueExpr"},{"key":"unitGroup","kind":"valueExpr"}],
+  "aiAttackUnit": [{"key":"targetUnit","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "aiGoIdle": [{"key":"unit","kind":"valueExpr"}],
+  "aiMoveToPosition": [{"key":"position","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "appendRealtimeCSSForPlayer": [{"key":"player","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "applyForceOnEntityAngle": [{"key":"angle","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"},{"key":"force","kind":"valueExpr"}],
+  "applyForceOnEntityAngleLT": [{"key":"angle","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"},{"key":"force","kind":"valueExpr"}],
+  "applyForceOnEntityXY": [{"key":"entity","kind":"valueExpr"},{"key":"force","kind":"valueExpr"},{"key":"forceX","kind":"valueExpr"}],
+  "applyForceOnEntityXYRelative": [{"key":"entity","kind":"valueExpr"},{"key":"force","kind":"valueExpr"}],
+  "applyImpulseOnEntityAngle": [{"key":"angle","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"},{"key":"impulse","kind":"valueExpr"}],
+  "applyImpulseOnEntityXY": [{"key":"entity","kind":"valueExpr"},{"key":"impulse","kind":"valueExpr"}],
+  "applyTorqueOnEntity": [{"key":"entity","kind":"valueExpr"},{"key":"torque","kind":"valueExpr"}],
+  "assignPlayerType": [{"key":"playerType","kind":"playerTypeId"}],
+  "banPlayerFromChat": [{"key":"player","kind":"valueExpr"}],
+  "break": [],
+  "castAbility": [{"key":"abilityName","kind":"valueExpr"}],
+  "changeDescriptionOfItem": [{"key":"item","kind":"valueExpr"},{"key":"string","kind":"valueExpr"}],
+  "changeInventorySlotColor": [{"key":"item","kind":"valueExpr"},{"key":"string","kind":"valueExpr"}],
+  "changeItemInventoryImage": [{"key":"item","kind":"valueExpr"},{"key":"url","kind":"valueExpr"}],
+  "changeLayerOpacity": [{"key":"layer","kind":"valueExpr"},{"key":"opacity","kind":"valueExpr"}],
+  "changePlayerCameraPanSpeed": [{"key":"panSpeed","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "changeRegionColor": [{"key":"alpha","kind":"valueExpr"},{"key":"inside","kind":"valueExpr"},{"key":"region","kind":"valueExpr"}],
+  "changeScaleOfEntityBody": [{"key":"entity","kind":"valueExpr"},{"key":"scale","kind":"valueExpr"}],
+  "changeScaleOfEntitySprite": [{"key":"entity","kind":"valueExpr"},{"key":"scale","kind":"valueExpr"}],
+  "changeSensorRadius": [{"key":"radius","kind":"valueExpr"},{"key":"sensor","kind":"valueExpr"}],
+  "changeUnitSpeed": [{"key":"unitSpeed","kind":"valueExpr"}],
+  "changeUnitType": [{"key":"unitType","kind":"unitTypeId"}],
+  "closeBackpackForPlayer": [{"key":"player","kind":"valueExpr"}],
+  "closeDialogueForPlayer": [{"key":"player","kind":"valueExpr"}],
+  "closeShopForPlayer": [{"key":"player","kind":"valueExpr"}],
+  "comment": [],
+  "completeQuest": [{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "condition": [],
+  "continue": [],
+  "createDynamicFloatingText": [{"key":"color","kind":"valueExpr"},{"key":"duration","kind":"valueExpr"},{"key":"position","kind":"valueExpr"},{"key":"text","kind":"valueExpr"}],
+  "createEntityForPlayerAtPositionWithDimensions": [{"key":"angle","kind":"valueExpr"},{"key":"depth","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"},{"key":"entityType","kind":"valueExpr"},{"key":"height","kind":"valueExpr"},{"key":"player","kind":"valueExpr"},{"key":"position","kind":"valueExpr"},{"key":"rotation","kind":"valueExpr"},{"key":"scale","kind":"valueExpr"},{"key":"width","kind":"valueExpr"}],
+  "createFloatingText": [{"key":"color","kind":"valueExpr"},{"key":"position","kind":"valueExpr"},{"key":"text","kind":"valueExpr"}],
+  "createItemAtPositionWithQuantity": [{"key":"itemType","kind":"itemTypeId"},{"key":"position","kind":"valueExpr"},{"key":"quantity","kind":"valueExpr"}],
+  "createItemWithMaxQuantityAtPosition": [{"key":"itemType","kind":"itemTypeId"},{"key":"position","kind":"valueExpr"}],
+  "createProjectileAtPosition": [{"key":"angle","kind":"valueExpr"},{"key":"force","kind":"valueExpr"},{"key":"position","kind":"valueExpr"},{"key":"projectileType","kind":"projectileTypeId"},{"key":"unit","kind":"valueExpr"}],
+  "createUnitAtPosition": [{"key":"angle","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"},{"key":"position","kind":"valueExpr"},{"key":"unitType","kind":"unitTypeId"}],
+  "decreaseVariableByNumber": [{"key":"number","kind":"valueExpr"},{"key":"variable","kind":"variable"}],
+  "destroyEntity": [{"key":"entity","kind":"valueExpr"}],
+  "disableAI": [{"key":"unit","kind":"valueExpr"}],
+  "disableRotateToFaceMouseCursor": [{"key":"item","kind":"valueExpr"}],
+  "dropAllItems": [],
+  "dropItem": [{"key":"entity","kind":"valueExpr"}],
+  "dropItemAtPosition": [{"key":"item","kind":"valueExpr"},{"key":"position","kind":"valueExpr"}],
+  "dropItemInInventorySlot": [{"key":"slotIndex","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "editMapTile": [{"key":"gid","kind":"valueExpr"},{"key":"layer","kind":"valueExpr"},{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"}],
+  "editMapTiles": [{"key":"gid","kind":"valueExpr"},{"key":"height","kind":"valueExpr"},{"key":"layer","kind":"valueExpr"},{"key":"width","kind":"valueExpr"},{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"}],
+  "enableAI": [{"key":"unit","kind":"valueExpr"}],
+  "enableRotateToFaceMouseCursor": [{"key":"item","kind":"valueExpr"}],
+  "endGame": [],
+  "flipEntitySprite": [{"key":"entity","kind":"valueExpr"},{"key":"flip","kind":"valueExpr"}],
+  "for": [{"key":"start","kind":"valueExpr"},{"key":"stop","kind":"valueExpr"},{"key":"variableName","kind":"variable"}],
+  "forAllElementsInObject": [{"key":"object","kind":"valueExpr"}],
+  "forAllEntities": [{"key":"entityGroup","kind":"valueExpr"}],
+  "forAllItemTypes": [{"key":"itemTypeGroup","kind":"valueExpr"}],
+  "forAllItems": [{"key":"itemGroup","kind":"valueExpr"}],
+  "forAllPlayers": [{"key":"playerGroup","kind":"valueExpr"}],
+  "forAllProjectiles": [{"key":"projectileGroup","kind":"valueExpr"}],
+  "forAllRegions": [{"key":"regionGroup","kind":"valueExpr"}],
+  "forAllUnitTypes": [{"key":"unitTypeGroup","kind":"valueExpr"}],
+  "forAllUnits": [{"key":"unitGroup","kind":"valueExpr"}],
+  "forIn": [{"key":"variableNameMain","kind":"valueExpr"},{"key":"variableNameSource","kind":"valueExpr"}],
+  "giveNewItemToUnit": [{"key":"itemType","kind":"itemTypeId"},{"key":"unit","kind":"valueExpr"}],
+  "giveNewItemWithQuantityToUnit": [{"key":"entity","kind":"valueExpr"},{"key":"hasOwnProperty","kind":"valueExpr"},{"key":"itemType","kind":"itemTypeId"},{"key":"number","kind":"valueExpr"},{"key":"quantity","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "hideEntity": [{"key":"entity","kind":"valueExpr"}],
+  "hideGameSuggestionsForPlayer": [{"key":"player","kind":"valueExpr"}],
+  "hideUiElementForPlayer": [{"key":"elementId","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "hideUiTextForEveryone": [{"key":"target","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "hideUiTextForPlayer": [{"key":"target","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "hideUnitFromPlayer": [{"key":"entity","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "hideUnitInPlayerMinimap": [{"key":"color","kind":"valueExpr"},{"key":"player","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "hideUnitNameLabel": [{"key":"playerType","kind":"playerTypeId"}],
+  "hideUnitNameLabelFromPlayer": [{"key":"entity","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "increaseVariableByNumber": [{"key":"number","kind":"valueExpr"},{"key":"variable","kind":"variable"}],
+  "kickPlayer": [{"key":"entity","kind":"valueExpr"},{"key":"message","kind":"valueExpr"}],
+  "loadMapFromString": [{"key":"string","kind":"valueExpr"}],
+  "loadPlayerData": [{"key":"player","kind":"valueExpr"}],
+  "loadPlayerDataAndApplyIt": [{"key":"player","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "loadPlayerDataFromString": [{"key":"player","kind":"valueExpr"},{"key":"string","kind":"valueExpr"}],
+  "loadUnitData": [{"key":"unit","kind":"valueExpr"}],
+  "loadUnitDataFromString": [{"key":"string","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "makePlayerSelectUnit": [{"key":"player","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "makePlayerSendChatMessage": [{"key":"message","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "makePlayerTradeWithPlayer": [{"key":"playerA","kind":"valueExpr"},{"key":"playerB","kind":"valueExpr"}],
+  "makeUnitInvisible": [],
+  "makeUnitInvisibleToFriendlyPlayers": [],
+  "makeUnitInvisibleToNeutralPlayers": [],
+  "makeUnitPickupItem": [{"key":"item","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "makeUnitSelectItemAtSlot": [{"key":"slotIndex","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "makeUnitToAlwaysFaceMouseCursor": [],
+  "makeUnitToAlwaysFacePosition": [{"key":"position","kind":"valueExpr"}],
+  "makeUnitVisible": [],
+  "makeUnitVisibleToFriendlyPlayers": [],
+  "makeUnitVisibleToNeutralPlayers": [],
+  "moveEntity": [{"key":"entity","kind":"valueExpr"},{"key":"position","kind":"valueExpr"}],
+  "openBackpackForPlayer": [{"key":"player","kind":"valueExpr"}],
+  "openDialogueForPlayer": [{"key":"dialogue","kind":"dialogueId"},{"key":"player","kind":"valueExpr"}],
+  "openShopForPlayer": [{"key":"player","kind":"valueExpr"},{"key":"shop","kind":"shopId"}],
+  "openSkinShop": [{"key":"player","kind":"valueExpr"}],
+  "openSkinSubmissionPage": [{"key":"player","kind":"valueExpr"}],
+  "openWebsiteForPlayer": [{"key":"player","kind":"valueExpr"},{"key":"string","kind":"valueExpr"}],
+  "playAdForEveryone": [],
+  "playAdForPlayer": [{"key":"entity","kind":"valueExpr"}],
+  "playEntityAnimation": [{"key":"animation","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"}],
+  "playMusic": [{"key":"music","kind":"musicId"}],
+  "playMusicForPlayer": [{"key":"music","kind":"musicId"},{"key":"player","kind":"valueExpr"}],
+  "playMusicForPlayerAtTime": [{"key":"music","kind":"musicId"},{"key":"player","kind":"valueExpr"},{"key":"time","kind":"valueExpr"}],
+  "playMusicForPlayerRepeatedly": [{"key":"music","kind":"musicId"},{"key":"player","kind":"valueExpr"}],
+  "playSoundAtPosition": [{"key":"position","kind":"valueExpr"},{"key":"sound","kind":"soundId"}],
+  "playSoundForPlayer": [{"key":"player","kind":"valueExpr"},{"key":"sound","kind":"soundId"}],
+  "playerCameraSetPitch": [{"key":"angle","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "playerCameraSetYaw": [{"key":"angle","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "playerCameraSetZoom": [{"key":"player","kind":"valueExpr"},{"key":"zoom","kind":"valueExpr"}],
+  "playerCameraStopTracking": [{"key":"player","kind":"valueExpr"}],
+  "playerCameraTrackUnit": [{"key":"player","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "positionCamera": [{"key":"player","kind":"valueExpr"},{"key":"position","kind":"valueExpr"}],
+  "purchaseItemFromShop": [{"key":"itemType","kind":"itemTypeId"},{"key":"player","kind":"valueExpr"},{"key":"shop","kind":"shopId"}],
+  "refillAmmo": [],
+  "removeAllAttributeBuffs": [{"key":"unit","kind":"valueExpr"}],
+  "removeClassFromUIElement": [{"key":"className","kind":"valueExpr"},{"key":"elementId","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "removeElement": [{"key":"key","kind":"valueExpr"},{"key":"object","kind":"valueExpr"}],
+  "removePlayerFromPlayerGroup": [{"key":"player","kind":"valueExpr"},{"key":"playerGroup","kind":"valueExpr"}],
+  "removeQuestForPlayer": [{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "removeUnitFromUnitGroup": [{"key":"unit","kind":"valueExpr"},{"key":"unitGroup","kind":"valueExpr"}],
+  "repeat": [{"key":"count","kind":"valueExpr"}],
+  "repeatWithDelay": [{"key":"count","kind":"valueExpr"},{"key":"number","kind":"valueExpr"}],
+  "requestPost": [{"key":"data","kind":"valueExpr"},{"key":"url","kind":"valueExpr"},{"key":"varName","kind":"variable"}],
+  "resetEntity": [{"key":"entity","kind":"valueExpr"}],
+  "return": [],
+  "rotateEntityToFacePosition": [{"key":"entity","kind":"valueExpr"},{"key":"position","kind":"valueExpr"}],
+  "rotateEntityToFacePositionUsingRotationSpeed": [{"key":"entity","kind":"valueExpr"},{"key":"position","kind":"valueExpr"}],
+  "rotateEntityToRadians": [{"key":"entity","kind":"valueExpr"},{"key":"radians","kind":"valueExpr"}],
+  "runEntityScript": [{"key":"entity","kind":"valueExpr"},{"key":"scriptName","kind":"scriptId"}],
+  "runEntityScriptOnClient": [{"key":"entity","kind":"valueExpr"},{"key":"player","kind":"valueExpr"},{"key":"scriptName","kind":"scriptId"}],
+  "runScript": [{"key":"scriptName","kind":"scriptId"}],
+  "runScriptOnClient": [{"key":"player","kind":"valueExpr"},{"key":"scriptName","kind":"scriptId"}],
+  "savePlayerData": [{"key":"player","kind":"valueExpr"}],
+  "saveUnitData": [{"key":"unit","kind":"valueExpr"}],
+  "sendChatMessage": [{"key":"message","kind":"valueExpr"}],
+  "sendChatMessageToPlayer": [{"key":"message","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "sendCoinsToPlayer": [{"key":"coins","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "sendCoinsToPlayer2": [{"key":"coins","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "sendDataFromClientToServer": [{"key":"data","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "sendDataFromServerToClient": [{"key":"client","kind":"valueExpr"},{"key":"data","kind":"valueExpr"}],
+  "sendPlayerGroupToMap": [{"key":"gameId","kind":"valueExpr"},{"key":"playerGroup","kind":"valueExpr"}],
+  "sendPlayerToGame": [{"key":"gameId","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "sendPlayerToMap": [{"key":"gameId","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "sendPlayerToSpawningMap": [{"key":"player","kind":"valueExpr"}],
+  "sendPostRequest": [{"key":"string","kind":"valueExpr"},{"key":"url","kind":"valueExpr"},{"key":"varName","kind":"variable"}],
+  "sendSecurePostRequest": [{"key":"apiCredentials","kind":"valueExpr"},{"key":"data","kind":"valueExpr"},{"key":"onFailure","kind":"valueExpr"},{"key":"onSuccess","kind":"valueExpr"},{"key":"varName","kind":"variable"}],
+  "setCameraDeadzone": [{"key":"height","kind":"valueExpr"},{"key":"width","kind":"valueExpr"}],
+  "setEntityAttribute": [{"key":"attribute","kind":"attributeId"},{"key":"entity","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "setEntityAttributeMax": [{"key":"attribute","kind":"attributeId"},{"key":"entity","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "setEntityAttributeMin": [{"key":"attribute","kind":"attributeId"},{"key":"entity","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "setEntityAttributeRegenerationRate": [{"key":"attribute","kind":"attributeId"},{"key":"entity","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "setEntityDepth": [{"key":"depth","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"}],
+  "setEntityLifeSpan": [{"key":"entity","kind":"valueExpr"},{"key":"lifeSpan","kind":"valueExpr"}],
+  "setEntityOpacity": [{"key":"entity","kind":"valueExpr"},{"key":"opacity","kind":"valueExpr"}],
+  "setEntityState": [{"key":"entity","kind":"valueExpr"},{"key":"state","kind":"stateId"}],
+  "setEntityVariable": [{"key":"entity","kind":"valueExpr"},{"key":"value","kind":"valueExpr"},{"key":"variable","kind":"variable"}],
+  "setEntityVelocityAtAngle": [{"key":"angle","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"},{"key":"speed","kind":"valueExpr"}],
+  "setFadingTextOfUnit": [{"key":"color","kind":"valueExpr"},{"key":"text","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setItemAmmo": [{"key":"ammo","kind":"valueExpr"},{"key":"item","kind":"valueExpr"}],
+  "setItemFireRate": [{"key":"item","kind":"valueExpr"},{"key":"number","kind":"valueExpr"}],
+  "setItemName": [{"key":"item","kind":"valueExpr"},{"key":"name","kind":"valueExpr"}],
+  "setLastAttackedUnit": [{"key":"unit","kind":"valueExpr"}],
+  "setLastAttackingItem": [{"key":"item","kind":"valueExpr"}],
+  "setLastAttackingUnit": [{"key":"unit","kind":"valueExpr"}],
+  "setLetGoDistance": [{"key":"number","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setMaxAttackRange": [{"key":"number","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setMaxTravelDistance": [{"key":"number","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setOwnerUnitOfProjectile": [{"key":"projectile","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setPlayerAttribute": [{"key":"attribute","kind":"attributeId"},{"key":"entity","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "setPlayerAttributeMax": [{"key":"attributeType","kind":"attributeId"},{"key":"number","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "setPlayerAttributeMin": [{"key":"attributeType","kind":"attributeId"},{"key":"number","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "setPlayerAttributeRegenerationRate": [{"key":"attributeType","kind":"attributeId"},{"key":"number","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "setPlayerName": [{"key":"name","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "setPlayerVariable": [{"key":"player","kind":"valueExpr"},{"key":"value","kind":"valueExpr"},{"key":"variable","kind":"variable"}],
+  "setQuestProgress": [{"key":"player","kind":"valueExpr"},{"key":"progress","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "setSourceItemOfProjectile": [{"key":"item","kind":"valueExpr"},{"key":"projectile","kind":"valueExpr"}],
+  "setTimeOut": [{"key":"duration","kind":"valueExpr"}],
+  "setUIElementHtml": [{"key":"elementId","kind":"valueExpr"},{"key":"htmlStr","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "setUIElementProperty": [{"key":"elementId","kind":"valueExpr"},{"key":"key","kind":"valueExpr"},{"key":"player","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "setUnitNameLabel": [{"key":"color","kind":"valueExpr"},{"key":"name","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setUnitNameLabelColorForPlayer": [{"key":"color","kind":"valueExpr"},{"key":"player","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setUnitOwner": [{"key":"player","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setUnitTargetPosition": [{"key":"position","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setUnitTargetUnit": [{"key":"targetUnit","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "setVariable": [{"key":"value","kind":"valueExpr"},{"key":"variableName","kind":"variable"}],
+  "setVelocityOfEntityXY": [{"key":"entity","kind":"valueExpr"},{"key":"forceX","kind":"valueExpr"},{"key":"velocity","kind":"valueExpr"}],
+  "showCustomModalToPlayer": [{"key":"htmlContent","kind":"valueExpr"},{"key":"player","kind":"valueExpr"},{"key":"title","kind":"valueExpr"}],
+  "showDismissibleInputModalToPlayer": [{"key":"inputLabel","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "showEntity": [{"key":"entity","kind":"valueExpr"}],
+  "showGameSuggestionsForPlayer": [{"key":"player","kind":"valueExpr"}],
+  "showInputModalToPlayer": [{"key":"inputLabel","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "showInviteFriendsModal": [{"key":"player","kind":"valueExpr"}],
+  "showMenu": [{"key":"player","kind":"valueExpr"}],
+  "showMenuAndSelectBestServer": [{"key":"player","kind":"valueExpr"}],
+  "showMenuAndSelectCurrentServer": [{"key":"player","kind":"valueExpr"}],
+  "showSocialShareModalToPlayer": [{"key":"player","kind":"valueExpr"}],
+  "showUiElementForPlayer": [{"key":"elementId","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "showUiTextForEveryone": [{"key":"target","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "showUiTextForPlayer": [{"key":"target","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "showUnitInPlayerMinimap": [{"key":"color","kind":"valueExpr"},{"key":"player","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "showUnitNameLabel": [{"key":"playerType","kind":"playerTypeId"}],
+  "showUnitNameLabelToPlayer": [{"key":"entity","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "showUnitToPlayer": [{"key":"entity","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "showWebsiteModalToPlayer": [{"key":"player","kind":"valueExpr"},{"key":"string","kind":"valueExpr"}],
+  "spawnItem": [{"key":"itemType","kind":"itemTypeId"},{"key":"position","kind":"valueExpr"}],
+  "startAcceptingPlayers": [],
+  "startCastingAbility": [{"key":"ability","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"}],
+  "startEmittingParticles": [{"key":"particleEmitter","kind":"valueExpr"}],
+  "startMovingUnitDown": [],
+  "startMovingUnitLeft": [],
+  "startMovingUnitRight": [],
+  "startMovingUnitUp": [],
+  "startUsingItem": [],
+  "stopAcceptingPlayers": [],
+  "stopCastingAbility": [{"key":"ability","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"}],
+  "stopEmittingParticles": [{"key":"particleEmitter","kind":"valueExpr"}],
+  "stopMovingUnit": [],
+  "stopMovingUnitX": [],
+  "stopMovingUnitY": [],
+  "stopMusic": [],
+  "stopMusicForPlayer": [{"key":"player","kind":"valueExpr"}],
+  "stopSoundForPlayer": [{"key":"player","kind":"valueExpr"},{"key":"sound","kind":"soundId"}],
+  "stopUsingItem": [],
+  "teleportEntity": [{"key":"entity","kind":"valueExpr"},{"key":"position","kind":"valueExpr"}],
+  "transformRegionDimensions": [{"key":"height","kind":"valueExpr"},{"key":"region","kind":"valueExpr"},{"key":"width","kind":"valueExpr"},{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"}],
+  "unbanPlayerFromChat": [{"key":"player","kind":"valueExpr"}],
+  "updateItemQuantity": [{"key":"entity","kind":"valueExpr"},{"key":"quantity","kind":"valueExpr"}],
+  "updateRealtimeCSSForPlayer": [{"key":"player","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "updateUiTextForEveryone": [{"key":"target","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "updateUiTextForPlayer": [{"key":"target","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "updateUiTextForTimeForPlayer": [{"key":"player","kind":"valueExpr"},{"key":"target","kind":"valueExpr"},{"key":"time","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "useItemOnce": [{"key":"item","kind":"valueExpr"}],
+  "while": []
+};
+const ENGINE_FUNCTION_SCHEMAS = {
+  "absoluteValueOfNumber": [{"key":"number","kind":"valueExpr"}],
+  "allEntities": [],
+  "allItemTypesInGame": [],
+  "allItems": [],
+  "allItemsDroppedOnGround": [],
+  "allItemsOfItemType": [{"key":"itemType","kind":"itemTypeId"}],
+  "allItemsOwnedByUnit": [{"key":"entity","kind":"valueExpr"}],
+  "allPlayers": [],
+  "allProjectiles": [],
+  "allProjectilesOfProjectileType": [{"key":"projectileType","kind":"projectileTypeId"}],
+  "allRegions": [],
+  "allUnitTypesInGame": [],
+  "allUnits": [],
+  "allUnitsInRegion": [{"key":"region","kind":"valueExpr"}],
+  "allUnitsOfUnitType": [{"key":"unitType","kind":"unitTypeId"}],
+  "allUnitsOwnedByPlayer": [{"key":"player","kind":"valueExpr"}],
+  "angleBetweenMouseAndWindowCenter": [{"key":"player","kind":"valueExpr"}],
+  "angleBetweenPositions": [{"key":"positionA","kind":"valueExpr"},{"key":"positionB","kind":"valueExpr"}],
+  "arctan": [{"key":"number","kind":"valueExpr"}],
+  "areEntitiesTouching": [{"key":"sourceEntity","kind":"valueExpr"},{"key":"targetEntity","kind":"valueExpr"}],
+  "botPlayers": [],
+  "calculate": [{"key":"items","kind":"valueExpr"}],
+  "centerOfRegion": [{"key":"region","kind":"valueExpr"}],
+  "computerPlayer": [{"key":"number","kind":"valueExpr"}],
+  "computerPlayers": [],
+  "concat": [{"key":"textA","kind":"valueExpr"},{"key":"textB","kind":"valueExpr"}],
+  "convertNumberToLargeNotation": [{"key":"value","kind":"valueExpr"}],
+  "cos": [{"key":"angle","kind":"valueExpr"}],
+  "currentTimeStamp": [],
+  "defaultQuantityOfItemType": [{"key":"itemType","kind":"itemTypeId"}],
+  "distanceBetweenPositions": [{"key":"positionA","kind":"valueExpr"},{"key":"positionB","kind":"valueExpr"}],
+  "dynamicRegion": [{"key":"height","kind":"valueExpr"},{"key":"width","kind":"valueExpr"},{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"}],
+  "elementCount": [{"key":"object","kind":"valueExpr"}],
+  "elementFromObject": [{"key":"key","kind":"valueExpr"},{"key":"object","kind":"valueExpr"}],
+  "emptyObject": [],
+  "entitiesBetweenTwoPositions": [{"key":"positionA","kind":"valueExpr"},{"key":"positionB","kind":"valueExpr"}],
+  "entitiesCollidingWithLastRaycast": [],
+  "entitiesInRegion": [{"key":"region","kind":"valueExpr"}],
+  "entitiesInRegionInFrontOfEntityAtDistance": [{"key":"distance","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"},{"key":"height","kind":"valueExpr"},{"key":"width","kind":"valueExpr"}],
+  "entityAttributeMax": [{"key":"attribute","kind":"attributeId"}],
+  "entityAttributeMin": [{"key":"attribute","kind":"attributeId"}],
+  "entityAttributeRegen": [{"key":"attribute","kind":"attributeId"}],
+  "entityBounds": [{"key":"entity","kind":"valueExpr"}],
+  "entityExists": [],
+  "entityFacingAngle": [{"key":"entity","kind":"valueExpr"}],
+  "entityHeight": [],
+  "entityLastRaycastCollisionPosition": [{"key":"entity","kind":"valueExpr"}],
+  "entityName": [{"key":"entity","kind":"valueExpr"}],
+  "entityOpacity": [],
+  "entityWidth": [],
+  "filterString": [{"key":"string","kind":"valueExpr"}],
+  "gameId": [],
+  "getAllActiveQuestObjects": [{"key":"player","kind":"valueExpr"}],
+  "getAllActiveQuestObjectsInThisMap": [{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "getAttributeType": [{"key":"attributeType","kind":"attributeId"}],
+  "getAttributeTypeOfAttribute": [],
+  "getCameraHeight": [],
+  "getCameraPosition": [],
+  "getCameraWidth": [],
+  "getClientReceivedData": [{"key":"player","kind":"valueExpr"}],
+  "getDefaultAttributeValueOfUnitType": [{"key":"attribute","kind":"attributeId"},{"key":"unitType","kind":"unitTypeId"}],
+  "getEntireMapRegion": [],
+  "getEntityAttribute": [{"key":"attribute","kind":"attributeId"},{"key":"entity","kind":"valueExpr"}],
+  "getEntityFromId": [{"key":"string","kind":"valueExpr"}],
+  "getEntityId": [{"key":"entity","kind":"valueExpr"}],
+  "getEntityPosition": [{"key":"entity","kind":"valueExpr"}],
+  "getEntityPositionOnScreen": [{"key":"entity","kind":"valueExpr"}],
+  "getEntityState": [{"key":"entity","kind":"valueExpr"}],
+  "getEntityType": [{"key":"entity","kind":"valueExpr"}],
+  "getEntityVariable": [{"key":"variable","kind":"variable"}],
+  "getEntityVelocityX": [],
+  "getEntityVelocityY": [],
+  "getExponent": [{"key":"base","kind":"valueExpr"},{"key":"power","kind":"valueExpr"}],
+  "getHeightOfRegion": [{"key":"region","kind":"valueExpr"}],
+  "getHighScoreOfPlayer": [{"key":"player","kind":"valueExpr"}],
+  "getItemBody": [{"key":"item","kind":"valueExpr"}],
+  "getItemCurrentlyHeldByUnit": [{"key":"entity","kind":"valueExpr"}],
+  "getItemDescription": [{"key":"item","kind":"valueExpr"}],
+  "getItemInInventorySlot": [{"key":"slot","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "getItemMaxQuantity": [{"key":"item","kind":"valueExpr"}],
+  "getItemParticle": [{"key":"particleType","kind":"particleTypeId"}],
+  "getItemQuantity": [{"key":"item","kind":"valueExpr"}],
+  "getItemType": [{"key":"itemType","kind":"itemTypeId"}],
+  "getItemTypeDamage": [{"key":"itemType","kind":"itemTypeId"}],
+  "getItemTypeName": [{"key":"itemType","kind":"itemTypeId"}],
+  "getItemTypeOfItem": [{"key":"entity","kind":"valueExpr"}],
+  "getLastAttackedUnit": [],
+  "getLastAttackingItem": [],
+  "getLastAttackingUnit": [],
+  "getLastCastingUnit": [],
+  "getLastChatMessageSentByPlayer": [],
+  "getLastCreatedItem": [],
+  "getLastCreatedProjectile": [],
+  "getLastCreatedUnit": [],
+  "getLastPlayerSelectingDialogueOption": [],
+  "getLastPurchasedUnit": [],
+  "getLastTouchedItem": [],
+  "getLastTouchedProjectile": [],
+  "getLastTouchedUnit": [],
+  "getLastTouchingUnit": [],
+  "getLastTriggeringQuestId": [],
+  "getLastUnitToAttackEntity": [{"key":"entity","kind":"valueExpr"}],
+  "getLengthOfString": [{"key":"string","kind":"valueExpr"}],
+  "getLerpPosition": [{"key":"alpha","kind":"valueExpr"},{"key":"positionA","kind":"valueExpr"},{"key":"positionB","kind":"valueExpr"}],
+  "getMapHeight": [],
+  "getMapJson": [],
+  "getMapTileId": [{"key":"layer","kind":"valueExpr"},{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"}],
+  "getMapWidth": [],
+  "getMax": [{"key":"num1","kind":"valueExpr"},{"key":"num2","kind":"valueExpr"}],
+  "getMin": [{"key":"num1","kind":"valueExpr"},{"key":"num2","kind":"valueExpr"}],
+  "getMouseCursorPosition": [{"key":"player","kind":"valueExpr"}],
+  "getNumberOfItemsPresent": [],
+  "getNumberOfPlayersOfPlayerType": [{"key":"playerType","kind":"playerTypeId"}],
+  "getNumberOfUnitsOfUnitType": [{"key":"unitType","kind":"unitTypeId"}],
+  "getOwner": [{"key":"entity","kind":"valueExpr"}],
+  "getOwnerOfItem": [{"key":"entity","kind":"valueExpr"}],
+  "getPlayTimeOfPlayer": [{"key":"player","kind":"valueExpr"}],
+  "getPlayerAttribute": [{"key":"attribute","kind":"attributeId"}],
+  "getPlayerCount": [],
+  "getPlayerData": [{"key":"player","kind":"valueExpr"}],
+  "getPlayerFromId": [{"key":"string","kind":"valueExpr"}],
+  "getPlayerId": [{"key":"player","kind":"valueExpr"}],
+  "getPlayerName": [],
+  "getPlayerSelectedUnit": [{"key":"player","kind":"valueExpr"}],
+  "getPlayerUsername": [{"key":"player","kind":"valueExpr"}],
+  "getPlayerVariable": [{"key":"variable","kind":"variable"}],
+  "getPositionInFrontOfPosition": [{"key":"angle","kind":"valueExpr"},{"key":"distance","kind":"valueExpr"},{"key":"position","kind":"valueExpr"}],
+  "getPositionX": [{"key":"position","kind":"valueExpr"}],
+  "getPositionY": [{"key":"position","kind":"valueExpr"}],
+  "getProjectileAttribute": [{"key":"attribute","kind":"attributeId"}],
+  "getProjectileBody": [{"key":"projectile","kind":"valueExpr"}],
+  "getProjectileType": [{"key":"projectileType","kind":"projectileTypeId"}],
+  "getProjectileTypeOfProjectile": [{"key":"entity","kind":"valueExpr"}],
+  "getQuantityOfItemTypeInItemTypeGroup": [{"key":"itemType","kind":"itemTypeId"},{"key":"itemTypeGroup","kind":"valueExpr"}],
+  "getQuantityOfUnitTypeInUnitTypeGroup": [{"key":"unitType","kind":"unitTypeId"},{"key":"unitTypeGroup","kind":"valueExpr"}],
+  "getQuestObject": [{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "getQuestProgress": [{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "getRandomItemTypeFromItemTypeGroup": [{"key":"itemTypeGroup","kind":"valueExpr"}],
+  "getRandomNumberBetween": [{"key":"max","kind":"valueExpr"},{"key":"min","kind":"valueExpr"}],
+  "getRandomPlayablePositionInRegion": [{"key":"region","kind":"valueExpr"}],
+  "getRandomPositionInRegion": [{"key":"region","kind":"valueExpr"}],
+  "getRandomUnitTypeFromUnitTypeGroup": [{"key":"unitTypeGroup","kind":"valueExpr"}],
+  "getRegionByName": [{"key":"name","kind":"valueExpr"}],
+  "getRotateSpeed": [{"key":"unitType","kind":"unitTypeId"}],
+  "getSecondaryTouchPosition": [],
+  "getSelectedEntity": [],
+  "getSelectedItem": [],
+  "getSelectedPlayer": [],
+  "getSelectedProjectile": [],
+  "getSelectedUnit": [],
+  "getSensorOfUnit": [{"key":"unit","kind":"valueExpr"}],
+  "getServerAge": [],
+  "getServerReceivedData": [],
+  "getServerStartTime": [],
+  "getSourceItemOfProjectile": [{"key":"entity","kind":"valueExpr"}],
+  "getSourceUnitOfProjectile": [{"key":"entity","kind":"valueExpr"}],
+  "getStringArrayElement": [{"key":"number","kind":"valueExpr"},{"key":"string","kind":"valueExpr"}],
+  "getStringArrayLength": [{"key":"string","kind":"valueExpr"}],
+  "getTimeString": [{"key":"seconds","kind":"valueExpr"}],
+  "getTriggeringAttribute": [],
+  "getTriggeringEntity": [],
+  "getTriggeringItem": [],
+  "getTriggeringPlayer": [],
+  "getTriggeringProjectile": [],
+  "getTriggeringRegion": [],
+  "getTriggeringSensor": [],
+  "getTriggeringUnit": [],
+  "getTriggeringVariableName": [],
+  "getUIElementProperty": [{"key":"elementId","kind":"valueExpr"},{"key":"key","kind":"valueExpr"}],
+  "getUnitBody": [{"key":"unit","kind":"valueExpr"}],
+  "getUnitCount": [],
+  "getUnitData": [{"key":"unit","kind":"valueExpr"}],
+  "getUnitFromId": [{"key":"string","kind":"valueExpr"}],
+  "getUnitId": [{"key":"unit","kind":"valueExpr"}],
+  "getUnitType": [{"key":"unitType","kind":"unitTypeId"}],
+  "getUnitTypeName": [{"key":"unitType","kind":"unitTypeId"}],
+  "getUnitTypeOfUnit": [{"key":"entity","kind":"valueExpr"}],
+  "getValueOfEntityVariable": [{"key":"entity","kind":"valueExpr"},{"key":"variable","kind":"variable"}],
+  "getValueOfPlayerVariable": [{"key":"player","kind":"valueExpr"},{"key":"variable","kind":"variable"}],
+  "getVariable": [{"key":"variableName","kind":"variable"}],
+  "getWidthOfRegion": [{"key":"region","kind":"valueExpr"}],
+  "getXCoordinateOfRegion": [{"key":"region","kind":"valueExpr"}],
+  "getYCoordinateOfRegion": [{"key":"region","kind":"valueExpr"}],
+  "humanPlayers": [],
+  "insertStringArrayElement": [{"key":"string","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "isAIEnabled": [{"key":"unit","kind":"valueExpr"}],
+  "isBotPlayer": [{"key":"player","kind":"valueExpr"}],
+  "isComputerPlayer": [{"key":"player","kind":"valueExpr"}],
+  "isPlayerClient": [{"key":"player","kind":"valueExpr"}],
+  "isPlayerLoggedIn": [{"key":"player","kind":"valueExpr"}],
+  "isPlayerOnMobile": [{"key":"player","kind":"valueExpr"}],
+  "isPositionInWall": [{"key":"position","kind":"valueExpr"}],
+  "isQuestActive": [{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "isQuestCompleted": [{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "isQuestProgressCompleted": [{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],
+  "isUnitMoving": [{"key":"unit","kind":"valueExpr"}],
+  "itemFiresProjectiles": [{"key":"item","kind":"valueExpr"}],
+  "itemIsInRegion": [{"key":"item","kind":"valueExpr"},{"key":"region","kind":"valueExpr"}],
+  "itemTypeInventoryUrl": [{"key":"itemType","kind":"itemTypeId"}],
+  "lastClickedUiElementId": [{"key":"player","kind":"valueExpr"}],
+  "lastCreatedItem": [],
+  "lastPlayedTimeOfPlayer": [{"key":"player","kind":"valueExpr"}],
+  "lastPlayerMessage": [{"key":"player","kind":"valueExpr"}],
+  "lastPurchasedUnitTypetId": [],
+  "lastReceivedPostResponse": [],
+  "lastUpdatedVariableName": [],
+  "lastUsedItem": [],
+  "lerp": [{"key":"alpha","kind":"valueExpr"},{"key":"valueA","kind":"valueExpr"},{"key":"valueB","kind":"valueExpr"}],
+  "localPlayer": [],
+  "log10": [{"key":"value","kind":"valueExpr"}],
+  "mathCeiling": [{"key":"value","kind":"valueExpr"}],
+  "mathFloor": [{"key":"value","kind":"valueExpr"}],
+  "mathRound": [{"key":"value","kind":"valueExpr"}],
+  "mathSign": [{"key":"value","kind":"valueExpr"}],
+  "maxValueOfItemType": [{"key":"itemType","kind":"itemTypeId"}],
+  "nameOfRegion": [{"key":"region","kind":"valueExpr"}],
+  "nameOfUnit": [{"key":"unit","kind":"valueExpr"}],
+  "notValue": [{"key":"boolean","kind":"valueExpr"}],
+  "numberOfInvitesByPlayer": [{"key":"player","kind":"valueExpr"}],
+  "numberToString": [{"key":"value","kind":"valueExpr"}],
+  "objectContainsElement": [{"key":"key","kind":"valueExpr"},{"key":"object","kind":"valueExpr"}],
+  "objectToString": [{"key":"object","kind":"valueExpr"}],
+  "ownerUnitOfSensor": [{"key":"sensor","kind":"valueExpr"}],
+  "playerAttributeMax": [{"key":"attribute","kind":"attributeId"}],
+  "playerAttributeMin": [{"key":"attribute","kind":"attributeId"}],
+  "playerAttributeRegen": [{"key":"attribute","kind":"attributeId"}],
+  "playerCustomInput": [{"key":"player","kind":"valueExpr"}],
+  "playerHasAdblockEnabled": [{"key":"player","kind":"valueExpr"}],
+  "playerIsControlledByHuman": [{"key":"player","kind":"valueExpr"}],
+  "playerIsCreator": [{"key":"player","kind":"valueExpr"}],
+  "playerTypeOfPlayer": [{"key":"player","kind":"valueExpr"}],
+  "playersAreFriendly": [{"key":"playerA","kind":"valueExpr"},{"key":"playerB","kind":"valueExpr"}],
+  "playersAreHostile": [{"key":"playerA","kind":"valueExpr"},{"key":"playerB","kind":"valueExpr"}],
+  "playersAreNeutral": [{"key":"playerA","kind":"valueExpr"},{"key":"playerB","kind":"valueExpr"}],
+  "playersOfPlayerType": [{"key":"playerType","kind":"playerTypeId"}],
+  "realtimeCSSOfPlayer": [{"key":"player","kind":"valueExpr"}],
+  "regionInFrontOfEntityAtDistance": [{"key":"distance","kind":"valueExpr"},{"key":"entity","kind":"valueExpr"},{"key":"height","kind":"valueExpr"},{"key":"width","kind":"valueExpr"}],
+  "regionOverlapsWithRegion": [{"key":"regionA","kind":"valueExpr"},{"key":"regionB","kind":"valueExpr"}],
+  "removeStringArrayElement": [{"key":"number","kind":"valueExpr"},{"key":"string","kind":"valueExpr"}],
+  "replaceValuesInString": [{"key":"matchString","kind":"valueExpr"},{"key":"newString","kind":"valueExpr"},{"key":"sourceString","kind":"valueExpr"}],
+  "roleExistsForPlayer": [{"key":"name","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],
+  "selectedElement": [],
+  "selectedElementsKey": [],
+  "selectedEntity": [],
+  "selectedInventorySlot": [{"key":"unit","kind":"valueExpr"}],
+  "selectedItem": [],
+  "selectedItemType": [],
+  "selectedPlayer": [],
+  "selectedProjectile": [],
+  "selectedRegion": [],
+  "selectedUnit": [],
+  "selectedUnitType": [],
+  "sin": [{"key":"angle","kind":"valueExpr"}],
+  "squareRoot": [{"key":"number","kind":"valueExpr"}],
+  "stringContains": [{"key":"keyword","kind":"valueExpr"},{"key":"string","kind":"valueExpr"}],
+  "stringEndsWith": [{"key":"patternString","kind":"valueExpr"},{"key":"sourceString","kind":"valueExpr"}],
+  "stringIsANumber": [{"key":"string","kind":"valueExpr"}],
+  "stringStartsWith": [{"key":"patternString","kind":"valueExpr"},{"key":"sourceString","kind":"valueExpr"}],
+  "stringToNumber": [{"key":"value","kind":"valueExpr"}],
+  "stringToObject": [{"key":"string","kind":"valueExpr"}],
+  "subString": [{"key":"patternString","kind":"valueExpr"},{"key":"sourceString","kind":"valueExpr"}],
+  "substringOf": [{"key":"fromIndex","kind":"valueExpr"},{"key":"string","kind":"valueExpr"},{"key":"toIndex","kind":"valueExpr"}],
+  "tan": [{"key":"angle","kind":"valueExpr"}],
+  "targetUnit": [{"key":"unit","kind":"valueExpr"}],
+  "thisEntity": [],
+  "toDegrees": [{"key":"number","kind":"valueExpr"}],
+  "toFixed": [{"key":"precision","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "toLowerCase": [{"key":"string","kind":"valueExpr"}],
+  "toRadians": [{"key":"number","kind":"valueExpr"}],
+  "toUpperCase": [{"key":"string","kind":"valueExpr"}],
+  "undefinedValue": [],
+  "unitIsCarryingItemType": [{"key":"itemType","kind":"itemTypeId"},{"key":"unit","kind":"valueExpr"}],
+  "unitIsInRegion": [{"key":"region","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],
+  "unitSensorRadius": [{"key":"unit","kind":"valueExpr"}],
+  "unitTypeHeight": [{"key":"unitType","kind":"unitTypeId"}],
+  "unitTypeWidth": [{"key":"unitType","kind":"unitTypeId"}],
+  "unitsFacingAngle": [{"key":"unit","kind":"valueExpr"}],
+  "updateStringArrayElement": [{"key":"number","kind":"valueExpr"},{"key":"string","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],
+  "vector3": [{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"},{"key":"z","kind":"valueExpr"}],
+  "xyCoordinate": [{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"}]
+};
+const ENGINE_FUNCTION_TYPES = Object.keys(ENGINE_FUNCTION_SCHEMAS);
+
 const FALLBACK_TRIGGER_TYPES = ['gameStart', 'secondTick', 'playerJoinsGame', 'playerLeavesGame', 'playerSendsChatMessage', 'playerCustomInput', 'unitUsesItem', 'unitTouchesUnit', 'unitTouchesItem', 'unitTouchesProjectile', 'unitAttacksUnit', 'unitEntersRegion', 'unitAttributeBecomesZero', 'playerPurchasesUnit', 'htmlUiClick'];
 const FALLBACK_CONDITION_OPERATORS = ['==', '!=', '>', '<', '>=', '<=', 'AND', 'OR'];
 const FALLBACK_OPERAND_TYPES = ['boolean', 'number', 'string', 'player', 'unit', 'item', 'projectile', 'unitType', 'attribute'];
 
 function collectScriptVocabulary(gameData) {
 	const scripts = gameData?.data?.scripts || {};
-	const triggerTypes = new Set(FALLBACK_TRIGGER_TYPES);
-	const actionTypes = new Set([...Object.keys(ACTION_FIELD_SCHEMAS), 'runScript', ...SCRIPT_CONTAINER_ACTION_TYPES]);
+	const triggerTypes = new Set([...FALLBACK_TRIGGER_TYPES, ...ENGINE_TRIGGER_TYPES]);
+	const actionTypes = new Set([...Object.keys(ACTION_FIELD_SCHEMAS), ...Object.keys(ENGINE_ACTION_FIELD_SCHEMAS), 'runScript', ...SCRIPT_CONTAINER_ACTION_TYPES]);
 	const conditionOperators = new Set(FALLBACK_CONDITION_OPERATORS);
 	const operandTypes = new Set(FALLBACK_OPERAND_TYPES);
 	function walk(value) {
@@ -501,22 +1040,45 @@ function ScriptValueEditor({ value, gameData, onChange, depth = 0 }) {
 
 function getFunctionVocabulary(gameData) {
 	const byName = new Map();
+	for (const name of ENGINE_FUNCTION_TYPES) {
+		const schema = ENGINE_FUNCTION_SCHEMAS[name] || [];
+		byName.set(name, { name, args: new Set(schema.map((f) => f.key)), schema, example: null });
+	}
 	function walk(value) {
 		if (Array.isArray(value)) return value.forEach(walk);
 		if (!value || typeof value !== 'object') return;
 		if (typeof value.function === 'string') {
 			const name = value.function;
 			let entry = byName.get(name);
-			if (!entry) { entry = { name, args: new Set(), example: deepClone(value) }; byName.set(name, entry); }
+			if (!entry) {
+				entry = { name, args: new Set(), schema: ENGINE_FUNCTION_SCHEMAS[name] || [], example: null };
+				byName.set(name, entry);
+			}
+			if (!entry.example) entry.example = deepClone(value);
 			Object.keys(value).filter((k) => k !== 'function').forEach((k) => entry.args.add(k));
 		}
 		Object.values(value).forEach(walk);
 	}
 	walk(gameData?.data?.scripts || {});
-	return [...byName.values()].map((x) => ({ ...x, args: [...x.args] })).sort((a, b) => readableType(a.name).localeCompare(readableType(b.name)));
+	return [...byName.values()].map((x) => {
+		const schemaByKey = new Map((x.schema || []).map((f) => [f.key, f]));
+		for (const key of x.args) if (!schemaByKey.has(key)) schemaByKey.set(key, { key, kind: 'valueExpr' });
+		return { ...x, args: [...x.args], schema: [...schemaByKey.values()] };
+	}).sort((a, b) => readableType(a.name).localeCompare(readableType(b.name)));
 }
 function defaultValueFromExample(value) { if (value === null || value === undefined) return null; if (Array.isArray(value)) return []; if (typeof value === 'object') return deepClone(value); if (typeof value === 'boolean') return false; if (typeof value === 'number') return 0; if (typeof value === 'string') return ''; return null; }
-function defaultFunctionExpression(entry) { if (!entry) return { function: 'undefinedValue' }; const out = { function: entry.name }; for (const key of Object.keys(entry.example || {}).filter((k) => k !== 'function')) out[key] = defaultValueFromExample(entry.example[key]); return out; }
+function defaultFunctionExpression(entry) {
+	if (!entry) return { function: 'undefinedValue' };
+	const out = { function: entry.name };
+	for (const field of (entry.schema || [])) {
+		const key = field.key;
+		const exampleValue = entry.example?.[key];
+		out[key] = entry.example && Object.prototype.hasOwnProperty.call(entry.example, key)
+			? defaultValueFromExample(exampleValue)
+			: defaultValueForScriptField(field.kind);
+	}
+	return out;
+}
 
 function ScriptFunctionEditor({ value, gameData, onChange, depth = 0 }) {
 	const vocabulary = getFunctionVocabulary(gameData);
@@ -540,7 +1102,7 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0 }) {
 		{value?.function && open && <div className={compact ? "px-1.5 pb-1.5 pl-4 space-y-1" : "space-y-1.5"}>
 			{keys.map((key) => <div key={key} className={compact ? "grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-1" : "flex items-start gap-2"}>
 				<span className={compact ? "text-[9px] text-[#8291a1] font-mono pt-1 truncate max-w-24" : "text-[10px] text-[#8291a1] font-mono w-28 shrink-0 pt-1 truncate"}>{key}</span>
-				<div className="min-w-0"><ScriptValueEditor value={value[key]} gameData={gameData} depth={depth + 1} onChange={(next) => onChange({ ...value, [key]: next })} /></div>
+				<div className="min-w-0"><ScriptFieldInput kind={(current?.schema || []).find((f) => f.key === key)?.kind || 'valueExpr'} value={value[key]} gameData={gameData} onChange={(next) => onChange({ ...value, [key]: next })} /></div>
 				<button type="button" title={`Remove ${key}`} onClick={() => { const copy = { ...value }; delete copy[key]; onChange(copy); }} className="p-0.5 text-[#637588] hover:text-red-400"><X size={10} /></button>
 			</div>)}
 			{missing.length > 0 && <select defaultValue="" onChange={(e) => { const key = e.target.value; if (!key) return; onChange({ ...value, [key]: defaultValueFromExample(current?.example?.[key]) }); e.target.value = ''; }} className="max-w-full bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-1 text-[10px] text-[#8291a1]"><option value="">+ Add known argument...</option>{missing.map((key) => <option key={key} value={key}>{key}</option>)}</select>}
@@ -556,8 +1118,18 @@ function ScriptExpressionInput({ value, gameData, onChange }) {
 }
 
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
+	if (kind === 'variableName') {
+		const variables = Object.keys(gameData?.data?.variables || {}).sort();
+		return <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="max-w-[240px] bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs">
+			<option value="">(choose variable)</option>{variables.map((name) => <option key={name} value={name}>{name}</option>)}
+		</select>;
+	}
 	const collectionKey = ID_KIND_COLLECTIONS[kind];
-	if (collectionKey) { const options = Object.entries(gameData?.data?.[collectionKey] || {}).map(([id, v]) => ({ id, name: v.name || v.folderName || id })).sort((a, b) => a.name.localeCompare(b.name)); if (typeof value === 'object' && value !== null) return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; return <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="max-w-[240px] bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="">(none)</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>; }
+	if (collectionKey) {
+		const options = Object.entries(gameData?.data?.[collectionKey] || {}).map(([id, v]) => ({ id, name: v.name || v.folderName || id })).sort((a, b) => a.name.localeCompare(b.name));
+		if (typeof value === 'object' && value !== null) return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+		return <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="max-w-[240px] bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="">(none)</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>;
+	}
 	if (kind === 'xy') { if (!value || typeof value !== 'object' || typeof value.x !== 'number' || typeof value.y !== 'number') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; return <span className="flex items-center gap-1"><span className="text-[10px] text-[#637588]">x</span><input type="number" value={value.x} onChange={(e) => onChange({ ...value, x: Number(e.target.value) })} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /><span className="text-[10px] text-[#637588]">y</span><input type="number" value={value.y} onChange={(e) => onChange({ ...value, y: Number(e.target.value) })} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /></span>; }
 	if (kind === 'boolean') return typeof value === 'boolean' ? <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="accent-[#1a56da]" /> : <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
 	if (kind === 'number') return typeof value === 'number' ? <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-24 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /> : <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
@@ -573,7 +1145,23 @@ function ScriptAddMenu({ label, options, onSelect, categorized = true }) { const
 function scriptCategory(type) { const t = String(type || '').toLowerCase(); if (/^(for|repeat|while|break|continue|return|if|condition)/.test(t)) return 'Control flow'; if (/(player|chat|dialogue|shop|website|camera|ui|modal)/.test(t)) return 'Players & UI'; if (/(unit|entity|ai|attack|move|velocity|force|stun|heal|damage|attribute|owner)/.test(t)) return 'Units & entities'; if (/(item|inventory|slot|purchase)/.test(t)) return 'Items'; if (/projectile/.test(t)) return 'Projectiles'; if (/(variable|data|save|load)/.test(t)) return 'Variables & data'; if (/(sound|music|particle|animation)/.test(t)) return 'Effects'; if (/(map|tile|region)/.test(t)) return 'Map & regions'; return 'Other'; }
 function triggerCategory(type) { const t = String(type || '').toLowerCase(); if (/player/.test(t)) return 'Players'; if (/item/.test(t)) return 'Items'; if (/projectile/.test(t)) return 'Projectiles'; if (/unit|entity/.test(t)) return 'Units & entities'; return 'Game'; }
 function inferScriptFieldKind(key, value) { if (ID_KIND_COLLECTIONS[`${key}Id`]) return `${key}Id`; const map = { itemType: 'itemTypeId', unitType: 'unitTypeId', projectileType: 'projectileTypeId', attribute: 'attributeId', playerType: 'playerTypeId', script: 'scriptId', dialogue: 'dialogueId', shop: 'shopId', sound: 'soundId', music: 'musicId', particleType: 'particleTypeId', state: 'stateId' }; if (map[key]) return map[key]; if (typeof value === 'boolean') return 'boolean'; if (typeof value === 'number') return 'number'; if (typeof value === 'string') return 'string'; return 'valueExpr'; }
-function getActionFieldSchema(type, gameData) { if (ACTION_FIELD_SCHEMAS[type]) return ACTION_FIELD_SCHEMAS[type]; let example = null; function walk(value) { if (example) return; if (Array.isArray(value)) return value.forEach(walk); if (!value || typeof value !== 'object') return; if (value.type === type) { example = value; return; } Object.values(value).forEach(walk); } walk(gameData?.data?.scripts || {}); if (!example) return null; return Object.keys(example).filter((k) => !['type', 'actions', 'then', 'else', 'conditions'].includes(k)).map((key) => ({ key, kind: inferScriptFieldKind(key, example[key]) })); }
+function getActionFieldSchema(type, gameData) {
+	if (ACTION_FIELD_SCHEMAS[type]) return ACTION_FIELD_SCHEMAS[type];
+	if (ENGINE_ACTION_FIELD_SCHEMAS[type]) return ENGINE_ACTION_FIELD_SCHEMAS[type];
+	let example = null;
+	function walk(value) {
+		if (example) return;
+		if (Array.isArray(value)) return value.forEach(walk);
+		if (!value || typeof value !== 'object') return;
+		if (value.type === type) { example = value; return; }
+		Object.values(value).forEach(walk);
+	}
+	walk(gameData?.data?.scripts || {});
+	if (!example) return null;
+	return Object.keys(example)
+		.filter((k) => !['type', 'actions', 'then', 'else', 'conditions'].includes(k))
+		.map((key) => ({ key, kind: inferScriptFieldKind(key, example[key]) }));
+}
 function defaultActionForType(type, gameData) { if (type === 'condition') return { type: 'condition', conditions: [{ operandType: 'boolean', operator: '==' }, true, true], then: [], else: [] }; if (type === 'runScript') return { type: 'runScript', scriptName: '', isEntityScript: false }; const schema = getActionFieldSchema(type, gameData); if (schema) { const out = { type }; for (const field of schema) out[field.key] = defaultValueForScriptField(field.kind); if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) out.actions = []; return out; } if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) return { type, actions: [] }; return { type }; }
 
 function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp, siblingCount, indexInParent }) {
@@ -783,7 +1371,11 @@ export default function GameContentEditor() {
 	const previewLoopRef = useRef(0);
 	const [scriptViewerOpen, setScriptViewerOpen] = useState(false);
 	const [selectedEntityScriptKey, setSelectedEntityScriptKey] = useState('');
-	const [entityScriptViewMode, setEntityScriptViewMode] = useState('tree'); 
+	const [entityScriptViewMode, setEntityScriptViewMode] = useState('tree');
+	const [projectileEventType, setProjectileEventType] = useState('entityCreated');
+	const [projectileEventTypeId, setProjectileEventTypeId] = useState('');
+	const [projectileEventForce, setProjectileEventForce] = useState(10);
+	const [projectileEventAngle, setProjectileEventAngle] = useState(0); 
 	const [spriteNatural, setSpriteNatural] = useState(null); 
 	const [assetBaseUrl, setAssetBaseUrl] = useState(() => localStorage.getItem('editorAssetBaseUrl') || '');
 	const [previewingSoundKey, setPreviewingSoundKey] = useState(null);
@@ -1418,6 +2010,33 @@ export default function GameContentEditor() {
 			const next = current.includes(target) ? current.filter((x) => x !== target) : [...current, target];
 			return { ...d, damage: { ...(d.damage || {}), targetsAffected: next } };
 		});
+	}
+
+	function addProjectileEventScript() {
+		if (!draft || !projectileEventTypeId) return;
+		const key = generateKey();
+		const name = `Spawn ${projectileEventType === 'entityCreated' ? 'projectile on create' : 'projectile on destroy'}`;
+		const createAction = {
+			type: 'createProjectileAtPosition',
+			projectileType: projectileEventTypeId,
+			position: { function: 'getEntityPosition', entity: { function: 'thisEntity' } },
+			force: Number(projectileEventForce) || 0,
+			angle: Number(projectileEventAngle) || 0,
+			...(activeTab === 'unitTypes' ? { unit: { function: 'thisEntity' } } : {}),
+		};
+		const script = {
+			key,
+			name,
+			parent: null,
+			order: Object.keys(draft.scripts || {}).length,
+			triggers: [{ type: projectileEventType }],
+			conditions: [{ operandType: 'boolean', operator: '==' }, true, true],
+			actions: [createAction],
+		};
+		setDraft((d) => ({ ...d, scripts: { ...(d.scripts || {}), [key]: script } }));
+		setSelectedEntityScriptKey(key);
+		setEntityScriptViewMode('tree');
+		setSavedMsg(`Added "${name}". Save the ${activeTabDef?.label?.slice(0, -1).toLowerCase() || 'entity'} to keep it.`);
 	}
 
 	function getEntityScriptEntries() {
@@ -2910,7 +3529,7 @@ export default function GameContentEditor() {
 											<div className="space-y-2">
 												{Object.entries(draft.attributes).map(([attrKey, attr]) => (
 													<div key={attrKey} className="flex flex-wrap items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
-														<span className="text-sm flex-1 min-w-[120px] truncate">{attributeTypes[attrKey]?.name || attrKey}</span>
+														<div className="flex-1 min-w-[160px] truncate"><div className="text-sm truncate">{attributeTypes[attrKey]?.name || attrKey}</div><div className="text-[10px] text-[#637588] font-mono truncate">{attrKey}</div></div>
 										{activeTab === 'itemTypes' && (
 											<label className="flex items-center gap-1.5 text-xs text-[#a3adb8] cursor-pointer" title="Include this attribute in the item's generated attribute-description section.">
 												<input type="checkbox" checked={Array.isArray(attr.isVisible) ? attr.isVisible.includes('itemDescription') : attr.isVisible === 'itemDescription'} onChange={() => toggleAttributeDescription(attrKey)} className="accent-[#1a56da]" />
@@ -2937,6 +3556,15 @@ export default function GameContentEditor() {
 															value={attr.max}
 															onChange={(e) => updateAttributeField(attrKey, 'max', Number(e.target.value))}
 															className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
+														/>
+														<label className="text-xs text-[#8291a1]">regen</label>
+														<input
+															type="number"
+															step="any"
+															value={attr.regenerateSpeed ?? 0}
+															onChange={(e) => updateAttributeField(attrKey, 'regenerateSpeed', Number(e.target.value))}
+															className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
+															title="Attribute regeneration/decay per engine regeneration tick."
 														/>
 														<button onClick={() => removeAttribute(attrKey)} className="text-[#637588] hover:text-red-400 ml-1">
 															<X size={14} />
@@ -3209,6 +3837,40 @@ export default function GameContentEditor() {
 						)}
 
 						{}
+		{isEntityTab && (
+			<section className="mb-7">
+				<h3 className="text-sm font-medium text-[#c5ccd3] mb-1">Projectile events</h3>
+				<p className="text-[11px] text-[#637588] mb-3">Quickly create an embedded script that spawns a projectile when this unit, item, or projectile is created or destroyed. The generated script stays fully editable below.</p>
+				<div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-2.5">
+					<div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_90px_90px_auto] gap-2 items-end">
+						<div>
+							<label className="block text-[10px] text-[#8291a1] mb-1">Event</label>
+							<select value={projectileEventType} onChange={(e) => setProjectileEventType(e.target.value)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs">
+								<option value="entityCreated">On create</option>
+								<option value="initEntityDestroy">On destroy</option>
+							</select>
+						</div>
+						<div>
+							<label className="block text-[10px] text-[#8291a1] mb-1">Projectile</label>
+							<select value={projectileEventTypeId} onChange={(e) => setProjectileEventTypeId(e.target.value)} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs">
+								<option value="">Choose projectile...</option>
+								{Object.entries(gameData?.data?.projectileTypes || {}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([id,p]) => <option key={id} value={id}>{p?.name || id}</option>)}
+							</select>
+						</div>
+						<div>
+							<label className="block text-[10px] text-[#8291a1] mb-1">Force</label>
+							<input type="number" step="any" value={projectileEventForce} onChange={(e) => setProjectileEventForce(Number(e.target.value))} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs" />
+						</div>
+						<div>
+							<label className="block text-[10px] text-[#8291a1] mb-1">Angle</label>
+							<input type="number" step="any" value={projectileEventAngle} onChange={(e) => setProjectileEventAngle(Number(e.target.value))} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs" />
+						</div>
+						<button type="button" disabled={!projectileEventTypeId} onClick={addProjectileEventScript} className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[#1a56da] text-white text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"><Plus size={13} /> Add</button>
+					</div>
+				</div>
+			</section>
+		)}
+
 		<section className="mb-7">
 			<div className="flex items-center justify-between mb-2">
 				<div className="flex items-center gap-2"><h3 className="text-sm font-medium text-[#c5ccd3]">Scripts</h3>{selectedEntityScriptKey && draft?.scripts?.[selectedEntityScriptKey] && <button type="button" onClick={()=>setScriptViewerOpen(true)} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#a3adb8] hover:border-[#8291a1]"><Maximize2 size={11}/> Large viewer</button>}</div>
@@ -4250,11 +4912,11 @@ export default function GameContentEditor() {
 							<div className="space-y-2">
 								{Object.entries(attributeTypes).map(([key, attr]) => (
 									<div key={key} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
-										<input
+										<div className="flex-1 min-w-0"><input
 											value={attr.name || ''}
 											onChange={(e) => updateAttributeType(key, 'name', e.target.value)}
-											className="flex-1 bg-transparent text-sm focus:outline-none"
-										/>
+											className="w-full bg-transparent text-sm focus:outline-none"
+										/><div className="text-[10px] text-[#637588] font-mono mt-0.5">{key}</div></div>
 										<label className="text-xs text-[#8291a1]">default</label>
 										<input
 											type="number"
