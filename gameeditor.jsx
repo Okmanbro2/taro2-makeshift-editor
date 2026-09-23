@@ -992,6 +992,48 @@ const ENGINE_FUNCTION_SCHEMAS = {
 };
 const ENGINE_FUNCTION_TYPES = Object.keys(ENGINE_FUNCTION_SCHEMAS);
 
+// Build the function vocabulary from the engine schema first, then merge in any
+// function shapes found in existing scripts. This keeps the editor aware of
+// supported-but-currently-unused functions without losing legacy/custom ones.
+function getFunctionVocabulary(gameData) {
+	const byName = new Map();
+	for (const [name, schema] of Object.entries(ENGINE_FUNCTION_SCHEMAS || {})) {
+		byName.set(name, {
+			name,
+			schema: Array.isArray(schema) ? deepClone(schema) : [],
+			args: new Set((Array.isArray(schema) ? schema : []).map((field) => field.key)),
+			example: { function: name, ...Object.fromEntries((Array.isArray(schema) ? schema : []).map((field) => [field.key, defaultValueForScriptField(field.kind)])) },
+		});
+	}
+
+	function walk(value) {
+		if (Array.isArray(value)) return value.forEach(walk);
+		if (!value || typeof value !== 'object') return;
+		if (typeof value.function === 'string') {
+			const name = value.function;
+			let entry = byName.get(name);
+			if (!entry) {
+				entry = { name, schema: [], args: new Set(), example: deepClone(value) };
+				byName.set(name, entry);
+			}
+			for (const key of Object.keys(value)) {
+				if (key === 'function') continue;
+				entry.args.add(key);
+				if (!entry.schema.some((field) => field.key === key)) {
+					entry.schema.push({ key, kind: inferScriptFieldKind(key, value[key]) });
+				}
+			}
+			if (!entry.example || Object.keys(entry.example).length <= 1) entry.example = deepClone(value);
+		}
+		Object.values(value).forEach(walk);
+	}
+
+	walk(gameData?.data?.scripts || {});
+	return [...byName.values()]
+		.map((entry) => ({ ...entry, args: [...entry.args] }))
+		.sort((a, b) => readableType(a.name).localeCompare(readableType(b.name)));
+}
+
 const FALLBACK_TRIGGER_TYPES = ['gameStart', 'secondTick', 'playerJoinsGame', 'playerLeavesGame', 'playerSendsChatMessage', 'playerCustomInput', 'unitUsesItem', 'unitTouchesUnit', 'unitTouchesItem', 'unitTouchesProjectile', 'unitAttacksUnit', 'unitEntersRegion', 'unitAttributeBecomesZero', 'playerPurchasesUnit', 'htmlUiClick'];
 const FALLBACK_CONDITION_OPERATORS = ['==', '!=', '>', '<', '>=', '<=', 'AND', 'OR'];
 const FALLBACK_OPERAND_TYPES = ['boolean', 'number', 'string', 'player', 'unit', 'item', 'projectile', 'unitType', 'attribute'];
@@ -1021,6 +1063,15 @@ function collectScriptVocabulary(gameData) {
 		}
 	});
 	return { triggers: [...triggerTypes].sort((a,b) => readableType(a).localeCompare(readableType(b))), actions: [...actionTypes].sort((a,b) => readableType(a).localeCompare(readableType(b))), operators: [...conditionOperators].sort(), operandTypes: [...operandTypes].sort() };
+}
+
+function defaultFunctionExpression(entry) {
+	if (!entry) return { function: 'undefinedValue' };
+	const out = { function: entry.name };
+	for (const field of (entry.schema || [])) {
+		out[field.key] = defaultValueForScriptField(field.kind);
+	}
+	return out;
 }
 
 function getFunctionEntry(gameData, name) {
