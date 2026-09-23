@@ -1223,29 +1223,98 @@ function ScriptFieldInput({ kind, value, gameData, onChange }) {
 }
 
 
+const SCRIPT_FUNCTION_PHRASES = {
+	getValueOfPlayerVariable: (fields) => <>value of player variable <ScriptInlineFunctionField field="variable" fields={fields} /> for <ScriptInlineFunctionField field="player" fields={fields} /></>,
+	getPlayerVariable: (fields) => <>player variable <ScriptInlineFunctionField field="variable" fields={fields} /></>,
+	getValueOfEntityVariable: (fields) => <>value of entity variable <ScriptInlineFunctionField field="variable" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	getEntityVariable: (fields) => <>entity variable <ScriptInlineFunctionField field="variable" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	getEntityAttribute: (fields) => <>attribute <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	getPlayerAttribute: (fields) => <>attribute <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="player" fields={fields} /></>,
+	setEntityAttribute: (fields) => <>set <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /> to <ScriptInlineFunctionField field="value" fields={fields} /></>,
+	setPlayerAttribute: (fields) => <>set <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="player" fields={fields} /> to <ScriptInlineFunctionField field="value" fields={fields} /></>,
+	getVariable: (fields) => <>variable <ScriptInlineFunctionField field="variableName" fields={fields} /></>,
+	getUnitTypeOfUnit: (fields) => <>unit type of <ScriptInlineFunctionField field="unit" fields={fields} /></>,
+	getItemTypeOfItem: (fields) => <>item type of <ScriptInlineFunctionField field="item" fields={fields} /></>,
+	getProjectileTypeOfProjectile: (fields) => <>projectile type of <ScriptInlineFunctionField field="projectile" fields={fields} /></>,
+	getOwnerOfUnit: (fields) => <>owner of <ScriptInlineFunctionField field="unit" fields={fields} /></>,
+	getOwnerOfItem: (fields) => <>owner of <ScriptInlineFunctionField field="item" fields={fields} /></>,
+	getOwnerOfProjectile: (fields) => <>owner of <ScriptInlineFunctionField field="projectile" fields={fields} /></>,
+	getPositionOfEntity: (fields) => <>position of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	getDistanceBetweenEntities: (fields) => <>distance between <ScriptInlineFunctionField field="entityA" fields={fields} /> and <ScriptInlineFunctionField field="entityB" fields={fields} /></>,
+	getDistanceBetweenPositions: (fields) => <>distance between <ScriptInlineFunctionField field="positionA" fields={fields} /> and <ScriptInlineFunctionField field="positionB" fields={fields} /></>,
+	isUnitMoving: (fields) => <><ScriptInlineFunctionField field="unit" fields={fields} /> is moving</>,
+	unitIsInRegion: (fields) => <><ScriptInlineFunctionField field="unit" fields={fields} /> is in <ScriptInlineFunctionField field="region" fields={fields} /></>,
+	itemIsInRegion: (fields) => <><ScriptInlineFunctionField field="item" fields={fields} /> is in <ScriptInlineFunctionField field="region" fields={fields} /></>,
+	entityExists: (fields) => <>entity <ScriptInlineFunctionField field="entity" fields={fields} /> exists</>,
+	playersAreFriendly: (fields) => <><ScriptInlineFunctionField field="playerA" fields={fields} /> is friendly with <ScriptInlineFunctionField field="playerB" fields={fields} /></>,
+	playersAreHostile: (fields) => <><ScriptInlineFunctionField field="playerA" fields={fields} /> is hostile to <ScriptInlineFunctionField field="playerB" fields={fields} /></>,
+	playersAreNeutral: (fields) => <><ScriptInlineFunctionField field="playerA" fields={fields} /> is neutral to <ScriptInlineFunctionField field="playerB" fields={fields} /></>,
+	numberOfUnitsOfUnitType: (fields) => <>number of units of <ScriptInlineFunctionField field="unitType" fields={fields} /></>,
+	numberOfItemsOfItemType: (fields) => <>number of items of <ScriptInlineFunctionField field="itemType" fields={fields} /></>,
+	numberOfProjectilesOfProjectileType: (fields) => <>number of projectiles of <ScriptInlineFunctionField field="projectileType" fields={fields} /></>,
+	randomNumber: (fields) => <>random number from <ScriptInlineFunctionField field="min" fields={fields} /> to <ScriptInlineFunctionField field="max" fields={fields} /></>,
+	maxValue: (fields) => <>maximum of <ScriptInlineFunctionField field="valueA" fields={fields} /> and <ScriptInlineFunctionField field="valueB" fields={fields} /></>,
+	minValue: (fields) => <>minimum of <ScriptInlineFunctionField field="valueA" fields={fields} /> and <ScriptInlineFunctionField field="valueB" fields={fields} /></>,
+	notValue: (fields) => <>not <ScriptInlineFunctionField field="boolean" fields={fields} /></>,
+};
+
+function inlineFieldText(field, value, gameData) {
+	if (value === undefined || value === null || value === '') return 'choose…';
+	if (typeof value === 'object' && value?.function) return valueFunctionLabel(value, gameData);
+	if (typeof value === 'boolean') return value ? 'true' : 'false';
+	if (typeof value === 'number') return String(value);
+	if (field.kind === 'variable' || field.key === 'variableName') return String(value);
+	const collectionKey = ID_KIND_COLLECTIONS[field.kind];
+	if (collectionKey && gameData?.data?.[collectionKey]?.[value]) {
+		const item = gameData.data[collectionKey][value];
+		return item?.name || item?.folderName || String(value);
+	}
+	if (field.kind === 'attributeId' && gameData?.data?.attributes?.[value]) return gameData.data.attributes[value]?.name || String(value);
+	return String(value);
+}
+
+function ScriptInlineFunctionField({ field: fieldKey, fields }) {
+	const field = fields[fieldKey];
+	if (!field) return null;
+	return <button type="button" onClick={() => fields.setActiveField(fieldKey)} className="inline-flex items-center align-middle mx-0.5 px-1.5 py-0.5 rounded-md bg-[#303b47] border border-[#506174] text-[#85B7EB] text-[11px] font-sans whitespace-nowrap hover:border-[#85B7EB] hover:bg-[#364453]">{inlineFieldText(field, fields.values[fieldKey], fields.gameData)}</button>;
+}
+
 function ScriptFunctionEditor({ value, gameData, onChange, depth = 0 }) {
 	const [pickerOpen, setPickerOpen] = useState(false);
-	const [open, setOpen] = useState(depth < 1);
+	const [activeField, setActiveField] = useState(null);
+	const [advanced, setAdvanced] = useState(false);
 	const current = getFunctionEntry(gameData, value?.function);
 	const schema = current?.schema || [];
-	const keys = schema.map((f) => f.key).filter((key) => Object.prototype.hasOwnProperty.call(value || {}, key));
 	const extraKeys = Object.keys(value || {}).filter((k) => k !== 'function' && !schema.some((f) => f.key === k));
-	const hasArgs = schema.length > 0 || keys.length > 0 || extraKeys.length > 0;
-	const compact = depth > 0;
-	const chooseFunction = (name) => { setPickerOpen(false); onChange(createFunctionValue(name, gameData)); setOpen(true); };
-	return <div className={compact ? "relative w-full bg-[#252d35] border border-[#3d4a57] rounded-md" : "relative w-full bg-[#20272e] border border-[#48596a] rounded-md p-2 space-y-2"}>
-		<div className={compact ? "flex items-center gap-1.5 px-1.5 py-1" : "flex items-center gap-2"}>
-			{hasArgs && <button type="button" title={open ? 'Collapse details' : 'Edit details'} onClick={() => setOpen((v) => !v)} className="shrink-0 text-[#8291a1] hover:text-[#c5ccd3]">{open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}</button>}
-			<Zap size={compact ? 10 : 12} className="text-[#AFA9EC] shrink-0" />
-			<button type="button" onClick={() => setPickerOpen((v) => !v)} className="flex-1 min-w-0 text-left bg-[#323d48] border border-[#48596a] rounded px-1.5 py-1 text-xs text-[#c5ccd3] hover:border-[#6b7c8f] truncate">{value?.function ? valueFunctionLabel(value, gameData) : 'Choose a value...'}</button>
+	const fields = {
+		gameData,
+		values: value || {},
+		setActiveField,
+		...Object.fromEntries(schema.map((field) => [field.key, field])),
+	};
+	const chooseFunction = (name) => {
+		setPickerOpen(false);
+		setActiveField(null);
+		onChange(createFunctionValue(name, gameData));
+	};
+	const setField = (key, next) => onChange({ ...(value || {}), [key]: next });
+	const phrase = SCRIPT_FUNCTION_PHRASES[value?.function];
+	const content = phrase ? phrase(fields) : <>{schema.map((field) => <ScriptInlineFunctionField key={field.key} field={field.key} fields={fields} />)}</>;
+	return <div className="relative w-full">
+		<div className="flex items-center gap-1.5 flex-wrap min-h-8 rounded-lg bg-[#20272e] border border-[#48596a] px-2 py-1.5">
+			<Zap size={11} className="text-[#AFA9EC] shrink-0" />
+			<button type="button" onClick={() => setPickerOpen((v) => !v)} className="text-left text-xs font-medium text-[#c5ccd3] hover:text-white hover:underline decoration-[#85B7EB] underline-offset-2">{functionDisplayName(value?.function || 'Choose a value...')}</button>
+			{value?.function && <span className="text-xs text-[#c5ccd3]">{content}</span>}
+			{value?.function && (schema.length || extraKeys.length) > 0 && <button type="button" title="Advanced fields" onClick={() => setAdvanced((v) => !v)} className={`ml-auto shrink-0 px-1.5 py-0.5 rounded text-[10px] border ${advanced ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#637588] hover:text-[#c5ccd3]'}`}>•••</button>}
 		</div>
 		{pickerOpen && <ScriptValuePicker expectedKind="valueExpr" value={value} gameData={gameData} onChange={(next) => onChange(next)} onClose={() => setPickerOpen(false)} />}
-		{value?.function && open && hasArgs && <div className={compact ? "px-1.5 pb-1.5 pl-4 space-y-1" : "space-y-1.5"}>
-			{schema.map((field) => <div key={field.key} className={compact ? "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-1" : "flex items-start gap-2"}>
-				<span className={compact ? "text-[9px] text-[#8291a1] font-mono pt-1 truncate max-w-28" : "text-[10px] text-[#8291a1] font-mono w-28 shrink-0 pt-1 truncate"}>{readableType(field.key)}</span>
-				<div className="min-w-0 flex-1"><ScriptFieldInput kind={field.kind} value={value[field.key]} gameData={gameData} onChange={(next) => onChange({ ...value, [field.key]: next })} /></div>
-			</div>)}
-			{extraKeys.map((key) => <div key={key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] font-mono w-28 shrink-0 pt-1 truncate">{readableType(key)}</span><div className="min-w-0 flex-1"><ScriptValueEditor value={value[key]} gameData={gameData} depth={depth + 1} onChange={(next) => onChange({ ...value, [key]: next })} /></div></div>)}
+		{activeField && <div className="absolute z-[90] left-2 top-full mt-1 w-[360px] bg-[#20272e] border border-[#48596a] rounded-lg shadow-2xl p-2">
+			<div className="flex items-center justify-between mb-1.5"><span className="text-[10px] uppercase tracking-wide text-[#637588]">Edit {readableType(activeField)}</span><button type="button" onClick={() => setActiveField(null)} className="text-[#637588] hover:text-[#c5ccd3]"><X size={12} /></button></div>
+			<ScriptFieldInput kind={schema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, value?.[activeField])} value={value?.[activeField]} gameData={gameData} onChange={(next) => { setField(activeField, next); setActiveField(null); }} />
+		</div>}
+		{advanced && <div className="mt-1.5 ml-4 rounded-md border border-[#3d4a57] bg-[#252d35] p-2 space-y-1.5">
+			{schema.map((field) => <div key={field.key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] w-28 shrink-0 pt-1">{readableType(field.key)}</span><div className="min-w-0 flex-1"><ScriptFieldInput kind={field.kind} value={value?.[field.key]} gameData={gameData} onChange={(next) => setField(field.key, next)} /></div></div>)}
+			{extraKeys.map((key) => <div key={key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] w-28 shrink-0 pt-1">{readableType(key)}</span><div className="min-w-0 flex-1"><ScriptValueEditor value={value[key]} gameData={gameData} depth={depth + 1} onChange={(next) => setField(key, next)} /></div></div>)}
 		</div>}
 	</div>;
 }
@@ -1259,7 +1328,37 @@ function ScriptExpressionInput({ value, gameData, onChange, expectedKind = 'valu
 
 const SCRIPT_OPERATORS_BY_TYPE = { boolean: ['==', '!='], number: ['==', '!=', '>', '<', '>=', '<='], string: ['==', '!='], player: ['==', '!='], unit: ['==', '!='], item: ['==', '!='], projectile: ['==', '!='], playerType: ['==', '!='], unitType: ['==', '!='], itemType: ['==', '!='], projectileType: ['==', '!='], attributeType: ['==', '!='], state: ['==', '!='], region: ['==', '!='], and: ['AND'], or: ['OR'] };
 function ScriptTypedValueEditor({ value, operandType, gameData, onChange }) { if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; if (operandType === 'boolean') return <select value={String(value)} onChange={(e) => onChange(e.target.value === 'true')} className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="true">true</option><option value="false">false</option></select>; if (operandType === 'number') return <ScriptExpressionInput value={typeof value === 'number' ? value : 0} gameData={gameData} onChange={onChange} />; return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; }
-function ScriptConditionEditor({ value, gameData, onChange }) { const vocab = collectScriptVocabulary(gameData); const cond = Array.isArray(value) && value.length >= 3 && value[0] && typeof value[0] === 'object' ? value : [{ operandType: 'boolean', operator: '==' }, true, true]; const meta = cond[0] || {}; const operandType = meta.operandType || 'boolean'; const operators = SCRIPT_OPERATORS_BY_TYPE[operandType] || vocab.operators; const isLogic = operandType === 'and' || operandType === 'or'; return <div className="w-full bg-[#262e36]/70 border border-[#3d4a57] rounded-md p-2 space-y-2"><div className="flex flex-wrap items-center gap-2"><select value={operandType} onChange={(e) => { const nextType = e.target.value; const op = (SCRIPT_OPERATORS_BY_TYPE[nextType] || vocab.operators)[0] || '=='; const logic = nextType === 'and' || nextType === 'or'; onChange([{ ...meta, operandType: nextType, operator: op }, logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : cond[1], logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : cond[2]]); }} className="bg-[#323d48] border border-[#48596a] rounded px-1.5 py-1 text-xs">{vocab.operandTypes.map((x) => <option key={x} value={x}>{x}</option>)}</select><select value={meta.operator || operators[0] || '=='} onChange={(e) => onChange([{ ...meta, operator: e.target.value }, cond[1], cond[2]])} className="bg-[#323d48] border border-[#48596a] rounded px-1.5 py-1 text-xs">{operators.map((x) => <option key={x} value={x}>{x}</option>)}</select></div><div className="grid grid-cols-[auto_1fr] items-start gap-x-2 gap-y-1"><span className="text-[10px] text-[#8291a1] pt-1">left</span>{isLogic && Array.isArray(cond[1]) ? <ScriptConditionEditor value={cond[1]} gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} /> : <ScriptTypedValueEditor value={cond[1]} operandType={operandType} gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} />}<span className="text-[10px] text-[#8291a1] pt-1">right</span>{isLogic && Array.isArray(cond[2]) ? <ScriptConditionEditor value={cond[2]} gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} /> : <ScriptTypedValueEditor value={cond[2]} operandType={operandType} gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} />}</div></div>; }
+function ScriptConditionEditor({ value, gameData, onChange }) {
+	const vocab = collectScriptVocabulary(gameData);
+	const cond = Array.isArray(value) && value.length >= 3 && value[0] && typeof value[0] === 'object' ? value : [{ operandType: 'boolean', operator: '==' }, true, true];
+	const meta = cond[0] || {};
+	const operandType = meta.operandType || 'boolean';
+	const operators = SCRIPT_OPERATORS_BY_TYPE[operandType] || vocab.operators;
+	const isLogic = operandType === 'and' || operandType === 'or';
+	const setOperandType = (nextType) => {
+		const nextOperators = SCRIPT_OPERATORS_BY_TYPE[nextType] || vocab.operators;
+		const nextOperator = nextOperators[0] || '==';
+		const logic = nextType === 'and' || nextType === 'or';
+		onChange([{ ...meta, operandType: nextType, operator: nextOperator }, logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : cond[1], logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : cond[2]]);
+	};
+	return <div className="w-full rounded-lg bg-[#20272e] border border-[#48596a] px-2 py-1.5">
+		<div className="flex flex-wrap items-center gap-1.5">
+			{isLogic ? <>
+				<button type="button" onClick={() => setOperandType(operandType === 'and' ? 'or' : 'and')} className="px-1.5 py-0.5 rounded-md bg-[#303b47] border border-[#506174] text-[#85B7EB] text-[11px] hover:border-[#85B7EB]">{operandType.toUpperCase()}</button>
+				<ScriptTypedValueEditor value={cond[1]} operandType="boolean" gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} />
+				<span className="text-[#637588] text-xs">and/or</span>
+				<ScriptTypedValueEditor value={cond[2]} operandType="boolean" gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} />
+			</> : <>
+				<ScriptTypedValueEditor value={cond[1]} operandType={operandType} gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} />
+				<select value={meta.operator || operators[0] || '=='} onChange={(e) => onChange([{ ...meta, operator: e.target.value }, cond[1], cond[2]])} className="bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-xs text-[#c5ccd3] font-mono">
+					{operators.map((x) => <option key={x} value={x}>{x}</option>)}
+				</select>
+				<ScriptTypedValueEditor value={cond[2]} operandType={operandType} gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} />
+			</>}
+			<button type="button" title="Change value type" onClick={() => setOperandType(operandType === 'number' ? 'string' : 'number')} className="ml-auto px-1.5 py-0.5 rounded text-[9px] text-[#637588] border border-transparent hover:border-[#48596a] hover:text-[#a3adb8]">{readableType(operandType)}</button>
+		</div>
+	</div>;
+}
 
 function ScriptAddMenu({ label, options, onSelect, categorized = true }) { const [open, setOpen] = useState(false); const [query, setQuery] = useState(''); const filtered = options.filter((o) => !query || o.label.toLowerCase().includes(query.toLowerCase()) || (o.category || '').toLowerCase().includes(query.toLowerCase())); const groups = categorized ? filtered.reduce((acc, option) => { const key = option.category || 'Other'; (acc[key] ||= []).push(option); return acc; }, {}) : { '': filtered }; return <div className="relative inline-block"><button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da]"><Plus size={13} /> {label}</button>{open && <div className="absolute z-40 mt-1 left-0 w-80 max-h-96 overflow-hidden bg-[#262e36] border border-[#48596a] rounded-md shadow-xl p-1"><div className="p-1"><div className="relative"><Search size={12} className="absolute left-2 top-2 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${label.toLowerCase()}...`} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-7 py-1.5 text-xs" /></div></div><div className="max-h-80 overflow-y-auto">{Object.entries(groups).map(([category, items]) => <div key={category}>{categorized && <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">{category}</div>}{items.map((option) => <button key={option.value} type="button" onClick={() => { setOpen(false); setQuery(''); onSelect(option.value); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48]">{option.label}</button>)}</div>)}{!filtered.length && <div className="px-2 py-3 text-xs text-[#637588] italic">No matches.</div>}</div></div>}</div>; }
 function scriptCategory(type) { const t = String(type || '').toLowerCase(); if (/^(for|repeat|while|break|continue|return|if|condition)/.test(t)) return 'Control flow'; if (/(player|chat|dialogue|shop|website|camera|ui|modal)/.test(t)) return 'Players & UI'; if (/(unit|entity|ai|attack|move|velocity|force|stun|heal|damage|attribute|owner)/.test(t)) return 'Units & entities'; if (/(item|inventory|slot|purchase)/.test(t)) return 'Items'; if (/projectile/.test(t)) return 'Projectiles'; if (/(variable|data|save|load)/.test(t)) return 'Variables & data'; if (/(sound|music|particle|animation)/.test(t)) return 'Effects'; if (/(map|tile|region)/.test(t)) return 'Map & regions'; return 'Other'; }
