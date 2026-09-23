@@ -11,6 +11,7 @@ const REFERENCE_TABS = [
 	{ key: 'attributeTypes', label: 'Attributes' },
 	{ key: 'variables', label: 'Variables' },
 	{ key: 'sounds', label: 'Sounds' },
+	{ key: 'music', label: 'Music' },
 	{ key: 'playerTypes', label: 'Player Types' },
 ];
 const SHOP_TAB = { key: 'shops', label: 'Shops' };
@@ -1272,7 +1273,64 @@ function ScriptVariableField({ value, gameData, onChange }) {
 	</div>;
 }
 
+function getRuntimeReferenceOptions(kind) {
+	const common = [
+		['triggeringUnit', 'Triggering unit', 'Unit'],
+		['selectedUnit', 'Selected unit', 'Unit'],
+		['lastAttackedUnit', 'Last attacked unit', 'Unit'],
+		['lastAttackingUnit', 'Last attacking unit', 'Unit'],
+		['lastCreatedUnit', 'Last created unit', 'Unit'],
+		['triggeringItem', 'Triggering item', 'Item'],
+		['selectedItem', 'Selected item', 'Item'],
+		['lastCreatedItem', 'Last created item', 'Item'],
+		['triggeringProjectile', 'Triggering projectile', 'Projectile'],
+		['selectedProjectile', 'Selected projectile', 'Projectile'],
+		['lastCreatedProjectile', 'Last created projectile', 'Projectile'],
+		['triggeringPlayer', 'Triggering player', 'Player'],
+		['selectedPlayer', 'Selected player', 'Player'],
+		['lastPlayerSelectingDialogueOption', 'Last player selecting dialogue option', 'Player'],
+		['sourceUnit', 'Source unit', 'Unit'],
+		['targetUnit', 'Target unit', 'Unit'],
+		['owner', 'Owner', 'Owner'],
+	];
+	if (kind === 'unitRef') return common.filter(([, , group]) => group === 'Unit' || group === 'Owner');
+	if (kind === 'itemRef') return common.filter(([, , group]) => group === 'Item' || group === 'Owner');
+	if (kind === 'projectileRef') return common.filter(([, , group]) => group === 'Projectile' || group === 'Owner');
+	if (kind === 'playerRef') return common.filter(([, , group]) => group === 'Player' || group === 'Owner');
+	return common;
+}
+
+function runtimeReferenceFunction(id) {
+	const map = {
+		triggeringUnit: 'getTriggeringUnit', selectedUnit: 'getSelectedUnit', lastAttackedUnit: 'getLastAttackedUnit', lastAttackingUnit: 'getLastAttackingUnit', lastCreatedUnit: 'getLastCreatedUnit',
+		triggeringItem: 'getTriggeringItem', selectedItem: 'getSelectedItem', lastCreatedItem: 'getLastCreatedItem',
+		triggeringProjectile: 'getTriggeringProjectile', selectedProjectile: 'getSelectedProjectile', lastCreatedProjectile: 'getLastCreatedProjectile',
+		triggeringPlayer: 'getTriggeringPlayer', selectedPlayer: 'getSelectedPlayer', lastPlayerSelectingDialogueOption: 'getLastPlayerSelectingDialogueOption',
+	};
+	return map[id] ? { function: map[id] } : null;
+}
+
+function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
+	const [open, setOpen] = useState(false);
+	const [query, setQuery] = useState('');
+	const options = getRuntimeReferenceOptions(kind);
+	const selected = options.find(([id]) => id === value);
+	const filtered = options.filter(([, label, group]) => { const q = query.trim().toLowerCase(); return !q || label.toLowerCase().includes(q) || group.toLowerCase().includes(q); });
+	if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+	return <div className="relative min-w-0">
+		<button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selected?.[1] || (value || 'Choose reference...')}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
+		{open && <div className="absolute z-[90] left-0 top-full mt-1 w-72 max-h-80 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
+			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search references..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
+			<div className="max-h-60 overflow-y-auto p-1">
+				{filtered.map(([id, label, group]) => <button key={id} type="button" onClick={() => { const fn = runtimeReferenceFunction(id); setOpen(false); setQuery(''); onChange(fn || id); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[10px] text-[#637588]">{group}</div></button>)}
+				<button type="button" onClick={() => { setOpen(false); setQuery(''); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48] text-xs text-[#8291a1]">Keep raw value</button>
+			</div>
+		</div>}
+	</div>;
+}
+
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
+	if (['entityRef','unitRef','itemRef','projectileRef','playerRef'].includes(kind)) return <ScriptRuntimeReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
 	if (kind === 'variableName' || kind === 'variable') return <ScriptVariableField value={value} gameData={gameData} onChange={onChange} />;
 	if (getScriptReferenceInfo(kind, gameData)) {
 		if (typeof value === 'object' && value !== null) return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
@@ -1431,6 +1489,12 @@ function inferScriptFieldKind(key, value) {
 	const map = { itemType: 'itemTypeId', unitType: 'unitTypeId', projectileType: 'projectileTypeId', attribute: 'attributeId', playerType: 'playerTypeId', script: 'scriptId', dialogue: 'dialogueId', shop: 'shopId', sound: 'soundId', music: 'musicId', particleType: 'particleTypeId', state: 'stateId' };
 	if (map[key]) return map[key];
 	if (key === 'variable') return 'variable';
+	const k = String(key || '').toLowerCase();
+	if (k === 'entity' || k === 'sourceentity' || k === 'targetentity' || k === 'owner') return 'entityRef';
+	if (/^(unit|sourceunit|targetunit|triggeringunit|selectedunit)$/.test(k)) return 'unitRef';
+	if (/^(item|sourceitem|targetitem|triggeringitem|selecteditem)$/.test(k)) return 'itemRef';
+	if (/^(projectile|sourceprojectile|targetprojectile|triggeringprojectile|selectedprojectile)$/.test(k)) return 'projectileRef';
+	if (/^(player|playera|playerb|triggeringplayer|selectedplayer)$/.test(k)) return 'playerRef';
 	if (typeof value === 'boolean') return 'boolean';
 	if (typeof value === 'number') return 'number';
 	if (typeof value === 'string') return 'string';
@@ -2413,6 +2477,40 @@ export default function GameContentEditor() {
 		setGameData((gd) => {
 			const next = deepClone(gd);
 			delete next.data.sound[key];
+			return next;
+		});
+		if (selectedKey === key) setSelectedKey(null);
+	}
+
+	function addGlobalMusic() {
+		const key = generateKey();
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.music) next.data.music = {};
+			next.data.music[key] = { name: 'New Music', file: '' };
+			return next;
+		});
+		setSelectedKey(key);
+		requestAnimationFrame(() => {
+			const el = document.querySelector('[data-music-key="' + key + '"] input');
+			if (el) el.focus();
+		});
+	}
+
+	function updateGlobalMusic(key, field, value) {
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (!next.data.music) next.data.music = {};
+			next.data.music[key] = { ...(next.data.music[key] || {}), [field]: value };
+			return next;
+		});
+	}
+
+	function deleteGlobalMusic(key) {
+		if (!key || !window.confirm('Remove this music track from the global music library?')) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			delete next.data.music[key];
 			return next;
 		});
 		if (selectedKey === key) setSelectedKey(null);
@@ -3572,6 +3670,7 @@ export default function GameContentEditor() {
 								}`}
 							>
 								{t.label}
+								<span className="text-[#637588] ml-1.5 text-xs">{t.key === 'music' ? Object.keys(gameData?.data?.music || {}).length : t.key === 'sounds' ? Object.keys(gameData?.data?.sound || {}).length : t.key === 'attributeTypes' ? Object.keys(gameData?.data?.attributeTypes || {}).length : t.key === 'playerTypes' ? Object.keys(gameData?.data?.playerTypes || {}).length : ''}</span>
 							</button>
 						))}
 						{GROUP_TABS.map((t) => (
@@ -5249,7 +5348,26 @@ export default function GameContentEditor() {
 								{Object.keys(soundTypes).length === 0 && <div className="text-sm text-[#637588] text-center py-8">No sounds yet.</div>}
 							</div>
 						</div>
-					) : activeTab === 'playerTypes' ? (
+					) : activeTab === 'music' ? (
+						<div className="flex-1 overflow-y-auto p-6">
+							<div className="max-w-3xl">
+								<div className="flex items-center justify-between mb-4">
+									<div><h2 className="text-base font-medium">Global music</h2><p className="text-xs text-[#637588] mt-1">All music tracks in <span className="font-mono">data.music</span>. Music is separate from the global Sounds library.</p></div>
+									<button onClick={addGlobalMusic} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-[#262e36] text-sm font-medium hover:opacity-90"><Plus size={14} /> New music</button>
+								</div>
+								<div className="space-y-2">
+									{Object.entries(gameData?.data?.music || {}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([key, track]) => (
+										<div key={key} data-music-key={key} className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3">
+											<div className="flex items-center gap-2 mb-2"><input value={track?.name || ''} onChange={(e)=>updateGlobalMusic(key,'name',e.target.value)} placeholder="Music name" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" />{Object.prototype.hasOwnProperty.call(track || {}, 'volume') && <><label className="text-xs text-[#637588]">volume</label><input type="number" min="0" max="100" value={track?.volume ?? 100} onChange={(e)=>updateGlobalMusic(key,'volume',Math.max(0,Math.min(100,Number(e.target.value)||0)))} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></>}<button onClick={()=>deleteGlobalMusic(key)} className="text-[#8291a1] hover:text-red-400" title="Delete music"><Trash2 size={14}/></button></div>
+											<input value={track?.file || ''} onChange={(e)=>updateGlobalMusic(key,'file',e.target.value)} placeholder="https://.../music.ogg or /assets/audio/..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
+											<div className="text-[11px] text-[#637588] mt-1.5 font-mono truncate">{key}</div>
+										</div>
+									))}
+								</div>
+								{Object.keys(gameData?.data?.music || {}).length === 0 && <div className="text-sm text-[#637588] text-center py-8">No music yet.</div>}
+							</div>
+						</div>
+) : activeTab === 'playerTypes' ? (
 						<div className="flex-1 overflow-y-auto p-6">
 							<div className="max-w-3xl">
 								<div className="flex items-center justify-between mb-4">
