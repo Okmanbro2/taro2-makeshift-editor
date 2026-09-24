@@ -1673,16 +1673,20 @@ function ScriptTreeView({ script, gameData, onJumpToScript, onOp, onAddAction, o
 }
 
 
-function MapPreview({ gameData, resolveAssetUrl }) {
+function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	const map = gameData?.data?.map;
 	const canvasRef = useRef(null);
 	const viewportRef = useRef(null);
+	const dragRef = useRef(null);
 	const [zoom, setZoom] = useState(0.32);
 	const [offset, setOffset] = useState({ x: 40, y: 40 });
 	const [dragging, setDragging] = useState(false);
-	const dragRef = useRef(null);
+	const [tool, setTool] = useState('pan');
+	const [activeLayerIndex, setActiveLayerIndex] = useState(0);
+	const [selectedTile, setSelectedTile] = useState(0);
 	const [imageReady, setImageReady] = useState(false);
 	const [imageError, setImageError] = useState(false);
+	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
 
 	const width = Number(map?.width) || 0;
 	const height = Number(map?.height) || 0;
@@ -1690,10 +1694,15 @@ function MapPreview({ gameData, resolveAssetUrl }) {
 	const tileHeight = Number(map?.tileheight) || TILE_PX;
 	const tileset = Array.isArray(map?.tilesets) ? map.tilesets[0] : null;
 	const imageUrl = resolveAssetUrl(tileset?.image || '');
-	const columns = Number(tileset?.columns) || Math.max(1, Number(tileset?.tilecount) ? Math.floor(Number(tileset.tilecount) / Math.max(1, Number(tileset?.tileheight) || 1)) : 1);
+	const firstGid = Number(tileset?.firstgid) || 1;
+	const columns = Math.max(1, Number(tileset?.columns) || (Number(tileset?.imagewidth) ? Math.floor(Number(tileset.imagewidth) / tileWidth) : 1));
+	const tileCount = Math.max(1, Number(tileset?.tilecount) || columns * Math.max(1, Number(tileset?.rows) || Math.ceil((Number(tileset?.imageheight) || tileHeight) / tileHeight)));
+	const rows = Math.max(1, Math.ceil(tileCount / columns));
+	const mapPixelWidth = width * tileWidth * zoom;
+	const mapPixelHeight = height * tileHeight * zoom;
 
-	const tileSourceWidth = Number(tileset?.imagewidth) || (columns * tileWidth);
-	const tileSourceHeight = Number(tileset?.imageheight) || (Math.ceil((Number(tileset?.tilecount) || 1) / Math.max(1, columns)) * tileHeight);
+	const layers = useMemo(() => Array.isArray(map?.layers) ? map.layers.filter((l) => Array.isArray(l?.data)) : [], [map]);
+	const activeLayer = layers[activeLayerIndex] || layers[0];
 
 	const regionEntries = useMemo(() => {
 		const out = [];
@@ -1711,13 +1720,15 @@ function MapPreview({ gameData, resolveAssetUrl }) {
 		for (const layer of (Array.isArray(map?.layers) ? map.layers : [])) {
 			if (layer?.type !== 'objectgroup' || !Array.isArray(layer.objects)) continue;
 			for (const obj of layer.objects) {
-				if (obj?.type === 'region' || obj?.class === 'region' || obj?.properties?.isRegion || /^region$/i.test(layer.name || '')) {
-					addRegion(obj.id ?? obj.name, obj);
-				}
+				if (obj?.type === 'region' || obj?.class === 'region' || obj?.properties?.isRegion || /^region$/i.test(layer.name || '')) addRegion(obj.id ?? obj.name, obj);
 			}
 		}
 		return out;
 	}, [gameData, map]);
+
+	useEffect(() => {
+		if (activeLayerIndex >= layers.length) setActiveLayerIndex(Math.max(0, layers.length - 1));
+	}, [layers.length, activeLayerIndex]);
 
 	useEffect(() => {
 		setImageReady(false);
@@ -1729,6 +1740,35 @@ function MapPreview({ gameData, resolveAssetUrl }) {
 		img.src = imageUrl;
 		return () => { img.onload = null; img.onerror = null; };
 	}, [imageUrl]);
+
+	useEffect(() => {
+		const el = viewportRef.current;
+		if (!el) return;
+		const measure = () => setViewportSize({ width: el.clientWidth, height: el.clientHeight });
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, []);
+
+	const clampOffset = (x, y, z = zoom) => {
+		const vw = viewportSize.width || 0;
+		const vh = viewportSize.height || 0;
+		const mw = width * tileWidth * z;
+		const mh = height * tileHeight * z;
+		const pad = 24;
+		let nx;
+		let ny;
+		if (mw <= vw - pad * 2) nx = (vw - mw) / 2;
+		else nx = Math.min(pad, Math.max(vw - mw - pad, x));
+		if (mh <= vh - pad * 2) ny = (vh - mh) / 2;
+		else ny = Math.min(pad, Math.max(vh - mh - pad, y));
+		return { x: nx, y: ny };
+	};
+
+	useEffect(() => {
+		setOffset((o) => clampOffset(o.x, o.y));
+	}, [zoom, viewportSize.width, viewportSize.height, width, height, tileWidth, tileHeight]);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -1746,12 +1786,10 @@ function MapPreview({ gameData, resolveAssetUrl }) {
 		ctx.clearRect(0, 0, drawWidth, drawHeight);
 		ctx.fillStyle = '#14191e';
 		ctx.fillRect(0, 0, drawWidth, drawHeight);
-
 		if (!imageReady || !imageUrl) return;
 		const img = new Image();
 		img.onload = () => {
 			ctx.clearRect(0, 0, drawWidth, drawHeight);
-			const layers = Array.isArray(map.layers) ? map.layers.filter((l) => Array.isArray(l?.data)) : [];
 			for (const layer of layers) {
 				if (layer.visible === false) continue;
 				const opacity = Number.isFinite(Number(layer.opacity)) ? Number(layer.opacity) : 1;
@@ -1762,81 +1800,155 @@ function MapPreview({ gameData, resolveAssetUrl }) {
 					const rawGid = Number(layer.data[i]) || 0;
 					if (!rawGid) continue;
 					const gid = rawGid & 0x1fffffff;
-					const local = gid - (Number(tileset?.firstgid) || 1);
-					if (local < 0) continue;
-					const sx = (local % Math.max(1, columns)) * tileWidth;
-					const sy = Math.floor(local / Math.max(1, columns)) * tileHeight;
+					const local = gid - firstGid;
+					if (local < 0 || local >= tileCount) continue;
+					const sx = (local % columns) * tileWidth;
+					const sy = Math.floor(local / columns) * tileHeight;
 					const dx = (i % width) * tileWidth * zoom + layerOffsetX;
 					const dy = Math.floor(i / width) * tileHeight * zoom + layerOffsetY;
 					ctx.drawImage(img, sx, sy, tileWidth, tileHeight, dx, dy, tileWidth * zoom, tileHeight * zoom);
 				}
 			}
 			ctx.globalAlpha = 1;
-			ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-			ctx.lineWidth = 1;
 			if (zoom >= 0.5) {
+				ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+				ctx.lineWidth = 1;
 				for (let x = 0; x <= width; x++) { const px = x * tileWidth * zoom + 0.5; ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, drawHeight); ctx.stroke(); }
 				for (let y = 0; y <= height; y++) { const py = y * tileHeight * zoom + 0.5; ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(drawWidth, py); ctx.stroke(); }
 			}
 		};
 		img.src = imageUrl;
-	}, [map, width, height, tileWidth, tileHeight, tileset, columns, imageUrl, imageReady, zoom]);
+	}, [layers, width, height, tileWidth, tileHeight, firstGid, tileCount, columns, imageUrl, imageReady, zoom]);
 
-	useEffect(() => {
-		const el = viewportRef.current;
-		if (!el) return;
-		const onWheel = (e) => {
-			e.preventDefault();
-			const factor = e.deltaY < 0 ? 1.12 : 0.89;
-			setZoom((z) => Math.max(0.12, Math.min(2.5, z * factor)));
-		};
-		el.addEventListener('wheel', onWheel, { passive: false });
-		return () => el.removeEventListener('wheel', onWheel);
-	}, []);
+	const paintAtPointer = (e, erase = false) => {
+		if (!activeLayer || !canvasRef.current || !width || !height) return;
+		const rect = canvasRef.current.getBoundingClientRect();
+		const mapX = e.clientX - rect.left;
+		const mapY = e.clientY - rect.top;
+		if (mapX < 0 || mapY < 0 || mapX >= rect.width || mapY >= rect.height) return;
+		const col = Math.floor(mapX / (tileWidth * zoom));
+		const row = Math.floor(mapY / (tileHeight * zoom));
+		if (col < 0 || row < 0 || col >= width || row >= height) return;
+		const index = row * width + col;
+		const value = erase ? 0 : firstGid + selectedTile;
+		if (Number(activeLayer.data?.[index] || 0) === value) return;
+		setGameData((prev) => {
+			if (!prev?.data?.map) return prev;
+			const next = structuredClone(prev);
+			const targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers : [];
+			const target = targetLayers.filter((l) => Array.isArray(l?.data))[activeLayerIndex];
+			if (!target) return prev;
+			const data = Array.isArray(target.data) ? [...target.data] : [];
+			while (data.length < width * height) data.push(0);
+			data[index] = value;
+			target.data = data;
+			return next;
+		});
+	};
 
-	const beginDrag = (e) => {
-		if (e.button !== 0 && e.button !== 1) return;
+	const beginPan = (e) => {
+		if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+		if (tool !== 'pan' && e.button === 0 && !e.shiftKey && !e.altKey) return;
 		e.preventDefault();
 		setDragging(true);
 		dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
 	};
-	const moveDrag = (e) => {
+	const movePan = (e) => {
 		if (!dragging || !dragRef.current) return;
 		const d = dragRef.current;
-		setOffset({ x: d.ox + e.clientX - d.x, y: d.oy + e.clientY - d.y });
+		setOffset(clampOffset(d.ox + e.clientX - d.x, d.oy + e.clientY - d.y));
 	};
-	const endDrag = () => { setDragging(false); dragRef.current = null; };
+	const endPan = () => { setDragging(false); dragRef.current = null; };
+	const handlePointerDown = (e) => {
+		if (e.button === 1 || e.button === 2 || (e.button === 0 && (e.shiftKey || e.altKey || tool === 'pan'))) { beginPan(e); return; }
+		if (e.button !== 0) return;
+		if (tool === 'paint' || tool === 'erase') {
+			e.preventDefault();
+			paintAtPointer(e, tool === 'erase');
+			setDragging(true);
+			return;
+		}
+		beginPan(e);
+	};
+	const handlePointerMove = (e) => {
+		if (dragging && (tool === 'paint' || tool === 'erase')) paintAtPointer(e, tool === 'erase');
+		else movePan(e);
+	};
+	const handlePointerUp = () => endPan();
+
+	useEffect(() => {
+		const onKey = (e) => {
+			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+			if (e.key.toLowerCase() === 'p') setTool('paint');
+			if (e.key.toLowerCase() === 'e') setTool('erase');
+			if (e.key === ' ') setTool((t) => t === 'pan' ? 'paint' : 'pan');
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	}, []);
+
+	const toggleLayerVisibility = (index) => {
+		setGameData((prev) => {
+			if (!prev?.data?.map) return prev;
+			const next = structuredClone(prev);
+			const targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers.filter((l) => Array.isArray(l?.data)) : [];
+			if (!targetLayers[index]) return prev;
+			targetLayers[index].visible = targetLayers[index].visible === false;
+			return next;
+		});
+	};
 
 	if (!map) return <div className="flex-1 flex items-center justify-center text-sm text-[#637588]">This game has no map data.</div>;
+	const paletteTileW = 44;
+	const paletteTileH = Math.max(30, Math.round(paletteTileW * tileHeight / Math.max(1, tileWidth)));
+	const paletteCols = Math.min(columns, 8);
+	const paletteScaleX = paletteTileW / tileWidth;
+	const paletteScaleY = paletteTileH / tileHeight;
 
 	return (
 		<div className="flex-1 min-w-0 flex flex-col bg-[#171d22]">
 			<div className="h-12 shrink-0 border-b border-[#3d4a57] bg-[#262e36] flex items-center justify-between px-4">
 				<div>
 					<div className="text-sm font-medium text-[#e1e6ea]">Map View</div>
-					<div className="text-[11px] text-[#637588]">Preview only • drag to move • wheel to zoom</div>
+					<div className="text-[11px] text-[#637588]">{tool === 'paint' ? 'Paint selected tile' : tool === 'erase' ? 'Erase tiles' : 'Preview / pan'} • P paint • E erase • Space pan</div>
 				</div>
 				<div className="text-xs text-[#8291a1] font-mono">{width} × {height} • {tileWidth} × {tileHeight}</div>
 			</div>
-			<div
-				ref={viewportRef}
-				onMouseDown={beginDrag}
-				onMouseMove={moveDrag}
-				onMouseUp={endDrag}
-				onMouseLeave={endDrag}
-				className={`relative flex-1 overflow-hidden select-none ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-			>
-				<div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#48596a 1px, transparent 1px), linear-gradient(90deg, #48596a 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
-				<div className="absolute" style={{ left: offset.x, top: offset.y }}>
-					<canvas ref={canvasRef} className="block shadow-2xl" />
-					{regionEntries.map((r, i) => (
-						<div key={`${r.id}-${i}`} className="absolute border border-cyan-300/70 bg-cyan-300/10 pointer-events-none" style={{ left: r.x * zoom, top: r.y * zoom, width: r.width * zoom, height: r.height * zoom }}>
-							<div className="absolute -top-4 left-0 text-[10px] whitespace-nowrap text-cyan-200 bg-[#17212a]/90 px-1 rounded">{r.name}</div>
-						</div>
-					))}
+			<div className="relative flex-1 min-h-0 overflow-hidden">
+				<div ref={viewportRef} onContextMenu={(e) => e.preventDefault()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} className={`absolute inset-0 overflow-hidden select-none ${dragging ? 'cursor-grabbing' : tool === 'paint' || tool === 'erase' ? 'cursor-crosshair' : 'cursor-grab'}`}>
+					<div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#48596a 1px, transparent 1px), linear-gradient(90deg, #48596a 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+					<div className="absolute" style={{ left: offset.x, top: offset.y, width: mapPixelWidth, height: mapPixelHeight }}>
+						<canvas ref={canvasRef} className="block" />
+						{regionEntries.map((r, i) => <div key={`${r.id}-${i}`} className="absolute border border-cyan-300/70 bg-cyan-300/10 pointer-events-none" style={{ left: r.x * zoom, top: r.y * zoom, width: r.width * zoom, height: r.height * zoom }}><div className="absolute -top-4 left-0 text-[10px] whitespace-nowrap text-cyan-200 bg-[#17212a]/90 px-1 rounded">{r.name}</div></div>)}
+					</div>
+					{imageError && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="max-w-md rounded-lg border border-red-900 bg-red-950/80 px-4 py-3 text-sm text-red-300">Could not load the map tilesheet: <span className="font-mono">{tileset?.image || '(missing image)'}</span></div></div>}
+					{!imageError && !imageReady && imageUrl && <div className="absolute top-4 left-4 rounded-md border border-[#3d4a57] bg-[#20272e]/90 px-3 py-2 text-xs text-[#8291a1]">Loading tilesheet…</div>}
 				</div>
-				{imageError && <div className="absolute inset-0 flex items-center justify-center"><div className="max-w-md rounded-lg border border-red-900 bg-red-950/80 px-4 py-3 text-sm text-red-300">Could not load the map tilesheet: <span className="font-mono">{tileset?.image || '(missing image)'}</span></div></div>}
-				{!imageError && !imageReady && imageUrl && <div className="absolute top-4 left-4 rounded-md border border-[#3d4a57] bg-[#20272e]/90 px-3 py-2 text-xs text-[#8291a1]">Loading tilesheet…</div>}
+
+				<div className="absolute top-3 left-3 z-20 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 p-1.5 flex gap-1 shadow-lg">
+					{[['paint','P','Paint'],['erase','E','Erase'],['pan','↔','Pan']].map(([key, icon, label]) => <button key={key} type="button" title={label} onClick={() => setTool(key)} className={`w-9 h-9 rounded border text-xs font-mono ${tool === key ? 'border-[#85B7EB] bg-[#334252] text-[#e1e6ea]' : 'border-transparent text-[#8291a1] hover:bg-[#2c3741]'}`}>{icon}</button>)}
+				</div>
+
+				<div className="absolute left-3 top-16 z-20 w-48 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 shadow-lg overflow-hidden">
+					<div className="px-3 py-2 border-b border-[#3d4a57] text-[10px] uppercase tracking-wide text-[#637588]">Layers</div>
+					<div className="max-h-64 overflow-auto p-1">
+						{layers.map((layer, i) => <div key={i} className={`flex items-center gap-1 rounded px-1.5 py-1 ${activeLayerIndex === i ? 'bg-[#334252]' : 'hover:bg-[#2c3741]'}`}>
+							<button type="button" onClick={() => setActiveLayerIndex(i)} className="min-w-0 flex-1 text-left text-xs text-[#c5ccd3] truncate">{layer.name || `Layer ${i + 1}`}</button>
+							<button type="button" title={layer.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => toggleLayerVisibility(i)} className={`w-7 h-7 rounded text-xs ${layer.visible === false ? 'text-[#48596a]' : 'text-[#c5ccd3] hover:bg-[#3a4652]'}`}>{layer.visible === false ? '○' : '◉'}</button>
+						</div>)}
+						{layers.length === 0 && <div className="px-2 py-2 text-xs text-[#637588]">No tile layers found.</div>}
+					</div>
+				</div>
+
+				{imageReady && <div className="absolute right-3 bottom-3 z-20 w-[360px] max-w-[calc(100%-24px)] rounded-lg border border-[#3d4a57] bg-[#20272e]/96 shadow-xl overflow-hidden">
+					<div className="flex items-center justify-between px-3 py-2 border-b border-[#3d4a57]"><div><div className="text-xs font-medium text-[#e1e6ea]">Tilesheet</div><div className="text-[10px] text-[#637588]">Select a tile for Paint</div></div><div className="text-[10px] font-mono text-[#637588]">{columns} × {rows}</div></div>
+					<div className="max-h-52 overflow-auto p-2">
+						<div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${paletteCols}, minmax(0, 1fr))` }}>
+							{Array.from({ length: tileCount }, (_, i) => { const col = i % columns; const row = Math.floor(i / columns); const selected = i === selectedTile; return <button key={i} type="button" title={`Tile ${i + 1}`} onClick={() => { setSelectedTile(i); setTool('paint'); }} className={`relative overflow-hidden rounded border ${selected ? 'border-[#85B7EB] ring-1 ring-[#85B7EB]/50' : 'border-[#3d4a57] hover:border-[#8291a1]'}`} style={{ width: '100%', aspectRatio: `${tileWidth}/${tileHeight}`, backgroundColor: '#14191e' }}><span className="absolute inset-0" style={{ backgroundImage: `url(${imageUrl})`, backgroundRepeat: 'no-repeat', backgroundSize: `${columns * 100}% ${rows * 100}%`, backgroundPosition: `${columns <= 1 ? 0 : (col / (columns - 1)) * 100}% ${rows <= 1 ? 0 : (row / (rows - 1)) * 100}%`, imageRendering: 'pixelated' }} /><span className="absolute bottom-0 right-0 px-1 text-[8px] bg-black/65 text-white">{i + 1}</span></button>; })}
+						</div>
+					</div>
+					<div className="px-3 py-2 border-t border-[#3d4a57] flex items-center justify-between text-[10px] text-[#8291a1]"><span>Selected tile: <span className="font-mono text-[#c5ccd3]">{selectedTile + 1}</span></span><span>GID: <span className="font-mono text-[#c5ccd3]">{firstGid + selectedTile}</span></span></div>
+				</div>}
 			</div>
 		</div>
 	);
@@ -3921,7 +4033,7 @@ export default function GameContentEditor() {
 					</nav>
 
 					{activeTab === MAP_TAB.key ? (
-						<MapPreview gameData={gameData} resolveAssetUrl={resolveAssetUrl} />
+						<MapPreview gameData={gameData} setGameData={setGameData} resolveAssetUrl={resolveAssetUrl} />
 					) : isEntityTab ? (
 						<>
 							{/* List pane */}
