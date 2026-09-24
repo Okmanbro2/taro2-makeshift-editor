@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2 } from 'lucide-react';
+import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2, Paintbrush, Eraser, Move, Eye, EyeOff } from 'lucide-react';
 
 const ENTITY_TABS = [
 	{ key: 'unitTypes', label: 'Units', folderType: 'unit', root: 'units' },
@@ -1677,6 +1677,7 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	const map = gameData?.data?.map;
 	const canvasRef = useRef(null);
 	const viewportRef = useRef(null);
+	const imageRef = useRef(null);
 	const dragRef = useRef(null);
 	const [zoom, setZoom] = useState(0.32);
 	const [offset, setOffset] = useState({ x: 40, y: 40 });
@@ -1733,9 +1734,10 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	useEffect(() => {
 		setImageReady(false);
 		setImageError(false);
+		imageRef.current = null;
 		if (!imageUrl) return;
 		const img = new Image();
-		img.onload = () => setImageReady(true);
+		img.onload = () => { imageRef.current = img; setImageReady(true); };
 		img.onerror = () => setImageError(true);
 		img.src = imageUrl;
 		return () => { img.onload = null; img.onerror = null; };
@@ -1776,49 +1778,54 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 		const dpr = Math.min(window.devicePixelRatio || 1, 2);
 		const drawWidth = Math.max(1, Math.round(width * tileWidth * zoom));
 		const drawHeight = Math.max(1, Math.round(height * tileHeight * zoom));
-		canvas.width = Math.round(drawWidth * dpr);
-		canvas.height = Math.round(drawHeight * dpr);
+		const targetWidth = Math.round(drawWidth * dpr);
+		const targetHeight = Math.round(drawHeight * dpr);
+		if (canvas.width !== targetWidth) canvas.width = targetWidth;
+		if (canvas.height !== targetHeight) canvas.height = targetHeight;
 		canvas.style.width = `${drawWidth}px`;
 		canvas.style.height = `${drawHeight}px`;
+	}, [width, height, tileWidth, tileHeight, zoom]);
+
+	useEffect(() => {
+		const canvas = canvasRef.current;
+		const img = imageRef.current;
+		if (!canvas || !width || !height || !img) return;
+		const dpr = Math.min(window.devicePixelRatio || 1, 2);
+		const drawWidth = Math.max(1, Math.round(width * tileWidth * zoom));
+		const drawHeight = Math.max(1, Math.round(height * tileHeight * zoom));
 		const ctx = canvas.getContext('2d');
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		ctx.imageSmoothingEnabled = false;
 		ctx.clearRect(0, 0, drawWidth, drawHeight);
 		ctx.fillStyle = '#14191e';
 		ctx.fillRect(0, 0, drawWidth, drawHeight);
-		if (!imageReady || !imageUrl) return;
-		const img = new Image();
-		img.onload = () => {
-			ctx.clearRect(0, 0, drawWidth, drawHeight);
-			for (const layer of layers) {
-				if (layer.visible === false) continue;
-				const opacity = Number.isFinite(Number(layer.opacity)) ? Number(layer.opacity) : 1;
-				ctx.globalAlpha = opacity;
-				const layerOffsetX = Number(layer.x || 0) * tileWidth * zoom;
-				const layerOffsetY = Number(layer.y || 0) * tileHeight * zoom;
-				for (let i = 0; i < layer.data.length; i++) {
-					const rawGid = Number(layer.data[i]) || 0;
-					if (!rawGid) continue;
-					const gid = rawGid & 0x1fffffff;
-					const local = gid - firstGid;
-					if (local < 0 || local >= tileCount) continue;
-					const sx = (local % columns) * tileWidth;
-					const sy = Math.floor(local / columns) * tileHeight;
-					const dx = (i % width) * tileWidth * zoom + layerOffsetX;
-					const dy = Math.floor(i / width) * tileHeight * zoom + layerOffsetY;
-					ctx.drawImage(img, sx, sy, tileWidth, tileHeight, dx, dy, tileWidth * zoom, tileHeight * zoom);
-				}
+		for (const layer of layers) {
+			if (layer.visible === false) continue;
+			const opacity = Number.isFinite(Number(layer.opacity)) ? Number(layer.opacity) : 1;
+			ctx.globalAlpha = opacity;
+			const layerOffsetX = Number(layer.x || 0) * tileWidth * zoom;
+			const layerOffsetY = Number(layer.y || 0) * tileHeight * zoom;
+			for (let i = 0; i < layer.data.length; i++) {
+				const rawGid = Number(layer.data[i]) || 0;
+				if (!rawGid) continue;
+				const gid = rawGid & 0x1fffffff;
+				const local = gid - firstGid;
+				if (local < 0 || local >= tileCount) continue;
+				const sx = (local % columns) * tileWidth;
+				const sy = Math.floor(local / columns) * tileHeight;
+				const dx = (i % width) * tileWidth * zoom + layerOffsetX;
+				const dy = Math.floor(i / width) * tileHeight * zoom + layerOffsetY;
+				ctx.drawImage(img, sx, sy, tileWidth, tileHeight, dx, dy, tileWidth * zoom, tileHeight * zoom);
 			}
-			ctx.globalAlpha = 1;
-			if (zoom >= 0.5) {
-				ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-				ctx.lineWidth = 1;
-				for (let x = 0; x <= width; x++) { const px = x * tileWidth * zoom + 0.5; ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, drawHeight); ctx.stroke(); }
-				for (let y = 0; y <= height; y++) { const py = y * tileHeight * zoom + 0.5; ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(drawWidth, py); ctx.stroke(); }
-			}
-		};
-		img.src = imageUrl;
-	}, [layers, width, height, tileWidth, tileHeight, firstGid, tileCount, columns, imageUrl, imageReady, zoom]);
+		}
+		ctx.globalAlpha = 1;
+		if (zoom >= 0.5) {
+			ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+			ctx.lineWidth = 1;
+			for (let x = 0; x <= width; x++) { const px = x * tileWidth * zoom + 0.5; ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, drawHeight); ctx.stroke(); }
+			for (let y = 0; y <= height; y++) { const py = y * tileHeight * zoom + 0.5; ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(drawWidth, py); ctx.stroke(); }
+		}
+	}, [layers, width, height, tileWidth, tileHeight, firstGid, tileCount, columns, imageReady, zoom]);
 
 	const paintAtPointer = (e, erase = false) => {
 		if (!activeLayer || !canvasRef.current || !width || !height) return;
@@ -1835,8 +1842,8 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 		setGameData((prev) => {
 			if (!prev?.data?.map) return prev;
 			const next = structuredClone(prev);
-			const targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers : [];
-			const target = targetLayers.filter((l) => Array.isArray(l?.data))[activeLayerIndex];
+			const targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers.filter((l) => Array.isArray(l?.data)) : [];
+			const target = targetLayers[activeLayerIndex];
 			if (!target) return prev;
 			const data = Array.isArray(target.data) ? [...target.data] : [];
 			while (data.length < width * height) data.push(0);
@@ -1876,12 +1883,27 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	};
 	const handlePointerUp = () => endPan();
 
+	const handleWheel = (e) => {
+		e.preventDefault();
+		if (!viewportRef.current) return;
+		const rect = viewportRef.current.getBoundingClientRect();
+		const pointerX = e.clientX - rect.left;
+		const pointerY = e.clientY - rect.top;
+		const factor = Math.exp(-e.deltaY * 0.0015);
+		const nextZoom = Math.max(0.15, Math.min(3, zoom * factor));
+		if (Math.abs(nextZoom - zoom) < 0.0001) return;
+		const mapX = (pointerX - offset.x) / zoom;
+		const mapY = (pointerY - offset.y) / zoom;
+		setZoom(nextZoom);
+		setOffset(clampOffset(pointerX - mapX * nextZoom, pointerY - mapY * nextZoom, nextZoom));
+	};
+
 	useEffect(() => {
 		const onKey = (e) => {
 			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
 			if (e.key.toLowerCase() === 'p') setTool('paint');
 			if (e.key.toLowerCase() === 'e') setTool('erase');
-			if (e.key === ' ') setTool((t) => t === 'pan' ? 'paint' : 'pan');
+			if (e.key === ' ') { e.preventDefault(); setTool((t) => t === 'pan' ? 'paint' : 'pan'); }
 		};
 		window.addEventListener('keydown', onKey);
 		return () => window.removeEventListener('keydown', onKey);
@@ -1899,23 +1921,26 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	};
 
 	if (!map) return <div className="flex-1 flex items-center justify-center text-sm text-[#637588]">This game has no map data.</div>;
-	const paletteTileW = 44;
-	const paletteTileH = Math.max(30, Math.round(paletteTileW * tileHeight / Math.max(1, tileWidth)));
-	const paletteCols = Math.min(columns, 8);
-	const paletteScaleX = paletteTileW / tileWidth;
-	const paletteScaleY = paletteTileH / tileHeight;
+	const sheetImage = imageRef.current;
+	const sheetNaturalW = Number(sheetImage?.naturalWidth || tileset?.imagewidth || columns * tileWidth);
+	const sheetNaturalH = Number(sheetImage?.naturalHeight || tileset?.imageheight || rows * tileHeight);
+	const sheetScale = Math.min(1, 430 / Math.max(1, sheetNaturalW));
+	const sheetW = Math.max(1, Math.round(sheetNaturalW * sheetScale));
+	const sheetH = Math.max(1, Math.round(sheetNaturalH * sheetScale));
+	const sheetTileW = tileWidth * sheetScale;
+	const sheetTileH = tileHeight * sheetScale;
 
 	return (
 		<div className="flex-1 min-w-0 flex flex-col bg-[#171d22]">
 			<div className="h-12 shrink-0 border-b border-[#3d4a57] bg-[#262e36] flex items-center justify-between px-4">
 				<div>
 					<div className="text-sm font-medium text-[#e1e6ea]">Map View</div>
-					<div className="text-[11px] text-[#637588]">{tool === 'paint' ? 'Paint selected tile' : tool === 'erase' ? 'Erase tiles' : 'Preview / pan'} • P paint • E erase • Space pan</div>
+					<div className="text-[11px] text-[#637588]">{tool === 'paint' ? 'Paint selected tile' : tool === 'erase' ? 'Erase tiles' : 'Preview / pan'} • P paint • E erase • wheel zoom</div>
 				</div>
-				<div className="text-xs text-[#8291a1] font-mono">{width} × {height} • {tileWidth} × {tileHeight}</div>
+				<div className="text-xs text-[#8291a1] font-mono">{width} × {height} • {tileWidth} × {tileHeight} • {Math.round(zoom * 100)}%</div>
 			</div>
 			<div className="relative flex-1 min-h-0 overflow-hidden">
-				<div ref={viewportRef} onContextMenu={(e) => e.preventDefault()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} className={`absolute inset-0 overflow-hidden select-none ${dragging ? 'cursor-grabbing' : tool === 'paint' || tool === 'erase' ? 'cursor-crosshair' : 'cursor-grab'}`}>
+				<div ref={viewportRef} onWheel={handleWheel} onContextMenu={(e) => e.preventDefault()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} className={`absolute inset-0 overflow-hidden select-none ${dragging ? 'cursor-grabbing' : tool === 'paint' || tool === 'erase' ? 'cursor-crosshair' : 'cursor-grab'}`}>
 					<div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#48596a 1px, transparent 1px), linear-gradient(90deg, #48596a 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
 					<div className="absolute" style={{ left: offset.x, top: offset.y, width: mapPixelWidth, height: mapPixelHeight }}>
 						<canvas ref={canvasRef} className="block" />
@@ -1925,34 +1950,40 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 					{!imageError && !imageReady && imageUrl && <div className="absolute top-4 left-4 rounded-md border border-[#3d4a57] bg-[#20272e]/90 px-3 py-2 text-xs text-[#8291a1]">Loading tilesheet…</div>}
 				</div>
 
-				<div className="absolute top-3 left-3 z-20 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 p-1.5 flex gap-1 shadow-lg">
-					{[['paint','P','Paint'],['erase','E','Erase'],['pan','↔','Pan']].map(([key, icon, label]) => <button key={key} type="button" title={label} onClick={() => setTool(key)} className={`w-9 h-9 rounded border text-xs font-mono ${tool === key ? 'border-[#85B7EB] bg-[#334252] text-[#e1e6ea]' : 'border-transparent text-[#8291a1] hover:bg-[#2c3741]'}`}>{icon}</button>)}
+				<div className="absolute top-3 left-3 z-20 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 p-1 flex gap-0.5 shadow-lg">
+					{[
+						['paint', Paintbrush, 'Paint'],
+						['erase', Eraser, 'Erase'],
+						['pan', Move, 'Pan']
+					].map(([key, Icon, label]) => <button key={key} type="button" title={`${label} (${key === 'paint' ? 'P' : key === 'erase' ? 'E' : 'Space'})`} onClick={() => setTool(key)} className={`w-8 h-8 rounded-md flex items-center justify-center border ${tool === key ? 'border-[#85B7EB] bg-[#334252] text-[#e1e6ea]' : 'border-transparent text-[#8291a1] hover:bg-[#2c3741]'}`}><Icon size={15} strokeWidth={1.8} /></button>)}
 				</div>
 
-				<div className="absolute left-3 top-16 z-20 w-48 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 shadow-lg overflow-hidden">
-					<div className="px-3 py-2 border-b border-[#3d4a57] text-[10px] uppercase tracking-wide text-[#637588]">Layers</div>
+				<div className="absolute left-3 top-16 z-20 w-36 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 shadow-lg overflow-hidden">
+					<div className="px-2.5 py-1.5 border-b border-[#3d4a57] text-[9px] uppercase tracking-wide text-[#637588]">Layers</div>
 					<div className="max-h-64 overflow-auto p-1">
-						{layers.map((layer, i) => <div key={i} className={`flex items-center gap-1 rounded px-1.5 py-1 ${activeLayerIndex === i ? 'bg-[#334252]' : 'hover:bg-[#2c3741]'}`}>
-							<button type="button" onClick={() => setActiveLayerIndex(i)} className="min-w-0 flex-1 text-left text-xs text-[#c5ccd3] truncate">{layer.name || `Layer ${i + 1}`}</button>
-							<button type="button" title={layer.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => toggleLayerVisibility(i)} className={`w-7 h-7 rounded text-xs ${layer.visible === false ? 'text-[#48596a]' : 'text-[#c5ccd3] hover:bg-[#3a4652]'}`}>{layer.visible === false ? '○' : '◉'}</button>
+						{layers.map((layer, i) => <div key={i} className={`flex items-center gap-1 rounded px-1 py-1 ${activeLayerIndex === i ? 'bg-[#334252]' : 'hover:bg-[#2c3741]'}`}>
+							<button type="button" onClick={() => setActiveLayerIndex(i)} className="min-w-0 flex-1 text-left text-[11px] text-[#c5ccd3] truncate">{layer.name || `Layer ${i + 1}`}</button>
+							<button type="button" title={layer.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => toggleLayerVisibility(i)} className={`w-6 h-6 rounded flex items-center justify-center ${layer.visible === false ? 'text-[#48596a]' : 'text-[#c5ccd3] hover:bg-[#3a4652]'}`}>{layer.visible === false ? <EyeOff size={13} /> : <Eye size={13} />}</button>
 						</div>)}
 						{layers.length === 0 && <div className="px-2 py-2 text-xs text-[#637588]">No tile layers found.</div>}
 					</div>
 				</div>
 
-				{imageReady && <div className="absolute right-3 bottom-3 z-20 w-[360px] max-w-[calc(100%-24px)] rounded-lg border border-[#3d4a57] bg-[#20272e]/96 shadow-xl overflow-hidden">
-					<div className="flex items-center justify-between px-3 py-2 border-b border-[#3d4a57]"><div><div className="text-xs font-medium text-[#e1e6ea]">Tilesheet</div><div className="text-[10px] text-[#637588]">Select a tile for Paint</div></div><div className="text-[10px] font-mono text-[#637588]">{columns} × {rows}</div></div>
-					<div className="max-h-52 overflow-auto p-2">
-						<div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${paletteCols}, minmax(0, 1fr))` }}>
-							{Array.from({ length: tileCount }, (_, i) => { const col = i % columns; const row = Math.floor(i / columns); const selected = i === selectedTile; return <button key={i} type="button" title={`Tile ${i + 1}`} onClick={() => { setSelectedTile(i); setTool('paint'); }} className={`relative overflow-hidden rounded border ${selected ? 'border-[#85B7EB] ring-1 ring-[#85B7EB]/50' : 'border-[#3d4a57] hover:border-[#8291a1]'}`} style={{ width: '100%', aspectRatio: `${tileWidth}/${tileHeight}`, backgroundColor: '#14191e' }}><span className="absolute inset-0" style={{ backgroundImage: `url(${imageUrl})`, backgroundRepeat: 'no-repeat', backgroundSize: `${columns * 100}% ${rows * 100}%`, backgroundPosition: `${columns <= 1 ? 0 : (col / (columns - 1)) * 100}% ${rows <= 1 ? 0 : (row / (rows - 1)) * 100}%`, imageRendering: 'pixelated' }} /><span className="absolute bottom-0 right-0 px-1 text-[8px] bg-black/65 text-white">{i + 1}</span></button>; })}
+				{imageReady && <div className="absolute right-3 bottom-3 z-20 w-[470px] max-w-[calc(100%-24px)] rounded-lg border border-[#3d4a57] bg-[#20272e]/96 shadow-xl overflow-hidden">
+					<div className="flex items-center justify-between px-3 py-2 border-b border-[#3d4a57]"><div><div className="text-xs font-medium text-[#e1e6ea]">Tilesheet</div><div className="text-[10px] text-[#637588]">Click a tile on the sheet to paint with it</div></div><div className="text-[10px] font-mono text-[#637588]">{columns} × {rows}</div></div>
+					<div className="max-h-[360px] overflow-auto p-2 bg-[#171d22]">
+						<div className="relative" style={{ width: sheetW, height: sheetH }}>
+							<img src={imageUrl} alt="Tilesheet" draggable={false} className="absolute inset-0 block max-w-none select-none" style={{ width: sheetW, height: sheetH, imageRendering: 'pixelated' }} />
+							{Array.from({ length: tileCount }, (_, i) => { const col = i % columns; const row = Math.floor(i / columns); const selected = i === selectedTile; return <button key={i} type="button" title={`Tile ${i + 1} • GID ${firstGid + i}`} onClick={() => { setSelectedTile(i); setTool('paint'); }} className={`absolute p-0 m-0 border ${selected ? 'border-[#ffffff] bg-white/10' : 'border-transparent hover:border-white/70 hover:bg-white/10'}`} style={{ left: col * sheetTileW, top: row * sheetTileH, width: sheetTileW, height: sheetTileH }} />; })}
 						</div>
 					</div>
-					<div className="px-3 py-2 border-t border-[#3d4a57] flex items-center justify-between text-[10px] text-[#8291a1]"><span>Selected tile: <span className="font-mono text-[#c5ccd3]">{selectedTile + 1}</span></span><span>GID: <span className="font-mono text-[#c5ccd3]">{firstGid + selectedTile}</span></span></div>
+					<div className="px-3 py-1.5 border-t border-[#3d4a57] flex items-center justify-between text-[10px] text-[#637588]"><span>Selected tile: {selectedTile + 1}</span><span>GID: {firstGid + selectedTile}</span></div>
 				</div>}
 			</div>
 		</div>
 	);
 }
+
 
 export default function GameContentEditor() {
 	const [gameData, setGameData] = useState(null);
@@ -3835,8 +3866,8 @@ export default function GameContentEditor() {
 		<div className="min-h-screen bg-[#262e36] text-[#e1e6ea] font-sans">
 			<header className="border-b border-[#3d4a57] bg-[#323d48]/60 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
 				<div>
-					<h1 className="text-lg font-semibold text-[#1a56da] tracking-tight">Content Editor</h1>
-					<p className="text-xs text-[#8291a1] mt-0.5">Create and edit units, items, and projectiles outside the live editor</p>
+					<h1 className="text-lg font-semibold text-[#1a56da] tracking-tight">TARO Friendly Editor</h1>
+					<p className="text-xs text-[#8291a1] mt-0.5">Because someone had to do it</p>
 				</div>
 				<div className="flex items-center gap-2">
 					{gameData && (
