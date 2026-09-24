@@ -1694,6 +1694,11 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	const [imageReady, setImageReady] = useState(false);
 	const [imageError, setImageError] = useState(false);
 	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+	const [objectMenu, setObjectMenu] = useState(null);
+	const [objectMenuTab, setObjectMenuTab] = useState('unitTypes');
+	const [objectSearch, setObjectSearch] = useState('');
+	const [selectedObjectId, setSelectedObjectId] = useState(null);
+	const [objectDrag, setObjectDrag] = useState(null);
 
 	const width = Number(map?.width) || 0;
 	const height = Number(map?.height) || 0;
@@ -1720,22 +1725,16 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 			const y = Number(d.y ?? r.y ?? r.position?.y ?? 0);
 			const w = Number(d.width ?? r.width ?? r.size?.width ?? r.dimensions?.width ?? 0);
 			const h = Number(d.height ?? r.height ?? r.size?.height ?? r.dimensions?.height ?? 0);
-			if (w > 0 && h > 0) out.push({ id, name: r.name || r.key || id || 'Region', x, y, width: w, height: h });
+			if (w > 0 && h > 0) out.push({ id: String(id), name: r.name || r.key || id || 'Region', x, y, width: w, height: h });
 		};
-
 		const variables = gameData?.data?.variables || {};
-		for (const [id, value] of Object.entries(variables)) {
-			if (value?.dataType === 'region') addRegion(id, value);
-		}
-
+		for (const [id, value] of Object.entries(variables)) if (value?.dataType === 'region') addRegion(id, value);
 		const regions = gameData?.data?.regions || map?.regions;
 		if (Array.isArray(regions)) regions.forEach((r, i) => addRegion(r?.id || r?.key || String(i), r));
 		else if (regions && typeof regions === 'object') Object.entries(regions).forEach(([id, r]) => addRegion(id, r));
 		for (const layer of (Array.isArray(map?.layers) ? map.layers : [])) {
 			if (layer?.type !== 'objectgroup' || !Array.isArray(layer.objects)) continue;
-			for (const obj of layer.objects) {
-				if (obj?.type === 'region' || obj?.class === 'region' || obj?.properties?.isRegion || /^region$/i.test(layer.name || '')) addRegion(obj.id ?? obj.name, obj);
-			}
+			for (const obj of layer.objects) if (obj?.type === 'region' || obj?.class === 'region' || obj?.properties?.isRegion || /^region$/i.test(layer.name || '')) addRegion(obj.id ?? obj.name, obj);
 		}
 		return out;
 	}, [gameData, map]);
@@ -1747,15 +1746,10 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 			return next;
 		});
 	}, [regionEntries]);
+	useEffect(() => { if (activeLayerIndex >= layers.length) setActiveLayerIndex(Math.max(0, layers.length - 1)); }, [layers.length, activeLayerIndex]);
 
 	useEffect(() => {
-		if (activeLayerIndex >= layers.length) setActiveLayerIndex(Math.max(0, layers.length - 1));
-	}, [layers.length, activeLayerIndex]);
-
-	useEffect(() => {
-		setImageReady(false);
-		setImageError(false);
-		imageRef.current = null;
+		setImageReady(false); setImageError(false); imageRef.current = null;
 		if (!imageUrl) return;
 		const img = new Image();
 		img.onload = () => { imageRef.current = img; setImageReady(true); };
@@ -1775,23 +1769,13 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	}, []);
 
 	const clampOffset = (x, y, z = zoom) => {
-		const vw = viewportSize.width || 0;
-		const vh = viewportSize.height || 0;
-		const mw = width * tileWidth * z;
-		const mh = height * tileHeight * z;
-		const pad = 24;
-		let nx;
-		let ny;
-		if (mw <= vw - pad * 2) nx = (vw - mw) / 2;
-		else nx = Math.min(pad, Math.max(vw - mw - pad, x));
-		if (mh <= vh - pad * 2) ny = (vh - mh) / 2;
-		else ny = Math.min(pad, Math.max(vh - mh - pad, y));
-		return { x: nx, y: ny };
+		const vw = viewportSize.width || 0, vh = viewportSize.height || 0, mw = width * tileWidth * z, mh = height * tileHeight * z, pad = 24;
+		return {
+			x: mw <= vw - pad * 2 ? (vw - mw) / 2 : Math.min(pad, Math.max(vw - mw - pad, x)),
+			y: mh <= vh - pad * 2 ? (vh - mh) / 2 : Math.min(pad, Math.max(vh - mh - pad, y)),
+		};
 	};
-
-	useEffect(() => {
-		setOffset((o) => clampOffset(o.x, o.y));
-	}, [zoom, viewportSize.width, viewportSize.height, width, height, tileWidth, tileHeight]);
+	useEffect(() => { setOffset((o) => clampOffset(o.x, o.y)); }, [zoom, viewportSize.width, viewportSize.height, width, height, tileWidth, tileHeight]);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -1799,428 +1783,300 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 		const dpr = Math.min(window.devicePixelRatio || 1, 2);
 		const drawWidth = Math.max(1, Math.round(width * tileWidth * zoom));
 		const drawHeight = Math.max(1, Math.round(height * tileHeight * zoom));
-		const targetWidth = Math.round(drawWidth * dpr);
-		const targetHeight = Math.round(drawHeight * dpr);
+		const targetWidth = Math.round(drawWidth * dpr), targetHeight = Math.round(drawHeight * dpr);
 		if (canvas.width !== targetWidth) canvas.width = targetWidth;
 		if (canvas.height !== targetHeight) canvas.height = targetHeight;
-		canvas.style.width = `${drawWidth}px`;
-		canvas.style.height = `${drawHeight}px`;
+		canvas.style.width = `${drawWidth}px`; canvas.style.height = `${drawHeight}px`;
 	}, [width, height, tileWidth, tileHeight, zoom]);
 
 	useEffect(() => {
-		const canvas = canvasRef.current;
-		const img = imageRef.current;
+		const canvas = canvasRef.current, img = imageRef.current;
 		if (!canvas || !width || !height || !img) return;
 		const dpr = Math.min(window.devicePixelRatio || 1, 2);
 		const drawWidth = Math.max(1, Math.round(width * tileWidth * zoom));
 		const drawHeight = Math.max(1, Math.round(height * tileHeight * zoom));
 		const ctx = canvas.getContext('2d');
-		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-		ctx.imageSmoothingEnabled = false;
-		ctx.clearRect(0, 0, drawWidth, drawHeight);
-		ctx.fillStyle = '#14191e';
-		ctx.fillRect(0, 0, drawWidth, drawHeight);
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, drawWidth, drawHeight); ctx.fillStyle = '#14191e'; ctx.fillRect(0, 0, drawWidth, drawHeight);
 		for (const layer of layers) {
 			if (layer.visible === false) continue;
-			const opacity = Number.isFinite(Number(layer.opacity)) ? Number(layer.opacity) : 1;
-			ctx.globalAlpha = opacity;
-			const layerOffsetX = Number(layer.x || 0) * tileWidth * zoom;
-			const layerOffsetY = Number(layer.y || 0) * tileHeight * zoom;
+			ctx.globalAlpha = Number.isFinite(Number(layer.opacity)) ? Number(layer.opacity) : 1;
+			const ox = Number(layer.x || 0) * tileWidth * zoom, oy = Number(layer.y || 0) * tileHeight * zoom;
 			for (let i = 0; i < layer.data.length; i++) {
-				const rawGid = Number(layer.data[i]) || 0;
-				if (!rawGid) continue;
-				const gid = rawGid & 0x1fffffff;
-				const local = gid - firstGid;
-				if (local < 0 || local >= tileCount) continue;
-				const sx = (local % columns) * tileWidth;
-				const sy = Math.floor(local / columns) * tileHeight;
-				const dx = (i % width) * tileWidth * zoom + layerOffsetX;
-				const dy = Math.floor(i / width) * tileHeight * zoom + layerOffsetY;
+				const rawGid = Number(layer.data[i]) || 0; if (!rawGid) continue;
+				const gid = rawGid & 0x1fffffff, local = gid - firstGid; if (local < 0 || local >= tileCount) continue;
+				const sx = (local % columns) * tileWidth, sy = Math.floor(local / columns) * tileHeight;
+				const dx = (i % width) * tileWidth * zoom + ox, dy = Math.floor(i / width) * tileHeight * zoom + oy;
 				ctx.drawImage(img, sx, sy, tileWidth, tileHeight, dx, dy, tileWidth * zoom, tileHeight * zoom);
 			}
 		}
 		ctx.globalAlpha = 1;
 		if (zoom >= 0.5) {
-			ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-			ctx.lineWidth = 1;
+			ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
 			for (let x = 0; x <= width; x++) { const px = x * tileWidth * zoom + 0.5; ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, drawHeight); ctx.stroke(); }
 			for (let y = 0; y <= height; y++) { const py = y * tileHeight * zoom + 0.5; ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(drawWidth, py); ctx.stroke(); }
 		}
 	}, [layers, width, height, tileWidth, tileHeight, firstGid, tileCount, columns, imageReady, zoom]);
 
+	const getInitializeScript = (data) => {
+		if (!data.data) return null;
+		data.data.scripts = data.data.scripts || {};
+		if (!data.data.scripts.initialize) {
+			data.data.scripts.initialize = { order: 0, key: 'initialize', parent: null, name: 'initialize', actions: [], conditions: [{ operandType: 'boolean', operator: '==' }, true, true], triggers: [{ type: 'gameStart' }] };
+		}
+		return data.data.scripts.initialize;
+	};
+
+	const valueXY = (value) => {
+		if (!value || typeof value !== 'object') return { x: 0, y: 0 };
+		if (value.function === 'xyCoordinate') return { x: Number(value.x) || 0, y: Number(value.y) || 0 };
+		if (value.x !== undefined || value.y !== undefined) return { x: Number(value.x) || 0, y: Number(value.y) || 0 };
+		return { x: 0, y: 0 };
+	};
+	const makeXY = (x, y) => ({ function: 'xyCoordinate', x: Math.round(x), y: Math.round(y) });
+
+	const objectEntries = useMemo(() => {
+		const actions = gameData?.data?.scripts?.initialize?.actions;
+		if (!Array.isArray(actions)) return [];
+		const units = gameData?.data?.unitTypes || {}, items = gameData?.data?.itemTypes || {}, projectiles = gameData?.data?.projectileTypes || {};
+		return actions.map((a, index) => {
+			let kind = null, typeId = null;
+			if (a?.type === 'createEntityForPlayerAtPositionWithDimensions' && a.entityType === 'unitTypes') { kind = 'unitTypes'; typeId = a.entity; }
+			else if (a?.type === 'createUnitAtPosition') { kind = 'unitTypes'; typeId = a.unitType || a.entity; }
+			else if (a?.type === 'createItemAtPositionWithQuantity' || a?.type === 'createItemWithMaxQuantityAtPosition') { kind = 'itemTypes'; typeId = a.itemType; }
+			else if (a?.type === 'createProjectileAtPosition') { kind = 'projectileTypes'; typeId = a.projectileType; }
+			if (!kind || !typeId) return null;
+			const collection = kind === 'unitTypes' ? units : kind === 'itemTypes' ? items : projectiles;
+			const def = collection[typeId] || {};
+			const pos = valueXY(a.position);
+			const w = Number(a.width) || Number(def.width) || Number(def.body?.width) || (kind === 'unitTypes' ? 64 : 32);
+			const h = Number(a.height) || Number(def.height) || Number(def.body?.height) || (kind === 'unitTypes' ? 64 : 32);
+			return { id: `${index}`, index, kind, typeId, name: def.name || typeId, x: pos.x, y: pos.y, width: w, height: h, angle: Number(a.angle) || 0, action: a };
+		}).filter(Boolean);
+	}, [gameData]);
+
+	const selectedObject = objectEntries.find((o) => o.id === selectedObjectId) || null;
+	const typeCollections = { unitTypes: gameData?.data?.unitTypes || {}, itemTypes: gameData?.data?.itemTypes || {}, projectileTypes: gameData?.data?.projectileTypes || {} };
+	const playerVariables = useMemo(() => Object.entries(gameData?.data?.variables || {}).filter(([, v]) => v?.dataType === 'player').sort((a,b) => (a[1]?.name || a[0]).localeCompare(b[1]?.name || b[0])), [gameData]);
+
+	const updateObjectAction = (objectId, updater) => {
+		const index = Number(objectId); if (!Number.isInteger(index)) return;
+		setGameData((prev) => {
+			if (!prev?.data) return prev;
+			const next = structuredClone(prev);
+			const script = getInitializeScript(next); if (!script) return prev;
+			if (!script.actions[index]) return prev;
+			updater(script.actions[index]);
+			return next;
+		});
+	};
+
+	const createObject = (kind, typeId, world) => {
+		if (!typeId) return;
+		const id = generateKey();
+		setGameData((prev) => {
+			if (!prev?.data) return prev;
+			const next = structuredClone(prev), script = getInitializeScript(next);
+			if (!script) return prev;
+			const position = makeXY(world.x, world.y);
+			let action;
+			if (kind === 'unitTypes') {
+				const def = next.data.unitTypes?.[typeId] || {};
+				const w = Number(def.width) || Number(def.body?.width) || 64, h = Number(def.height) || Number(def.body?.height) || 64;
+				action = { type: 'createEntityForPlayerAtPositionWithDimensions', entityType: 'unitTypes', entity: typeId, position, angle: 0, height: h, width: w };
+			} else if (kind === 'itemTypes') {
+				action = { type: 'createItemAtPositionWithQuantity', itemType: typeId, position, quantity: 1 };
+			} else {
+				action = { type: 'createProjectileAtPosition', projectileType: typeId, position, force: 0, angle: 0 };
+			}
+			script.actions.push(action);
+			return next;
+		});
+		setObjectMenu(null); setObjectSearch(''); setSelectedObjectId(null);
+		setTimeout(() => setSelectedObjectId(String((gameData?.data?.scripts?.initialize?.actions || []).length)), 0);
+	};
+
+	const removeObject = (objectId) => {
+		const index = Number(objectId); if (!Number.isInteger(index)) return;
+		setGameData((prev) => {
+			const next = structuredClone(prev), script = next?.data?.scripts?.initialize;
+			if (!script?.actions?.[index]) return prev;
+			script.actions.splice(index, 1); return next;
+		});
+		setSelectedObjectId(null);
+	};
+
+	const moveObject = (objectId, x, y) => updateObjectAction(objectId, (a) => { a.position = makeXY(x, y); });
+	const setObjectType = (objectId, kind, typeId) => updateObjectAction(objectId, (a) => {
+		if (kind === 'unitTypes') { a.type = 'createEntityForPlayerAtPositionWithDimensions'; a.entityType = 'unitTypes'; a.entity = typeId; delete a.unitType; }
+		else if (kind === 'itemTypes') { a.type = 'createItemAtPositionWithQuantity'; a.itemType = typeId; delete a.projectileType; }
+		else { a.type = 'createProjectileAtPosition'; a.projectileType = typeId; delete a.itemType; }
+	});
+
 	const fillAtPointer = (e) => {
 		if (!activeLayer) return;
-		const rect = viewportRef.current?.getBoundingClientRect();
-		if (!rect) return;
-		const pointerX = e.clientX - rect.left;
-		const pointerY = e.clientY - rect.top;
-		const mapX = pointerX - offset.x;
-		const mapY = pointerY - offset.y;
-		const col = Math.floor(mapX / (tileWidth * zoom));
-		const row = Math.floor(mapY / (tileHeight * zoom));
+		const point = worldPointFromEvent(e); if (!point) return;
+		const col = Math.floor(point.x / tileWidth), row = Math.floor(point.y / tileHeight);
 		if (col < 0 || row < 0 || col >= width || row >= height) return;
-		const startIndex = row * width + col;
-		const targetValue = Number(activeLayer.data?.[startIndex] || 0);
-		const replacementValue = firstGid + selectedTile;
-		if (targetValue === replacementValue) return;
-
+		const startIndex = row * width + col, replacementValue = firstGid + selectedTile;
 		setGameData((prev) => {
 			if (!prev?.data?.map) return prev;
 			const next = structuredClone(prev);
-			const targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers.filter((l) => Array.isArray(l?.data)) : [];
-			const target = targetLayers[activeLayerIndex];
+			const targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers.filter((l) => Array.isArray(l?.data)) : [], target = targetLayers[activeLayerIndex];
 			if (!target) return prev;
 			const data = Array.isArray(target.data) ? [...target.data] : [];
 			while (data.length < width * height) data.push(0);
-			const oldValue = Number(data[startIndex] || 0);
-			if (oldValue === replacementValue) return prev;
-			const queue = [startIndex];
-			const visited = new Uint8Array(width * height);
-			visited[startIndex] = 1;
+			const oldValue = Number(data[startIndex] || 0); if (oldValue === replacementValue) return prev;
+			const queue = [startIndex], visited = new Uint8Array(width * height); visited[startIndex] = 1;
 			while (queue.length) {
-				const index = queue.pop();
-				if (Number(data[index] || 0) !== oldValue) continue;
-				data[index] = replacementValue;
-				const c = index % width;
-				const r = Math.floor(index / width);
-				const neighbors = [];
-				if (c > 0) neighbors.push(index - 1);
-				if (c < width - 1) neighbors.push(index + 1);
-				if (r > 0) neighbors.push(index - width);
-				if (r < height - 1) neighbors.push(index + width);
-				for (const n of neighbors) {
-					if (!visited[n] && Number(data[n] || 0) === oldValue) { visited[n] = 1; queue.push(n); }
-				}
+				const index = queue.pop(); if (Number(data[index] || 0) !== oldValue) continue;
+				data[index] = replacementValue; const c = index % width, r = Math.floor(index / width), neighbors = [];
+				if (c > 0) neighbors.push(index - 1); if (c < width - 1) neighbors.push(index + 1); if (r > 0) neighbors.push(index - width); if (r < height - 1) neighbors.push(index + width);
+				for (const n of neighbors) if (!visited[n] && Number(data[n] || 0) === oldValue) { visited[n] = 1; queue.push(n); }
 			}
-			target.data = data;
-			return next;
+			target.data = data; return next;
 		});
 	};
 
 	const paintAtPointer = (e, erase = false) => {
-		if (!activeLayer || !canvasRef.current || !width || !height) return;
-		const rect = canvasRef.current.getBoundingClientRect();
-		const mapX = e.clientX - rect.left;
-		const mapY = e.clientY - rect.top;
-		if (mapX < 0 || mapY < 0 || mapX >= rect.width || mapY >= rect.height) return;
-		const col = Math.floor(mapX / (tileWidth * zoom));
-		const row = Math.floor(mapY / (tileHeight * zoom));
+		if (!activeLayer || !width || !height) return;
+		const point = worldPointFromEvent(e); if (!point) return;
+		const col = Math.floor(point.x / tileWidth), row = Math.floor(point.y / tileHeight);
 		if (col < 0 || row < 0 || col >= width || row >= height) return;
-		const index = row * width + col;
-		const value = erase ? 0 : firstGid + selectedTile;
-		if (Number(activeLayer.data?.[index] || 0) === value) return;
+		const index = row * width + col, value = erase ? 0 : firstGid + selectedTile;
 		setGameData((prev) => {
 			if (!prev?.data?.map) return prev;
-			const next = structuredClone(prev);
-			const targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers.filter((l) => Array.isArray(l?.data)) : [];
-			const target = targetLayers[activeLayerIndex];
+			const next = structuredClone(prev), targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers.filter((l) => Array.isArray(l?.data)) : [], target = targetLayers[activeLayerIndex];
 			if (!target) return prev;
-			const data = Array.isArray(target.data) ? [...target.data] : [];
-			while (data.length < width * height) data.push(0);
-			data[index] = value;
-			target.data = data;
-			return next;
+			const data = Array.isArray(target.data) ? [...target.data] : []; while (data.length < width * height) data.push(0); if (Number(data[index] || 0) === value) return prev; data[index] = value; target.data = data; return next;
 		});
 	};
 
 	const worldPointFromEvent = (e) => {
-		const rect = viewportRef.current?.getBoundingClientRect();
-		if (!rect) return null;
+		const rect = viewportRef.current?.getBoundingClientRect(); if (!rect) return null;
 		return { x: (e.clientX - rect.left - offset.x) / zoom, y: (e.clientY - rect.top - offset.y) / zoom };
 	};
-
-	const regionsAtWorldPoint = (point) => {
-		if (!point) return [];
-		return regionEntries.filter((r) => regionVisibility[r.id] !== false && point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height);
-	};
-
-	const openRegionAtPointer = (e) => {
-		const point = worldPointFromEvent(e);
-		const hits = regionsAtWorldPoint(point);
-		if (!hits.length) { setSelectedRegionId(null); setRegionPicker(null); return false; }
-		if (hits.length === 1) { setSelectedRegionId(hits[0].id); setRegionPicker(null); return true; }
-		setRegionPicker({ x: e.clientX, y: e.clientY, hits });
-		return true;
-	};
+	const regionsAtWorldPoint = (point) => point ? regionEntries.filter((r) => regionVisibility[r.id] !== false && point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height) : [];
+	const openRegionAtPointer = (e) => { const hits = regionsAtWorldPoint(worldPointFromEvent(e)); if (!hits.length) { setSelectedRegionId(null); setRegionPicker(null); return false; } if (hits.length === 1) { setSelectedRegionId(hits[0].id); setRegionPicker(null); return true; } setRegionPicker({ x: e.clientX, y: e.clientY, hits }); return true; };
 
 	const updateRegion = (regionId, patch) => {
 		setGameData((prev) => {
-			if (!prev?.data) return prev;
-			const next = structuredClone(prev);
-			const variables = next.data.variables || {};
-			const target = variables[regionId];
-			if (target?.dataType === 'region') {
-				if (Object.prototype.hasOwnProperty.call(patch, 'name')) target.name = patch.name;
-				const { name, ...geometry } = patch;
-				target.default = { ...(target.default || {}), ...geometry };
-				return next;
-			}
-			for (const collection of [next.data.regions, next.data.map?.regions]) {
-				if (!collection) continue;
-				const targetRegion = Array.isArray(collection) ? collection.find((r) => String(r?.id ?? r?.key) === String(regionId)) : collection[regionId];
-				if (targetRegion) { Object.assign(targetRegion, patch); return next; }
-			}
+			if (!prev?.data) return prev; const next = structuredClone(prev), variables = next.data.variables || {}, target = variables[regionId];
+			if (target?.dataType === 'region') { if (Object.prototype.hasOwnProperty.call(patch, 'name')) target.name = patch.name; const { name, ...geometry } = patch; target.default = { ...(target.default || {}), ...geometry }; return next; }
+			for (const collection of [next.data.regions, next.data.map?.regions]) { if (!collection) continue; const tr = Array.isArray(collection) ? collection.find((r) => String(r?.id ?? r?.key) === String(regionId)) : collection[regionId]; if (tr) { Object.assign(tr, patch); return next; } }
 			return prev;
 		});
 	};
+	const createRegion = (rect) => { const id = generateKey(), name = `Region ${regionEntries.length + 1}`; setGameData((prev) => { const next = structuredClone(prev); next.data.variables = next.data.variables || {}; next.data.variables[id] = { name, dataType: 'region', default: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) } }; return next; }); setSelectedRegionId(id); setRegionPicker(null); };
+	const deleteRegion = (regionId) => { setGameData((prev) => { const next = structuredClone(prev); if (next.data.variables?.[regionId]?.dataType === 'region') { delete next.data.variables[regionId]; return next; } for (const key of ['regions']) { const c = next.data[key]; if (Array.isArray(c)) next.data[key] = c.filter((r) => String(r?.id ?? r?.key) !== String(regionId)); else if (c && typeof c === 'object' && c[regionId]) delete c[regionId]; } return next; }); setSelectedRegionId(null); };
+	const beginRegionMove = (e) => { if (!selectedRegionId || e.button !== 0) return false; const point = worldPointFromEvent(e), r = regionEntries.find((x) => x.id === selectedRegionId); if (!point || !r || point.x < r.x || point.x > r.x + r.width || point.y < r.y || point.y > r.y + r.height) return false; e.preventDefault(); setRegionDrag({ mode: 'move', startX: point.x, startY: point.y, x: r.x, y: r.y, width: r.width, height: r.height }); setDragging(true); return true; };
+	const beginRegionResize = (e, r) => { e.preventDefault(); e.stopPropagation(); const point = worldPointFromEvent(e); if (!point) return; setSelectedRegionId(r.id); setRegionDrag({ mode: 'resize', startX: point.x, startY: point.y, x: r.x, y: r.y, width: r.width, height: r.height }); setDragging(true); };
 
-	const createRegion = (rect) => {
-		const id = generateKey();
-		const name = `Region ${regionEntries.length + 1}`;
-		setGameData((prev) => {
-			if (!prev?.data) return prev;
-			const next = structuredClone(prev);
-			next.data.variables = next.data.variables || {};
-			next.data.variables[id] = { name, dataType: 'region', default: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) } };
-			return next;
-		});
-		setSelectedRegionId(id);
-		setRegionPicker(null);
-	};
-
-	const deleteRegion = (regionId) => {
-		setGameData((prev) => {
-			if (!prev?.data) return prev;
-			const next = structuredClone(prev);
-			if (next.data.variables?.[regionId]?.dataType === 'region') { delete next.data.variables[regionId]; return next; }
-			for (const key of ['regions']) {
-				const c = next.data[key];
-				if (Array.isArray(c)) next.data[key] = c.filter((r) => String(r?.id ?? r?.key) !== String(regionId));
-				else if (c && typeof c === 'object' && c[regionId]) delete c[regionId];
-			}
-			return next;
-		});
-		setSelectedRegionId(null);
-	};
-
-	const beginRegionMove = (e) => {
-		if (!selectedRegionId || e.button !== 0) return false;
-		const point = worldPointFromEvent(e);
-		const r = regionEntries.find((x) => x.id === selectedRegionId);
-		if (!point || !r || point.x < r.x || point.x > r.x + r.width || point.y < r.y || point.y > r.y + r.height) return false;
-		e.preventDefault();
-		setRegionDrag({ mode: 'move', startX: point.x, startY: point.y, x: r.x, y: r.y, width: r.width, height: r.height });
-		setDragging(true);
-		return true;
-	};
-
-	const beginRegionResize = (e, r) => {
-		e.preventDefault();
-		e.stopPropagation();
-		const point = worldPointFromEvent(e);
-		if (!point) return;
-		setSelectedRegionId(r.id);
-		setRegionDrag({ mode: 'resize', startX: point.x, startY: point.y, x: r.x, y: r.y, width: r.width, height: r.height });
-		setDragging(true);
-	};
-
-	const beginPan = (e) => {
-		if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
-		if (tool !== 'pan' && e.button === 0 && !e.shiftKey && !e.altKey) return;
-		e.preventDefault();
-		setDragging(true);
-		dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
-	};
-	const movePan = (e) => {
-		if (!dragging || !dragRef.current) return;
-		const d = dragRef.current;
-		setOffset(clampOffset(d.ox + e.clientX - d.x, d.oy + e.clientY - d.y));
-	};
+	const beginPan = (e) => { if (e.button !== 0 && e.button !== 1 && e.button !== 2) return; if (e.button === 0 && tool !== 'pan' && !e.shiftKey && !e.altKey) return; e.preventDefault(); setDragging(true); dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y }; };
+	const movePan = (e) => { if (!dragging || !dragRef.current) return; const d = dragRef.current; setOffset(clampOffset(d.ox + e.clientX - d.x, d.oy + e.clientY - d.y)); };
 	const endPan = () => { setDragging(false); dragRef.current = null; };
+
 	const handlePointerDown = (e) => {
 		if (e.currentTarget?.setPointerCapture) { try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} }
 		if (e.button === 1 || e.button === 2 || (e.button === 0 && (e.shiftKey || e.altKey || tool === 'pan'))) { beginPan(e); return; }
 		if (e.button !== 0) return;
 		if (tool === 'region') {
-			const point = worldPointFromEvent(e);
-			const hits = regionsAtWorldPoint(point);
+			const point = worldPointFromEvent(e), hits = regionsAtWorldPoint(point);
 			if (hits.length > 1) { openRegionAtPointer(e); return; }
-			if (hits.length === 1) {
-				if (hits[0].id !== selectedRegionId) { setSelectedRegionId(hits[0].id); setRegionPicker(null); return; }
-				if (beginRegionMove(e)) return;
-			}
-			if (point) { setRegionCreate({ startX: point.x, startY: point.y, x: point.x, y: point.y, width: 0, height: 0 }); setDragging(true); }
-			return;
+			if (hits.length === 1) { if (hits[0].id !== selectedRegionId) { setSelectedRegionId(hits[0].id); setRegionPicker(null); return; } if (beginRegionMove(e)) return; }
+			if (point) { setRegionCreate({ startX: point.x, startY: point.y, x: point.x, y: point.y, width: 0, height: 0 }); setDragging(true); } return;
 		}
-		if (tool === 'paint' || tool === 'erase') {
-			e.preventDefault();
-			paintAtPointer(e, tool === 'erase');
-			setDragging(true);
-			return;
+		if (tool === 'object') {
+			const point = worldPointFromEvent(e); if (point && point.x >= 0 && point.y >= 0 && point.x <= width * tileWidth && point.y <= height * tileHeight) { setObjectMenu({ x: e.clientX, y: e.clientY, world: point }); setObjectMenuTab('unitTypes'); setObjectSearch(''); } return;
 		}
+		if (tool === 'paint' || tool === 'erase') { e.preventDefault(); paintAtPointer(e, tool === 'erase'); setDragging(true); return; }
 		if (tool === 'fill') { e.preventDefault(); fillAtPointer(e); return; }
 		beginPan(e);
 	};
-	const handlePointerMove = (e) => {
-		if (regionCreate && dragging) {
-			const point = worldPointFromEvent(e);
-			if (point) {
-				const x = Math.min(regionCreate.startX, point.x);
-				const y = Math.min(regionCreate.startY, point.y);
-				setRegionCreate({ ...regionCreate, x, y, width: Math.abs(point.x - regionCreate.startX), height: Math.abs(point.y - regionCreate.startY) });
-			}
-			return;
-		}
-		if (regionDrag && dragging) {
-			const point = worldPointFromEvent(e);
-			if (point) {
-				if (regionDrag.mode === 'move') updateRegion(selectedRegionId, { x: Math.round(regionDrag.x + point.x - regionDrag.startX), y: Math.round(regionDrag.y + point.y - regionDrag.startY) });
-				else updateRegion(selectedRegionId, { width: Math.max(tileWidth, Math.round(regionDrag.width + point.x - regionDrag.startX)), height: Math.max(tileHeight, Math.round(regionDrag.height + point.y - regionDrag.startY)) });
-			}
-			return;
-		}
-		if (dragging && (tool === 'paint' || tool === 'erase')) paintAtPointer(e, tool === 'erase');
-		else movePan(e);
-	};
-	const handlePointerUp = (e) => {
-		if (e.currentTarget?.releasePointerCapture) { try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} }
-		if (regionCreate) {
-			if (regionCreate.width >= 4 && regionCreate.height >= 4) createRegion(regionCreate);
-			setRegionCreate(null);
-		}
-		setRegionDrag(null);
-		endPan();
-	};
 
-	const handleWheel = (e) => {
-		e.preventDefault();
-		if (!viewportRef.current) return;
-		const rect = viewportRef.current.getBoundingClientRect();
-		const pointerX = e.clientX - rect.left;
-		const pointerY = e.clientY - rect.top;
-		const factor = Math.exp(-e.deltaY * 0.0015);
-		const nextZoom = Math.max(0.15, Math.min(3, zoom * factor));
-		if (Math.abs(nextZoom - zoom) < 0.0001) return;
-		const mapX = (pointerX - offset.x) / zoom;
-		const mapY = (pointerY - offset.y) / zoom;
-		setZoom(nextZoom);
-		setOffset(clampOffset(pointerX - mapX * nextZoom, pointerY - mapY * nextZoom, nextZoom));
+	const handlePointerMove = (e) => {
+		if (objectDrag && dragging) { const point = worldPointFromEvent(e); if (point) moveObject(objectDrag.id, point.x - objectDrag.dx, point.y - objectDrag.dy); return; }
+		if (regionCreate && dragging) { const point = worldPointFromEvent(e); if (point) { const x = Math.min(regionCreate.startX, point.x), y = Math.min(regionCreate.startY, point.y); setRegionCreate({ ...regionCreate, x, y, width: Math.abs(point.x - regionCreate.startX), height: Math.abs(point.y - regionCreate.startY) }); } return; }
+		if (regionDrag && dragging) { const point = worldPointFromEvent(e); if (point) { if (regionDrag.mode === 'move') updateRegion(selectedRegionId, { x: Math.round(regionDrag.x + point.x - regionDrag.startX), y: Math.round(regionDrag.y + point.y - regionDrag.startY) }); else updateRegion(selectedRegionId, { width: Math.max(tileWidth, Math.round(regionDrag.width + point.x - regionDrag.startX)), height: Math.max(tileHeight, Math.round(regionDrag.height + point.y - regionDrag.startY)) }); } return; }
+		if (dragging && (tool === 'paint' || tool === 'erase')) paintAtPointer(e, tool === 'erase'); else movePan(e);
 	};
+	const handlePointerUp = (e) => { if (e.currentTarget?.releasePointerCapture) { try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} } if (regionCreate) { if (regionCreate.width >= 4 && regionCreate.height >= 4) createRegion(regionCreate); setRegionCreate(null); } setRegionDrag(null); setObjectDrag(null); endPan(); };
+
+	const handleWheel = (e) => { e.preventDefault(); const rect = viewportRef.current?.getBoundingClientRect(); if (!rect) return; const px = e.clientX - rect.left, py = e.clientY - rect.top, factor = Math.exp(-e.deltaY * 0.0015), nextZoom = Math.max(0.15, Math.min(3, zoom * factor)); if (Math.abs(nextZoom - zoom) < 0.0001) return; const mx = (px - offset.x) / zoom, my = (py - offset.y) / zoom; setZoom(nextZoom); setOffset(clampOffset(px - mx * nextZoom, py - my * nextZoom, nextZoom)); };
 
 	useEffect(() => {
-		const onKey = (e) => {
-			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
-			if (e.key.toLowerCase() === 'p') setTool('paint');
-			if (e.key.toLowerCase() === 'e') setTool('erase');
-			if (e.key.toLowerCase() === 'f') setTool('fill');
-			if (e.key.toLowerCase() === 'r') setTool('region');
-			if (e.key === ' ') { e.preventDefault(); setTool((t) => t === 'pan' ? 'paint' : 'pan'); }
-		};
-		window.addEventListener('keydown', onKey);
-		return () => window.removeEventListener('keydown', onKey);
+		const onKey = (e) => { if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return; if (e.key.toLowerCase() === 'p') setTool('paint'); if (e.key.toLowerCase() === 'e') setTool('erase'); if (e.key.toLowerCase() === 'f') setTool('fill'); if (e.key.toLowerCase() === 'r') setTool('region'); if (e.key.toLowerCase() === 'o') setTool('object'); if (e.key === ' ') { e.preventDefault(); setTool((t) => t === 'pan' ? 'paint' : 'pan'); } };
+		window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
 	}, []);
+	const toggleLayerVisibility = (index) => setGameData((prev) => { const next = structuredClone(prev); const target = Array.isArray(next?.data?.map?.layers) ? next.data.map.layers.filter((l) => Array.isArray(l?.data))[index] : null; if (!target) return prev; target.visible = target.visible === false; return next; });
 
-	const toggleLayerVisibility = (index) => {
-		setGameData((prev) => {
-			if (!prev?.data?.map) return prev;
-			const next = structuredClone(prev);
-			const targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers.filter((l) => Array.isArray(l?.data)) : [];
-			if (!targetLayers[index]) return prev;
-			targetLayers[index].visible = targetLayers[index].visible === false;
-			return next;
-		});
-	};
+	const beginObjectDrag = (e, obj) => { if (e.button !== 0 || tool !== 'object') return; e.stopPropagation(); e.preventDefault(); const point = worldPointFromEvent(e); if (!point) return; setSelectedObjectId(obj.id); setObjectDrag({ id: obj.id, dx: point.x - obj.x, dy: point.y - obj.y }); setDragging(true); };
+	const filteredObjectOptions = Object.entries(typeCollections[objectMenuTab] || {}).filter(([id, v]) => { const q = objectSearch.trim().toLowerCase(); return !q || String(v?.name || id).toLowerCase().includes(q) || id.toLowerCase().includes(q); }).sort((a,b) => (a[1]?.name || a[0]).localeCompare(b[1]?.name || b[0]));
+	const createFromMenu = (kind, typeId) => { if (!objectMenu) return; const world = objectMenu.world; setGameData((prev) => { const next = structuredClone(prev); const script = getInitializeScript(next); if (!script) return prev; const position = makeXY(world.x, world.y); let action; if (kind === 'unitTypes') { const def = next.data.unitTypes?.[typeId] || {}; action = { type: 'createEntityForPlayerAtPositionWithDimensions', entityType: 'unitTypes', entity: typeId, position, angle: 0, height: Number(def.height) || Number(def.body?.height) || 64, width: Number(def.width) || Number(def.body?.width) || 64 }; } else if (kind === 'itemTypes') action = { type: 'createItemAtPositionWithQuantity', itemType: typeId, position, quantity: 1 }; else action = { type: 'createProjectileAtPosition', projectileType: typeId, position, force: 0, angle: 0 }; script.actions.push(action); return next; }); setObjectMenu(null); setObjectSearch(''); setSelectedObjectId(String((gameData?.data?.scripts?.initialize?.actions || []).length)); };
 
 	if (!map) return <div className="flex-1 flex items-center justify-center text-sm text-[#637588]">This game has no map data.</div>;
 	const sheetImage = imageRef.current;
-	const sheetNaturalW = Number(sheetImage?.naturalWidth || tileset?.imagewidth || columns * tileWidth);
-	const sheetNaturalH = Number(sheetImage?.naturalHeight || tileset?.imageheight || rows * tileHeight);
-	const sheetScale = Math.min(1, 430 / Math.max(1, sheetNaturalW));
-	const sheetW = Math.max(1, Math.round(sheetNaturalW * sheetScale));
-	const sheetH = Math.max(1, Math.round(sheetNaturalH * sheetScale));
-	const sheetTileW = tileWidth * sheetScale;
-	const sheetTileH = tileHeight * sheetScale;
+	const sheetNaturalW = Number(sheetImage?.naturalWidth || tileset?.imagewidth || columns * tileWidth), sheetNaturalH = Number(sheetImage?.naturalHeight || tileset?.imageheight || rows * tileHeight);
+	const sheetScale = Math.min(1, 430 / Math.max(1, sheetNaturalW)), sheetW = Math.max(1, Math.round(sheetNaturalW * sheetScale)), sheetH = Math.max(1, Math.round(sheetNaturalH * sheetScale));
+	const sheetTileW = tileWidth * sheetScale, sheetTileH = tileHeight * sheetScale;
 
 	return (
 		<div className="flex-1 min-w-0 flex flex-col bg-[#171d22]">
 			<div className="h-12 shrink-0 border-b border-[#3d4a57] bg-[#262e36] flex items-center justify-between px-4">
-				<div>
-					<div className="text-sm font-medium text-[#e1e6ea]">Map View</div>
-					<div className="text-[11px] text-[#637588]">{tool === 'paint' ? 'Paint selected tile' : tool === 'fill' ? 'Fill connected area' : tool === 'erase' ? 'Erase tiles' : 'Preview / pan'} • P paint • F fill • E erase • wheel zoom</div>
-				</div>
+				<div><div className="text-sm font-medium text-[#e1e6ea]">Map View</div><div className="text-[11px] text-[#637588]">{tool === 'paint' ? 'Paint selected tile' : tool === 'fill' ? 'Fill connected area' : tool === 'erase' ? 'Erase tiles' : tool === 'object' ? 'Place and move objects' : tool === 'region' ? 'Create and edit regions' : 'Preview / pan'} • O object • P paint • F fill • E erase • R regions • wheel zoom</div></div>
 				<div className="text-xs text-[#8291a1] font-mono">{width} × {height} • {tileWidth} × {tileHeight} • {Math.round(zoom * 100)}%</div>
 			</div>
-			<div className="relative flex-1 min-h-0 overflow-hidden">
-				<div ref={viewportRef} onWheel={handleWheel} onContextMenu={(e) => e.preventDefault()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} className={`absolute inset-0 overflow-hidden select-none ${dragging ? 'cursor-grabbing' : tool === 'paint' || tool === 'erase' ? 'cursor-crosshair' : 'cursor-grab'}`}>
-					<div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#48596a 1px, transparent 1px), linear-gradient(90deg, #48596a 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
-					<div className="absolute" style={{ left: offset.x, top: offset.y, width: mapPixelWidth, height: mapPixelHeight }}>
-						<canvas ref={canvasRef} className="block" />
-						{regionEntries.filter(r => regionVisibility[r.id] !== false).map((r, i) => <div key={`${r.id}-${i}`} className={`absolute pointer-events-none ${selectedRegionId === r.id ? 'border-2 border-yellow-300 bg-yellow-300/10' : 'border border-cyan-300/70 bg-cyan-300/10'}`} style={{ left: r.x * zoom, top: r.y * zoom, width: r.width * zoom, height: r.height * zoom }}><div className="absolute -top-4 left-0 text-[10px] whitespace-nowrap text-cyan-200 bg-[#17212a]/90 px-1 rounded">{r.name}</div>{selectedRegionId === r.id && tool === 'region' && <button type="button" aria-label="Resize region" onPointerDown={(e) => beginRegionResize(e, r)} className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-yellow-300 border border-[#20272e] pointer-events-auto cursor-se-resize" />}</div>)}{regionCreate && <div className="absolute border-2 border-dashed border-yellow-300 bg-yellow-300/10 pointer-events-none" style={{ left: regionCreate.x * zoom, top: regionCreate.y * zoom, width: regionCreate.width * zoom, height: regionCreate.height * zoom }} /> }
-					</div>
-					{imageError && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="max-w-md rounded-lg border border-red-900 bg-red-950/80 px-4 py-3 text-sm text-red-300">Could not load the map tilesheet: <span className="font-mono">{tileset?.image || '(missing image)'}</span></div></div>}
-					{!imageError && !imageReady && imageUrl && <div className="absolute top-4 left-4 rounded-md border border-[#3d4a57] bg-[#20272e]/90 px-3 py-2 text-xs text-[#8291a1]">Loading tilesheet…</div>}
+			<div ref={viewportRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onWheel={handleWheel} className={`relative flex-1 min-h-0 overflow-hidden select-none ${tool === 'paint' || tool === 'fill' || tool === 'erase' || tool === 'region' || tool === 'object' ? 'cursor-crosshair' : 'cursor-grab'}`}>
+				<div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#48596a 1px, transparent 1px), linear-gradient(90deg, #48596a 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+				<div className="absolute" style={{ left: offset.x, top: offset.y, width: mapPixelWidth, height: mapPixelHeight }}>
+					<canvas ref={canvasRef} className="block" />
+					{objectEntries.map((o) => { const selected = selectedObjectId === o.id; return <button key={o.id} type="button" title={`${o.name} • ${o.kind === 'unitTypes' ? 'Unit' : o.kind === 'itemTypes' ? 'Item' : 'Projectile'}`} onPointerDown={(e) => beginObjectDrag(e, o)} className={`absolute flex items-center justify-center rounded border pointer-events-auto overflow-hidden ${selected ? 'border-yellow-300 bg-yellow-300/25 ring-1 ring-yellow-200' : o.kind === 'unitTypes' ? 'border-[#85B7EB] bg-[#85B7EB]/25' : o.kind === 'itemTypes' ? 'border-[#5DCAA5] bg-[#5DCAA5]/25' : 'border-[#F0997B] bg-[#F0997B]/25'}`} style={{ left: (o.x - o.width / 2) * zoom, top: (o.y - o.height / 2) * zoom, width: Math.max(8, o.width * zoom), height: Math.max(8, o.height * zoom), zIndex: selected ? 30 : 20 }}><span className="px-1 text-[9px] leading-none text-white bg-[#17212a]/75 rounded truncate max-w-full">{o.name}</span></button>; })}
+					{regionEntries.filter(r => regionVisibility[r.id] !== false).map((r, i) => <div key={`${r.id}-${i}`} className={`absolute pointer-events-none ${selectedRegionId === r.id ? 'border-2 border-yellow-300 bg-yellow-300/10' : 'border border-cyan-300/70 bg-cyan-300/10'}`} style={{ left: r.x * zoom, top: r.y * zoom, width: r.width * zoom, height: r.height * zoom, zIndex: 10 }}><div className="absolute -top-4 left-0 text-[10px] whitespace-nowrap text-cyan-200 bg-[#17212a]/90 px-1 rounded">{r.name}</div>{selectedRegionId === r.id && tool === 'region' && <button type="button" aria-label="Resize region" onPointerDown={(e) => beginRegionResize(e, r)} className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-yellow-300 border border-[#20272e] pointer-events-auto cursor-se-resize" />}</div>)}
+					{regionCreate && <div className="absolute border-2 border-dashed border-yellow-300 bg-yellow-300/10 pointer-events-none" style={{ left: regionCreate.x * zoom, top: regionCreate.y * zoom, width: regionCreate.width * zoom, height: regionCreate.height * zoom }} />}
+				</div>
+				{imageError && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="max-w-md rounded-lg border border-red-900 bg-red-950/80 px-4 py-3 text-sm text-red-300">Could not load the map tilesheet: <span className="font-mono">{tileset?.image || '(missing image)'}</span></div></div>}
+				{!imageError && !imageReady && imageUrl && <div className="absolute top-4 left-4 rounded-md border border-[#3d4a57] bg-[#20272e]/90 px-3 py-2 text-xs text-[#8291a1]">Loading tilesheet…</div>}
+
+				<div className="absolute top-3 left-3 z-40 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 p-1 flex gap-0.5 shadow-lg">
+					{[['object', Plus, 'Object', 'O'],['paint', Paintbrush, 'Paint', 'P'],['fill', PaintBucket, 'Fill', 'F'],['erase', Eraser, 'Erase', 'E'],['region', ScanSearch, 'Regions', 'R'],['pan', Move, 'Pan', 'Space']].map(([key, Icon, label, shortcut]) => <button key={key} type="button" title={`${label} (${shortcut})`} onClick={() => setTool(key)} className={`w-8 h-8 rounded-md flex items-center justify-center border ${tool === key ? 'border-[#85B7EB] bg-[#334252] text-[#e1e6ea]' : 'border-transparent text-[#8291a1] hover:bg-[#2c3741]'}`}><Icon size={15} strokeWidth={1.8} /></button>)}
 				</div>
 
-				<div className="absolute top-3 left-3 z-20 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 p-1 flex gap-0.5 shadow-lg">
-					{[
-						['paint', Paintbrush, 'Paint', 'P'],
-						['fill', PaintBucket, 'Fill', 'F'],
-						['erase', Eraser, 'Erase', 'E'],
-						['region', ScanSearch, 'Regions', 'R'],
-						['pan', Move, 'Pan', 'Space']
-					].map(([key, Icon, label, shortcut]) => <button key={key} type="button" title={`${label} (${shortcut})`} onClick={() => setTool(key)} className={`w-8 h-8 rounded-md flex items-center justify-center border ${tool === key ? 'border-[#85B7EB] bg-[#334252] text-[#e1e6ea]' : 'border-transparent text-[#8291a1] hover:bg-[#2c3741]'}`}><Icon size={15} strokeWidth={1.8} /></button>)}
-				</div>
-
-				<div className="absolute left-3 top-16 z-20 w-36 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 shadow-lg overflow-hidden">
+				<div className="absolute left-3 top-16 z-30 w-36 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 shadow-lg overflow-hidden">
 					<div className="px-2.5 py-1.5 border-b border-[#3d4a57] text-[9px] uppercase tracking-wide text-[#637588]">Layers</div>
-					<div className="max-h-64 overflow-auto p-1">
-						{layers.map((layer, i) => <div key={i} className={`flex items-center gap-1 rounded px-1 py-1 ${activeLayerIndex === i ? 'bg-[#334252]' : 'hover:bg-[#2c3741]'}`}>
-							<button type="button" onClick={() => setActiveLayerIndex(i)} className="min-w-0 flex-1 text-left text-[11px] text-[#c5ccd3] truncate">{layer.name || `Layer ${i + 1}`}</button>
-							<button type="button" title={layer.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => toggleLayerVisibility(i)} className={`w-6 h-6 rounded flex items-center justify-center ${layer.visible === false ? 'text-[#48596a]' : 'text-[#c5ccd3] hover:bg-[#3a4652]'}`}>{layer.visible === false ? <EyeOff size={13} /> : <Eye size={13} />}</button>
-						</div>)}
-						{layers.length === 0 && <div className="px-2 py-2 text-xs text-[#637588]">No tile layers found.</div>}
-					</div>
+					<div className="max-h-64 overflow-auto p-1">{layers.map((layer, i) => <div key={i} className={`flex items-center gap-1 rounded px-1 py-1 ${activeLayerIndex === i ? 'bg-[#334252]' : 'hover:bg-[#2c3741]'}`}><button type="button" onClick={() => setActiveLayerIndex(i)} className="min-w-0 flex-1 text-left text-[11px] text-[#c5ccd3] truncate">{layer.name || `Layer ${i + 1}`}</button><button type="button" title={layer.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => toggleLayerVisibility(i)} className={`w-6 h-6 rounded flex items-center justify-center ${layer.visible === false ? 'text-[#48596a]' : 'text-[#c5ccd3] hover:bg-[#3a4652]'}`}>{layer.visible === false ? <EyeOff size={13} /> : <Eye size={13} />}</button></div>)}</div>
 				</div>
 
-				<div className="absolute left-3 top-[21rem] z-20 w-36 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 shadow-lg overflow-hidden">
-					<div className="px-2.5 py-1.5 border-b border-[#3d4a57] flex items-center justify-between">
-						<div className="text-[9px] uppercase tracking-wide text-[#637588]">Regions</div>
-						<button type="button" title={allRegionsVisible ? 'Hide all regions' : 'Show all regions'} onClick={() => { const next = !allRegionsVisible; setAllRegionsVisible(next); setRegionVisibility(Object.fromEntries(regionEntries.map(r => [r.id, next]))); }} className="w-5 h-5 rounded flex items-center justify-center text-[#8291a1] hover:bg-[#2c3741]">{allRegionsVisible ? <Eye size={12} /> : <EyeOff size={12} />}</button>
-					</div>
-					<div className="max-h-48 overflow-auto p-1">
-						{regionEntries.map((r, i) => { const visible = regionVisibility[r.id] !== false; return <div key={`${r.id}-${i}`} className="flex items-center gap-1 rounded px-1 py-1 hover:bg-[#2c3741]">
-							<span className="min-w-0 flex-1 text-[10px] text-[#c5ccd3] truncate" title={r.name}>{r.name}</span>
-							<button type="button" title={visible ? 'Hide region' : 'Show region'} onClick={() => { setRegionVisibility(v => ({ ...v, [r.id]: !visible })); setAllRegionsVisible(false); }} className={`w-6 h-6 rounded flex items-center justify-center ${visible ? 'text-[#c5ccd3] hover:bg-[#3a4652]' : 'text-[#48596a]'}`}>{visible ? <Eye size={12} /> : <EyeOff size={12} />}</button>
-						</div>; })}
-						{regionEntries.length === 0 && <div className="px-2 py-2 text-[10px] text-[#637588]">No regions found.</div>}
-					</div>
+				<div className="absolute left-3 top-[21rem] z-30 w-36 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 shadow-lg overflow-hidden">
+					<div className="px-2.5 py-1.5 border-b border-[#3d4a57] flex items-center justify-between"><div className="text-[9px] uppercase tracking-wide text-[#637588]">Regions</div><button type="button" title={allRegionsVisible ? 'Hide all regions' : 'Show all regions'} onClick={() => { const next = !allRegionsVisible; setAllRegionsVisible(next); setRegionVisibility(Object.fromEntries(regionEntries.map(r => [r.id, next]))); }} className="w-5 h-5 rounded flex items-center justify-center text-[#8291a1] hover:bg-[#2c3741]">{allRegionsVisible ? <Eye size={12} /> : <EyeOff size={12} />}</button></div>
+					<div className="max-h-48 overflow-auto p-1">{regionEntries.map((r, i) => { const visible = regionVisibility[r.id] !== false; return <div key={`${r.id}-${i}`} className="flex items-center gap-1 rounded px-1 py-1 hover:bg-[#2c3741]"><span className="min-w-0 flex-1 text-[10px] text-[#c5ccd3] truncate" title={r.name}>{r.name}</span><button type="button" title={visible ? 'Hide region' : 'Show region'} onClick={() => { setRegionVisibility(v => ({ ...v, [r.id]: !visible })); setAllRegionsVisible(false); }} className={`w-6 h-6 rounded flex items-center justify-center ${visible ? 'text-[#c5ccd3] hover:bg-[#3a4652]' : 'text-[#48596a]'}`}>{visible ? <Eye size={12} /> : <EyeOff size={12} />}</button></div>; })}{regionEntries.length === 0 && <div className="px-2 py-2 text-[10px] text-[#637588]">No regions found.</div>}</div>
 				</div>
 
-				{selectedRegionId && (() => {
-					const r = regionEntries.find((x) => x.id === selectedRegionId);
-					if (!r) return null;
-					return <div className="absolute right-3 top-3 z-30 w-64 rounded-lg border border-[#3d4a57] bg-[#20272e]/97 shadow-xl overflow-hidden">
-						<div className="px-3 py-2 border-b border-[#3d4a57] flex items-center justify-between"><div className="text-xs font-medium text-[#e1e6ea]">Edit Region</div><button type="button" onClick={() => setSelectedRegionId(null)} className="text-[#8291a1] hover:text-[#e1e6ea]"><X size={13}/></button></div>
-						<div className="p-3 space-y-2">
-							<label className="block text-[10px] text-[#637588]">Name<input value={r.name} onChange={(e) => updateRegion(selectedRegionId, { name: e.target.value })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label>
-							<div className="grid grid-cols-2 gap-2">{[['x','X'],['y','Y'],['width','Width'],['height','Height']].map(([key,label]) => <label key={key} className="text-[10px] text-[#637588]">{label}<input type="number" value={r[key]} onChange={(e) => updateRegion(selectedRegionId, { [key]: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label>)}</div>
-							<div className="text-[10px] text-[#637588]">Drag the selected region to move it. Drag its lower-right handle to resize it.</div>
-							<button type="button" onClick={() => deleteRegion(selectedRegionId)} className="w-full mt-1 px-2 py-1.5 rounded border border-red-900/70 text-xs text-red-300 hover:bg-red-950/40">Delete region</button>
-						</div>
-					</div>;
-				})()}
-
-				{regionPicker && <div className="fixed z-[100] rounded-lg border border-[#3d4a57] bg-[#20272e] shadow-2xl overflow-hidden" style={{ left: Math.min(regionPicker.x, window.innerWidth - 240), top: Math.min(regionPicker.y, window.innerHeight - 220) }}>
-					<div className="px-3 py-2 border-b border-[#3d4a57] text-xs text-[#c5ccd3]">Choose region</div>
-					<div className="p-1 min-w-[210px]">{regionPicker.hits.map((r) => <button key={r.id} type="button" onClick={() => { setSelectedRegionId(r.id); setRegionPicker(null); }} className="w-full text-left px-2 py-2 rounded text-xs text-[#c5ccd3] hover:bg-[#334252]"><div>{r.name}</div><div className="text-[9px] text-[#637588] font-mono">{Math.round(r.x)}, {Math.round(r.y)} • {Math.round(r.width)} × {Math.round(r.height)}</div></button>)}</div>
-					<button type="button" onClick={() => setRegionPicker(null)} className="w-full border-t border-[#3d4a57] px-3 py-1.5 text-[10px] text-[#8291a1] hover:bg-[#2c3741]">Cancel</button>
-				</div>}
-
-				{imageReady && <div className="absolute right-3 bottom-3 z-20 w-[470px] max-w-[calc(100%-24px)] rounded-lg border border-[#3d4a57] bg-[#20272e]/96 shadow-xl overflow-hidden">
-					<div className="flex items-center justify-between px-3 py-2 border-b border-[#3d4a57]"><div><div className="text-xs font-medium text-[#e1e6ea]">Tilesheet</div><div className="text-[10px] text-[#637588]">Click a tile on the sheet to paint with it</div></div><div className="text-[10px] font-mono text-[#637588]">{columns} × {rows}</div></div>
-					<div className="max-h-[360px] overflow-auto p-2 bg-[#171d22]">
-						<div className="relative" style={{ width: sheetW, height: sheetH }}>
-							<img src={imageUrl} alt="Tilesheet" draggable={false} className="absolute inset-0 block max-w-none select-none" style={{ width: sheetW, height: sheetH, imageRendering: 'pixelated' }} />
-							{Array.from({ length: tileCount }, (_, i) => { const col = i % columns; const row = Math.floor(i / columns); const selected = i === selectedTile; return <button key={i} type="button" title={`Tile ${i + 1} • GID ${firstGid + i}`} onClick={() => { setSelectedTile(i); setTool('paint'); }} className={`absolute p-0 m-0 border ${selected ? 'border-[#ffffff] bg-white/10' : 'border-transparent hover:border-white/70 hover:bg-white/10'}`} style={{ left: col * sheetTileW, top: row * sheetTileH, width: sheetTileW, height: sheetTileH }} />; })}
-						</div>
+				{selectedObject && <div className="absolute right-3 top-3 z-50 w-64 rounded-lg border border-[#3d4a57] bg-[#20272e]/97 shadow-xl overflow-hidden">
+					<div className="px-3 py-2 border-b border-[#3d4a57] flex items-center justify-between"><div><div className="text-xs font-medium text-[#e1e6ea]">Edit Object</div><div className="text-[9px] text-[#637588]">Initialize action</div></div><button type="button" onClick={() => setSelectedObjectId(null)} className="text-[#8291a1] hover:text-[#e1e6ea]"><X size={13}/></button></div>
+					<div className="p-3 space-y-2">
+						<label className="block text-[10px] text-[#637588]">Type<select value={selectedObject.typeId} onChange={(e) => setObjectType(selectedObject.id, selectedObject.kind, e.target.value)} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]">{Object.entries(typeCollections[selectedObject.kind] || {}).sort((a,b)=>(a[1]?.name||a[0]).localeCompare(b[1]?.name||b[0])).map(([id,v]) => <option key={id} value={id}>{v?.name || id}</option>)}</select></label>
+						<div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-[#637588]">X<input type="number" value={Math.round(selectedObject.x)} onChange={(e) => moveObject(selectedObject.id, Number(e.target.value) || 0, selectedObject.y)} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label><label className="text-[10px] text-[#637588]">Y<input type="number" value={Math.round(selectedObject.y)} onChange={(e) => moveObject(selectedObject.id, selectedObject.x, Number(e.target.value) || 0)} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label></div>
+						{selectedObject.kind === 'unitTypes' && <><div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-[#637588]">Width<input type="number" value={selectedObject.action.width ?? selectedObject.width} onChange={(e) => updateObjectAction(selectedObject.id, (a) => { a.width = Math.max(1, Number(e.target.value) || 1); })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label><label className="text-[10px] text-[#637588]">Height<input type="number" value={selectedObject.action.height ?? selectedObject.height} onChange={(e) => updateObjectAction(selectedObject.id, (a) => { a.height = Math.max(1, Number(e.target.value) || 1); })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label></div><label className="block text-[10px] text-[#637588]">AI player<select value={selectedObject.action.player?.variableName || ''} onChange={(e) => updateObjectAction(selectedObject.id, (a) => { const id=e.target.value; if (!id) delete a.player; else a.player={ variableName:id, function:'getVariable' }; })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]"><option value="">None</option>{playerVariables.map(([id,v]) => <option key={id} value={id}>{v?.name || id} ({id})</option>)}</select></label><label className="block text-[10px] text-[#637588]">Facing<input type="number" value={selectedObject.action.angle ?? selectedObject.angle} onChange={(e) => updateObjectAction(selectedObject.id, (a) => { a.angle = Number(e.target.value) || 0; })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label></>}
+						{selectedObject.kind === 'itemTypes' && <label className="block text-[10px] text-[#637588]">Quantity<input type="number" min="1" value={selectedObject.action.quantity ?? 1} onChange={(e) => updateObjectAction(selectedObject.id, (a) => { a.quantity = Math.max(1, Number(e.target.value) || 1); })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label>}
+						{selectedObject.kind === 'projectileTypes' && <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-[#637588]">Facing<input type="number" value={selectedObject.action.angle ?? 0} onChange={(e) => updateObjectAction(selectedObject.id, (a) => { a.angle = Number(e.target.value) || 0; })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label><label className="text-[10px] text-[#637588]">Force<input type="number" value={selectedObject.action.force ?? 0} onChange={(e) => updateObjectAction(selectedObject.id, (a) => { a.force = Number(e.target.value) || 0; })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label></div>}
+						<button type="button" onClick={() => removeObject(selectedObject.id)} className="w-full mt-1 px-2 py-1.5 rounded border border-red-900/70 text-xs text-red-300 hover:bg-red-950/40">Delete object</button>
 					</div>
-					<div className="px-3 py-1.5 border-t border-[#3d4a57] flex items-center justify-between text-[10px] text-[#637588]"><span>Selected tile: {selectedTile + 1}</span><span>GID: {firstGid + selectedTile}</span></div>
 				</div>}
+
+				{objectMenu && <div className="fixed z-[100] rounded-lg border border-[#3d4a57] bg-[#20272e] shadow-2xl overflow-hidden w-[300px]" style={{ left: Math.min(objectMenu.x, window.innerWidth - 320), top: Math.min(objectMenu.y, window.innerHeight - 390) }}>
+					<div className="px-3 py-2 border-b border-[#3d4a57] flex items-center justify-between"><div><div className="text-xs font-medium text-[#e1e6ea]">Create object</div><div className="text-[9px] text-[#637588]">at {Math.round(objectMenu.world.x)}, {Math.round(objectMenu.world.y)}</div></div><button type="button" onClick={() => setObjectMenu(null)} className="text-[#8291a1] hover:text-[#e1e6ea]"><X size={13}/></button></div>
+					<div className="flex border-b border-[#3d4a57]">{[['unitTypes','Units'],['itemTypes','Items'],['projectileTypes','Projectiles']].map(([key,label]) => <button key={key} type="button" onClick={() => setObjectMenuTab(key)} className={`flex-1 px-2 py-2 text-[10px] ${objectMenuTab === key ? 'bg-[#334252] text-[#e1e6ea]' : 'text-[#8291a1]'}`}>{label}</button>)}</div>
+					<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]"/><input autoFocus value={objectSearch} onChange={(e) => setObjectSearch(e.target.value)} placeholder={`Search ${objectMenuTab === 'unitTypes' ? 'units' : objectMenuTab === 'itemTypes' ? 'items' : 'projectiles'}...`} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs text-[#e1e6ea]"/></div></div>
+					<div className="max-h-64 overflow-auto p-1">{filteredObjectOptions.map(([id,v]) => <button key={id} type="button" onClick={() => createFromMenu(objectMenuTab,id)} className="w-full text-left px-2 py-2 rounded hover:bg-[#334252] text-xs text-[#c5ccd3]"><div>{v?.name || id}</div><div className="text-[9px] text-[#637588] font-mono">{id}</div></button>)}{filteredObjectOptions.length === 0 && <div className="px-2 py-4 text-xs text-[#637588]">Nothing found.</div>}</div>
+				</div>}
+
+				{selectedRegionId && (() => { const r = regionEntries.find((x) => x.id === selectedRegionId); if (!r) return null; return <div className="absolute right-3 top-3 z-45 w-64 rounded-lg border border-[#3d4a57] bg-[#20272e]/97 shadow-xl overflow-hidden"><div className="px-3 py-2 border-b border-[#3d4a57] flex items-center justify-between"><div className="text-xs font-medium text-[#e1e6ea]">Edit Region</div><button type="button" onClick={() => setSelectedRegionId(null)} className="text-[#8291a1] hover:text-[#e1e6ea]"><X size={13}/></button></div><div className="p-3 space-y-2"><label className="block text-[10px] text-[#637588]">Name<input value={r.name} onChange={(e) => updateRegion(selectedRegionId, { name: e.target.value })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label><div className="grid grid-cols-2 gap-2">{[['x','X'],['y','Y'],['width','Width'],['height','Height']].map(([key,label]) => <label key={key} className="text-[10px] text-[#637588]">{label}<input type="number" value={r[key]} onChange={(e) => updateRegion(selectedRegionId, { [key]: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label>)}</div><div className="text-[10px] text-[#637588]">Drag the selected region to move it. Drag its lower-right handle to resize it.</div><button type="button" onClick={() => deleteRegion(selectedRegionId)} className="w-full mt-1 px-2 py-1.5 rounded border border-red-900/70 text-xs text-red-300 hover:bg-red-950/40">Delete region</button></div></div>; })()}
+				{regionPicker && <div className="fixed z-[100] rounded-lg border border-[#3d4a57] bg-[#20272e] shadow-2xl overflow-hidden" style={{ left: Math.min(regionPicker.x, window.innerWidth - 240), top: Math.min(regionPicker.y, window.innerHeight - 220) }}><div className="px-3 py-2 border-b border-[#3d4a57] text-xs text-[#c5ccd3]">Choose region</div><div className="p-1 min-w-[210px]">{regionPicker.hits.map((r) => <button key={r.id} type="button" onClick={() => { setSelectedRegionId(r.id); setRegionPicker(null); }} className="w-full text-left px-2 py-2 rounded text-xs text-[#c5ccd3] hover:bg-[#334252]"><div>{r.name}</div><div className="text-[9px] text-[#637588] font-mono">{Math.round(r.x)}, {Math.round(r.y)} • {Math.round(r.width)} × {Math.round(r.height)}</div></button>)}</div><button type="button" onClick={() => setRegionPicker(null)} className="w-full border-t border-[#3d4a57] px-3 py-1.5 text-[10px] text-[#8291a1] hover:bg-[#2c3741]">Cancel</button></div>}
+
+				{imageReady && <div className="absolute right-3 bottom-3 z-20 w-[470px] max-w-[calc(100%-24px)] rounded-lg border border-[#3d4a57] bg-[#20272e]/96 shadow-xl overflow-hidden"><div className="flex items-center justify-between px-3 py-2 border-b border-[#3d4a57]"><div><div className="text-xs font-medium text-[#e1e6ea]">Tilesheet</div><div className="text-[10px] text-[#637588]">Click a tile on the sheet to paint with it</div></div><div className="text-[10px] font-mono text-[#637588]">{columns} × {rows}</div></div><div className="max-h-[360px] overflow-auto p-2 bg-[#171d22]"><div className="relative" style={{ width: sheetW, height: sheetH }}><img src={imageUrl} alt="Tilesheet" draggable={false} className="absolute inset-0 block max-w-none select-none" style={{ width: sheetW, height: sheetH, imageRendering: 'pixelated' }} />{Array.from({ length: tileCount }, (_, i) => { const col = i % columns, row = Math.floor(i / columns), selected = i === selectedTile; return <button key={i} type="button" title={`Tile ${i + 1} • GID ${firstGid + i}`} onClick={() => { setSelectedTile(i); setTool('paint'); }} className={`absolute p-0 m-0 border ${selected ? 'border-[#ffffff] bg-white/10' : 'border-transparent hover:border-white/70 hover:bg-white/10'}`} style={{ left: col * sheetTileW, top: row * sheetTileH, width: sheetTileW, height: sheetTileH }} />; })}</div></div><div className="px-3 py-1.5 border-t border-[#3d4a57] flex items-center justify-between text-[10px] text-[#637588]"><span>Selected tile: {selectedTile + 1}</span><span>GID: {firstGid + selectedTile}</span></div></div>}
 			</div>
 		</div>
 	);
 }
-
 
 export default function GameContentEditor() {
 	const [gameData, setGameData] = useState(null);
