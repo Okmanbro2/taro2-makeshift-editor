@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2, Paintbrush, Eraser, Move, Eye, EyeOff } from 'lucide-react';
+import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2, Paintbrush, PaintBucket, Eraser, Move, Eye, EyeOff } from 'lucide-react';
 
 const ENTITY_TABS = [
 	{ key: 'unitTypes', label: 'Units', folderType: 'unit', root: 'units' },
@@ -1685,6 +1685,8 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	const [tool, setTool] = useState('pan');
 	const [activeLayerIndex, setActiveLayerIndex] = useState(0);
 	const [selectedTile, setSelectedTile] = useState(0);
+	const [regionVisibility, setRegionVisibility] = useState({});
+	const [allRegionsVisible, setAllRegionsVisible] = useState(true);
 	const [imageReady, setImageReady] = useState(false);
 	const [imageError, setImageError] = useState(false);
 	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -1709,12 +1711,19 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 		const out = [];
 		const addRegion = (id, r) => {
 			if (!r || typeof r !== 'object') return;
-			const x = Number(r.x ?? r.position?.x ?? 0);
-			const y = Number(r.y ?? r.position?.y ?? 0);
-			const w = Number(r.width ?? r.size?.width ?? r.dimensions?.width ?? 0);
-			const h = Number(r.height ?? r.size?.height ?? r.dimensions?.height ?? 0);
-			if (w > 0 && h > 0) out.push({ id, name: r.name || id || 'Region', x, y, width: w, height: h });
+			const d = r.default && typeof r.default === 'object' ? r.default : r;
+			const x = Number(d.x ?? r.x ?? r.position?.x ?? 0);
+			const y = Number(d.y ?? r.y ?? r.position?.y ?? 0);
+			const w = Number(d.width ?? r.width ?? r.size?.width ?? r.dimensions?.width ?? 0);
+			const h = Number(d.height ?? r.height ?? r.size?.height ?? r.dimensions?.height ?? 0);
+			if (w > 0 && h > 0) out.push({ id, name: r.name || r.key || id || 'Region', x, y, width: w, height: h });
 		};
+
+		const variables = gameData?.data?.variables || {};
+		for (const [id, value] of Object.entries(variables)) {
+			if (value?.dataType === 'region') addRegion(id, value);
+		}
+
 		const regions = gameData?.data?.regions || map?.regions;
 		if (Array.isArray(regions)) regions.forEach((r, i) => addRegion(r?.id || r?.key || String(i), r));
 		else if (regions && typeof regions === 'object') Object.entries(regions).forEach(([id, r]) => addRegion(id, r));
@@ -1726,6 +1735,14 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 		}
 		return out;
 	}, [gameData, map]);
+
+	useEffect(() => {
+		setRegionVisibility((prev) => {
+			const next = {};
+			for (const r of regionEntries) next[r.id] = prev[r.id] !== false;
+			return next;
+		});
+	}, [regionEntries]);
 
 	useEffect(() => {
 		if (activeLayerIndex >= layers.length) setActiveLayerIndex(Math.max(0, layers.length - 1));
@@ -1827,6 +1844,55 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 		}
 	}, [layers, width, height, tileWidth, tileHeight, firstGid, tileCount, columns, imageReady, zoom]);
 
+	const fillAtPointer = (e) => {
+		if (!activeLayer) return;
+		const rect = viewportRef.current?.getBoundingClientRect();
+		if (!rect) return;
+		const pointerX = e.clientX - rect.left;
+		const pointerY = e.clientY - rect.top;
+		const mapX = pointerX - offset.x;
+		const mapY = pointerY - offset.y;
+		const col = Math.floor(mapX / (tileWidth * zoom));
+		const row = Math.floor(mapY / (tileHeight * zoom));
+		if (col < 0 || row < 0 || col >= width || row >= height) return;
+		const startIndex = row * width + col;
+		const targetValue = Number(activeLayer.data?.[startIndex] || 0);
+		const replacementValue = firstGid + selectedTile;
+		if (targetValue === replacementValue) return;
+
+		setGameData((prev) => {
+			if (!prev?.data?.map) return prev;
+			const next = structuredClone(prev);
+			const targetLayers = Array.isArray(next.data.map.layers) ? next.data.map.layers.filter((l) => Array.isArray(l?.data)) : [];
+			const target = targetLayers[activeLayerIndex];
+			if (!target) return prev;
+			const data = Array.isArray(target.data) ? [...target.data] : [];
+			while (data.length < width * height) data.push(0);
+			const oldValue = Number(data[startIndex] || 0);
+			if (oldValue === replacementValue) return prev;
+			const queue = [startIndex];
+			const visited = new Uint8Array(width * height);
+			visited[startIndex] = 1;
+			while (queue.length) {
+				const index = queue.pop();
+				if (Number(data[index] || 0) !== oldValue) continue;
+				data[index] = replacementValue;
+				const c = index % width;
+				const r = Math.floor(index / width);
+				const neighbors = [];
+				if (c > 0) neighbors.push(index - 1);
+				if (c < width - 1) neighbors.push(index + 1);
+				if (r > 0) neighbors.push(index - width);
+				if (r < height - 1) neighbors.push(index + width);
+				for (const n of neighbors) {
+					if (!visited[n] && Number(data[n] || 0) === oldValue) { visited[n] = 1; queue.push(n); }
+				}
+			}
+			target.data = data;
+			return next;
+		});
+	};
+
 	const paintAtPointer = (e, erase = false) => {
 		if (!activeLayer || !canvasRef.current || !width || !height) return;
 		const rect = canvasRef.current.getBoundingClientRect();
@@ -1903,6 +1969,7 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 			if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
 			if (e.key.toLowerCase() === 'p') setTool('paint');
 			if (e.key.toLowerCase() === 'e') setTool('erase');
+			if (e.key.toLowerCase() === 'f') setTool('fill');
 			if (e.key === ' ') { e.preventDefault(); setTool((t) => t === 'pan' ? 'paint' : 'pan'); }
 		};
 		window.addEventListener('keydown', onKey);
@@ -1935,7 +2002,7 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 			<div className="h-12 shrink-0 border-b border-[#3d4a57] bg-[#262e36] flex items-center justify-between px-4">
 				<div>
 					<div className="text-sm font-medium text-[#e1e6ea]">Map View</div>
-					<div className="text-[11px] text-[#637588]">{tool === 'paint' ? 'Paint selected tile' : tool === 'erase' ? 'Erase tiles' : 'Preview / pan'} • P paint • E erase • wheel zoom</div>
+					<div className="text-[11px] text-[#637588]">{tool === 'paint' ? 'Paint selected tile' : tool === 'fill' ? 'Fill connected area' : tool === 'erase' ? 'Erase tiles' : 'Preview / pan'} • P paint • F fill • E erase • wheel zoom</div>
 				</div>
 				<div className="text-xs text-[#8291a1] font-mono">{width} × {height} • {tileWidth} × {tileHeight} • {Math.round(zoom * 100)}%</div>
 			</div>
@@ -1944,7 +2011,7 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 					<div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#48596a 1px, transparent 1px), linear-gradient(90deg, #48596a 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
 					<div className="absolute" style={{ left: offset.x, top: offset.y, width: mapPixelWidth, height: mapPixelHeight }}>
 						<canvas ref={canvasRef} className="block" />
-						{regionEntries.map((r, i) => <div key={`${r.id}-${i}`} className="absolute border border-cyan-300/70 bg-cyan-300/10 pointer-events-none" style={{ left: r.x * zoom, top: r.y * zoom, width: r.width * zoom, height: r.height * zoom }}><div className="absolute -top-4 left-0 text-[10px] whitespace-nowrap text-cyan-200 bg-[#17212a]/90 px-1 rounded">{r.name}</div></div>)}
+						{regionEntries.filter(r => regionVisibility[r.id] !== false).map((r, i) => <div key={`${r.id}-${i}`} className="absolute border border-cyan-300/70 bg-cyan-300/10 pointer-events-none" style={{ left: r.x * zoom, top: r.y * zoom, width: r.width * zoom, height: r.height * zoom }}><div className="absolute -top-4 left-0 text-[10px] whitespace-nowrap text-cyan-200 bg-[#17212a]/90 px-1 rounded">{r.name}</div></div>)}
 					</div>
 					{imageError && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="max-w-md rounded-lg border border-red-900 bg-red-950/80 px-4 py-3 text-sm text-red-300">Could not load the map tilesheet: <span className="font-mono">{tileset?.image || '(missing image)'}</span></div></div>}
 					{!imageError && !imageReady && imageUrl && <div className="absolute top-4 left-4 rounded-md border border-[#3d4a57] bg-[#20272e]/90 px-3 py-2 text-xs text-[#8291a1]">Loading tilesheet…</div>}
@@ -1952,10 +2019,11 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 
 				<div className="absolute top-3 left-3 z-20 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 p-1 flex gap-0.5 shadow-lg">
 					{[
-						['paint', Paintbrush, 'Paint'],
-						['erase', Eraser, 'Erase'],
-						['pan', Move, 'Pan']
-					].map(([key, Icon, label]) => <button key={key} type="button" title={`${label} (${key === 'paint' ? 'P' : key === 'erase' ? 'E' : 'Space'})`} onClick={() => setTool(key)} className={`w-8 h-8 rounded-md flex items-center justify-center border ${tool === key ? 'border-[#85B7EB] bg-[#334252] text-[#e1e6ea]' : 'border-transparent text-[#8291a1] hover:bg-[#2c3741]'}`}><Icon size={15} strokeWidth={1.8} /></button>)}
+						['paint', Paintbrush, 'Paint', 'P'],
+						['fill', PaintBucket, 'Fill', 'F'],
+						['erase', Eraser, 'Erase', 'E'],
+						['pan', Move, 'Pan', 'Space']
+					].map(([key, Icon, label, shortcut]) => <button key={key} type="button" title={`${label} (${shortcut})`} onClick={() => setTool(key)} className={`w-8 h-8 rounded-md flex items-center justify-center border ${tool === key ? 'border-[#85B7EB] bg-[#334252] text-[#e1e6ea]' : 'border-transparent text-[#8291a1] hover:bg-[#2c3741]'}`}><Icon size={15} strokeWidth={1.8} /></button>)}
 				</div>
 
 				<div className="absolute left-3 top-16 z-20 w-36 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 shadow-lg overflow-hidden">
@@ -1966,6 +2034,20 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 							<button type="button" title={layer.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => toggleLayerVisibility(i)} className={`w-6 h-6 rounded flex items-center justify-center ${layer.visible === false ? 'text-[#48596a]' : 'text-[#c5ccd3] hover:bg-[#3a4652]'}`}>{layer.visible === false ? <EyeOff size={13} /> : <Eye size={13} />}</button>
 						</div>)}
 						{layers.length === 0 && <div className="px-2 py-2 text-xs text-[#637588]">No tile layers found.</div>}
+					</div>
+				</div>
+
+				<div className="absolute left-3 top-[21rem] z-20 w-36 rounded-lg border border-[#3d4a57] bg-[#20272e]/95 shadow-lg overflow-hidden">
+					<div className="px-2.5 py-1.5 border-b border-[#3d4a57] flex items-center justify-between">
+						<div className="text-[9px] uppercase tracking-wide text-[#637588]">Regions</div>
+						<button type="button" title={allRegionsVisible ? 'Hide all regions' : 'Show all regions'} onClick={() => { const next = !allRegionsVisible; setAllRegionsVisible(next); setRegionVisibility(Object.fromEntries(regionEntries.map(r => [r.id, next]))); }} className="w-5 h-5 rounded flex items-center justify-center text-[#8291a1] hover:bg-[#2c3741]">{allRegionsVisible ? <Eye size={12} /> : <EyeOff size={12} />}</button>
+					</div>
+					<div className="max-h-48 overflow-auto p-1">
+						{regionEntries.map((r, i) => { const visible = regionVisibility[r.id] !== false; return <div key={`${r.id}-${i}`} className="flex items-center gap-1 rounded px-1 py-1 hover:bg-[#2c3741]">
+							<span className="min-w-0 flex-1 text-[10px] text-[#c5ccd3] truncate" title={r.name}>{r.name}</span>
+							<button type="button" title={visible ? 'Hide region' : 'Show region'} onClick={() => { setRegionVisibility(v => ({ ...v, [r.id]: !visible })); setAllRegionsVisible(false); }} className={`w-6 h-6 rounded flex items-center justify-center ${visible ? 'text-[#c5ccd3] hover:bg-[#3a4652]' : 'text-[#48596a]'}`}>{visible ? <Eye size={12} /> : <EyeOff size={12} />}</button>
+						</div>; })}
+						{regionEntries.length === 0 && <div className="px-2 py-2 text-[10px] text-[#637588]">No regions found.</div>}
 					</div>
 				</div>
 
@@ -3866,8 +3948,8 @@ export default function GameContentEditor() {
 		<div className="min-h-screen bg-[#262e36] text-[#e1e6ea] font-sans">
 			<header className="border-b border-[#3d4a57] bg-[#323d48]/60 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
 				<div>
-					<h1 className="text-lg font-semibold text-[#1a56da] tracking-tight">TARO Friendly Editor</h1>
-					<p className="text-xs text-[#8291a1] mt-0.5">Because someone had to do it</p>
+					<h1 className="text-lg font-semibold text-[#1a56da] tracking-tight">Content Editor</h1>
+					<p className="text-xs text-[#8291a1] mt-0.5">Create and edit units, items, and projectiles outside the live editor</p>
 				</div>
 				<div className="flex items-center gap-2">
 					{gameData && (
