@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2, Paintbrush, PaintBucket, Eraser, Move, Eye, EyeOff } from 'lucide-react';
+import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2, Paintbrush, PaintBucket, Eraser, Move, Eye, EyeOff, ScanSearch } from 'lucide-react';
 
 const ENTITY_TABS = [
 	{ key: 'unitTypes', label: 'Units', folderType: 'unit', root: 'units' },
@@ -1687,6 +1687,10 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	const [selectedTile, setSelectedTile] = useState(0);
 	const [regionVisibility, setRegionVisibility] = useState({});
 	const [allRegionsVisible, setAllRegionsVisible] = useState(true);
+	const [selectedRegionId, setSelectedRegionId] = useState(null);
+	const [regionPicker, setRegionPicker] = useState(null);
+	const [regionDrag, setRegionDrag] = useState(null);
+	const [regionCreate, setRegionCreate] = useState(null);
 	const [imageReady, setImageReady] = useState(false);
 	const [imageError, setImageError] = useState(false);
 	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -1919,6 +1923,97 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 		});
 	};
 
+	const worldPointFromEvent = (e) => {
+		const rect = viewportRef.current?.getBoundingClientRect();
+		if (!rect) return null;
+		return { x: (e.clientX - rect.left - offset.x) / zoom, y: (e.clientY - rect.top - offset.y) / zoom };
+	};
+
+	const regionsAtWorldPoint = (point) => {
+		if (!point) return [];
+		return regionEntries.filter((r) => regionVisibility[r.id] !== false && point.x >= r.x && point.x <= r.x + r.width && point.y >= r.y && point.y <= r.y + r.height);
+	};
+
+	const openRegionAtPointer = (e) => {
+		const point = worldPointFromEvent(e);
+		const hits = regionsAtWorldPoint(point);
+		if (!hits.length) { setSelectedRegionId(null); setRegionPicker(null); return false; }
+		if (hits.length === 1) { setSelectedRegionId(hits[0].id); setRegionPicker(null); return true; }
+		setRegionPicker({ x: e.clientX, y: e.clientY, hits });
+		return true;
+	};
+
+	const updateRegion = (regionId, patch) => {
+		setGameData((prev) => {
+			if (!prev?.data) return prev;
+			const next = structuredClone(prev);
+			const variables = next.data.variables || {};
+			const target = variables[regionId];
+			if (target?.dataType === 'region') {
+				if (Object.prototype.hasOwnProperty.call(patch, 'name')) target.name = patch.name;
+				const { name, ...geometry } = patch;
+				target.default = { ...(target.default || {}), ...geometry };
+				return next;
+			}
+			for (const collection of [next.data.regions, next.data.map?.regions]) {
+				if (!collection) continue;
+				const targetRegion = Array.isArray(collection) ? collection.find((r) => String(r?.id ?? r?.key) === String(regionId)) : collection[regionId];
+				if (targetRegion) { Object.assign(targetRegion, patch); return next; }
+			}
+			return prev;
+		});
+	};
+
+	const createRegion = (rect) => {
+		const id = generateKey();
+		const name = `Region ${regionEntries.length + 1}`;
+		setGameData((prev) => {
+			if (!prev?.data) return prev;
+			const next = structuredClone(prev);
+			next.data.variables = next.data.variables || {};
+			next.data.variables[id] = { name, dataType: 'region', default: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) } };
+			return next;
+		});
+		setSelectedRegionId(id);
+		setRegionPicker(null);
+	};
+
+	const deleteRegion = (regionId) => {
+		setGameData((prev) => {
+			if (!prev?.data) return prev;
+			const next = structuredClone(prev);
+			if (next.data.variables?.[regionId]?.dataType === 'region') { delete next.data.variables[regionId]; return next; }
+			for (const key of ['regions']) {
+				const c = next.data[key];
+				if (Array.isArray(c)) next.data[key] = c.filter((r) => String(r?.id ?? r?.key) !== String(regionId));
+				else if (c && typeof c === 'object' && c[regionId]) delete c[regionId];
+			}
+			return next;
+		});
+		setSelectedRegionId(null);
+	};
+
+	const beginRegionMove = (e) => {
+		if (!selectedRegionId || e.button !== 0) return false;
+		const point = worldPointFromEvent(e);
+		const r = regionEntries.find((x) => x.id === selectedRegionId);
+		if (!point || !r || point.x < r.x || point.x > r.x + r.width || point.y < r.y || point.y > r.y + r.height) return false;
+		e.preventDefault();
+		setRegionDrag({ mode: 'move', startX: point.x, startY: point.y, x: r.x, y: r.y, width: r.width, height: r.height });
+		setDragging(true);
+		return true;
+	};
+
+	const beginRegionResize = (e, r) => {
+		e.preventDefault();
+		e.stopPropagation();
+		const point = worldPointFromEvent(e);
+		if (!point) return;
+		setSelectedRegionId(r.id);
+		setRegionDrag({ mode: 'resize', startX: point.x, startY: point.y, x: r.x, y: r.y, width: r.width, height: r.height });
+		setDragging(true);
+	};
+
 	const beginPan = (e) => {
 		if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
 		if (tool !== 'pan' && e.button === 0 && !e.shiftKey && !e.altKey) return;
@@ -1933,21 +2028,59 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 	};
 	const endPan = () => { setDragging(false); dragRef.current = null; };
 	const handlePointerDown = (e) => {
+		if (e.currentTarget?.setPointerCapture) { try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} }
 		if (e.button === 1 || e.button === 2 || (e.button === 0 && (e.shiftKey || e.altKey || tool === 'pan'))) { beginPan(e); return; }
 		if (e.button !== 0) return;
+		if (tool === 'region') {
+			const point = worldPointFromEvent(e);
+			const hits = regionsAtWorldPoint(point);
+			if (hits.length > 1) { openRegionAtPointer(e); return; }
+			if (hits.length === 1) {
+				if (hits[0].id !== selectedRegionId) { setSelectedRegionId(hits[0].id); setRegionPicker(null); return; }
+				if (beginRegionMove(e)) return;
+			}
+			if (point) { setRegionCreate({ startX: point.x, startY: point.y, x: point.x, y: point.y, width: 0, height: 0 }); setDragging(true); }
+			return;
+		}
 		if (tool === 'paint' || tool === 'erase') {
 			e.preventDefault();
 			paintAtPointer(e, tool === 'erase');
 			setDragging(true);
 			return;
 		}
+		if (tool === 'fill') { e.preventDefault(); fillAtPointer(e); return; }
 		beginPan(e);
 	};
 	const handlePointerMove = (e) => {
+		if (regionCreate && dragging) {
+			const point = worldPointFromEvent(e);
+			if (point) {
+				const x = Math.min(regionCreate.startX, point.x);
+				const y = Math.min(regionCreate.startY, point.y);
+				setRegionCreate({ ...regionCreate, x, y, width: Math.abs(point.x - regionCreate.startX), height: Math.abs(point.y - regionCreate.startY) });
+			}
+			return;
+		}
+		if (regionDrag && dragging) {
+			const point = worldPointFromEvent(e);
+			if (point) {
+				if (regionDrag.mode === 'move') updateRegion(selectedRegionId, { x: Math.round(regionDrag.x + point.x - regionDrag.startX), y: Math.round(regionDrag.y + point.y - regionDrag.startY) });
+				else updateRegion(selectedRegionId, { width: Math.max(tileWidth, Math.round(regionDrag.width + point.x - regionDrag.startX)), height: Math.max(tileHeight, Math.round(regionDrag.height + point.y - regionDrag.startY)) });
+			}
+			return;
+		}
 		if (dragging && (tool === 'paint' || tool === 'erase')) paintAtPointer(e, tool === 'erase');
 		else movePan(e);
 	};
-	const handlePointerUp = () => endPan();
+	const handlePointerUp = (e) => {
+		if (e.currentTarget?.releasePointerCapture) { try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} }
+		if (regionCreate) {
+			if (regionCreate.width >= 4 && regionCreate.height >= 4) createRegion(regionCreate);
+			setRegionCreate(null);
+		}
+		setRegionDrag(null);
+		endPan();
+	};
 
 	const handleWheel = (e) => {
 		e.preventDefault();
@@ -1970,6 +2103,7 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 			if (e.key.toLowerCase() === 'p') setTool('paint');
 			if (e.key.toLowerCase() === 'e') setTool('erase');
 			if (e.key.toLowerCase() === 'f') setTool('fill');
+			if (e.key.toLowerCase() === 'r') setTool('region');
 			if (e.key === ' ') { e.preventDefault(); setTool((t) => t === 'pan' ? 'paint' : 'pan'); }
 		};
 		window.addEventListener('keydown', onKey);
@@ -2011,7 +2145,7 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 					<div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#48596a 1px, transparent 1px), linear-gradient(90deg, #48596a 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
 					<div className="absolute" style={{ left: offset.x, top: offset.y, width: mapPixelWidth, height: mapPixelHeight }}>
 						<canvas ref={canvasRef} className="block" />
-						{regionEntries.filter(r => regionVisibility[r.id] !== false).map((r, i) => <div key={`${r.id}-${i}`} className="absolute border border-cyan-300/70 bg-cyan-300/10 pointer-events-none" style={{ left: r.x * zoom, top: r.y * zoom, width: r.width * zoom, height: r.height * zoom }}><div className="absolute -top-4 left-0 text-[10px] whitespace-nowrap text-cyan-200 bg-[#17212a]/90 px-1 rounded">{r.name}</div></div>)}
+						{regionEntries.filter(r => regionVisibility[r.id] !== false).map((r, i) => <div key={`${r.id}-${i}`} className={`absolute pointer-events-none ${selectedRegionId === r.id ? 'border-2 border-yellow-300 bg-yellow-300/10' : 'border border-cyan-300/70 bg-cyan-300/10'}`} style={{ left: r.x * zoom, top: r.y * zoom, width: r.width * zoom, height: r.height * zoom }}><div className="absolute -top-4 left-0 text-[10px] whitespace-nowrap text-cyan-200 bg-[#17212a]/90 px-1 rounded">{r.name}</div>{selectedRegionId === r.id && tool === 'region' && <button type="button" aria-label="Resize region" onPointerDown={(e) => beginRegionResize(e, r)} className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-yellow-300 border border-[#20272e] pointer-events-auto cursor-se-resize" />}</div>)}{regionCreate && <div className="absolute border-2 border-dashed border-yellow-300 bg-yellow-300/10 pointer-events-none" style={{ left: regionCreate.x * zoom, top: regionCreate.y * zoom, width: regionCreate.width * zoom, height: regionCreate.height * zoom }} /> }
 					</div>
 					{imageError && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="max-w-md rounded-lg border border-red-900 bg-red-950/80 px-4 py-3 text-sm text-red-300">Could not load the map tilesheet: <span className="font-mono">{tileset?.image || '(missing image)'}</span></div></div>}
 					{!imageError && !imageReady && imageUrl && <div className="absolute top-4 left-4 rounded-md border border-[#3d4a57] bg-[#20272e]/90 px-3 py-2 text-xs text-[#8291a1]">Loading tilesheet…</div>}
@@ -2022,6 +2156,7 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 						['paint', Paintbrush, 'Paint', 'P'],
 						['fill', PaintBucket, 'Fill', 'F'],
 						['erase', Eraser, 'Erase', 'E'],
+						['region', ScanSearch, 'Regions', 'R'],
 						['pan', Move, 'Pan', 'Space']
 					].map(([key, Icon, label, shortcut]) => <button key={key} type="button" title={`${label} (${shortcut})`} onClick={() => setTool(key)} className={`w-8 h-8 rounded-md flex items-center justify-center border ${tool === key ? 'border-[#85B7EB] bg-[#334252] text-[#e1e6ea]' : 'border-transparent text-[#8291a1] hover:bg-[#2c3741]'}`}><Icon size={15} strokeWidth={1.8} /></button>)}
 				</div>
@@ -2050,6 +2185,26 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 						{regionEntries.length === 0 && <div className="px-2 py-2 text-[10px] text-[#637588]">No regions found.</div>}
 					</div>
 				</div>
+
+				{selectedRegionId && (() => {
+					const r = regionEntries.find((x) => x.id === selectedRegionId);
+					if (!r) return null;
+					return <div className="absolute right-3 top-3 z-30 w-64 rounded-lg border border-[#3d4a57] bg-[#20272e]/97 shadow-xl overflow-hidden">
+						<div className="px-3 py-2 border-b border-[#3d4a57] flex items-center justify-between"><div className="text-xs font-medium text-[#e1e6ea]">Edit Region</div><button type="button" onClick={() => setSelectedRegionId(null)} className="text-[#8291a1] hover:text-[#e1e6ea]"><X size={13}/></button></div>
+						<div className="p-3 space-y-2">
+							<label className="block text-[10px] text-[#637588]">Name<input value={r.name} onChange={(e) => updateRegion(selectedRegionId, { name: e.target.value })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label>
+							<div className="grid grid-cols-2 gap-2">{[['x','X'],['y','Y'],['width','Width'],['height','Height']].map(([key,label]) => <label key={key} className="text-[10px] text-[#637588]">{label}<input type="number" value={r[key]} onChange={(e) => updateRegion(selectedRegionId, { [key]: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]" /></label>)}</div>
+							<div className="text-[10px] text-[#637588]">Drag the selected region to move it. Drag its lower-right handle to resize it.</div>
+							<button type="button" onClick={() => deleteRegion(selectedRegionId)} className="w-full mt-1 px-2 py-1.5 rounded border border-red-900/70 text-xs text-red-300 hover:bg-red-950/40">Delete region</button>
+						</div>
+					</div>;
+				})()}
+
+				{regionPicker && <div className="fixed z-[100] rounded-lg border border-[#3d4a57] bg-[#20272e] shadow-2xl overflow-hidden" style={{ left: Math.min(regionPicker.x, window.innerWidth - 240), top: Math.min(regionPicker.y, window.innerHeight - 220) }}>
+					<div className="px-3 py-2 border-b border-[#3d4a57] text-xs text-[#c5ccd3]">Choose region</div>
+					<div className="p-1 min-w-[210px]">{regionPicker.hits.map((r) => <button key={r.id} type="button" onClick={() => { setSelectedRegionId(r.id); setRegionPicker(null); }} className="w-full text-left px-2 py-2 rounded text-xs text-[#c5ccd3] hover:bg-[#334252]"><div>{r.name}</div><div className="text-[9px] text-[#637588] font-mono">{Math.round(r.x)}, {Math.round(r.y)} • {Math.round(r.width)} × {Math.round(r.height)}</div></button>)}</div>
+					<button type="button" onClick={() => setRegionPicker(null)} className="w-full border-t border-[#3d4a57] px-3 py-1.5 text-[10px] text-[#8291a1] hover:bg-[#2c3741]">Cancel</button>
+				</div>}
 
 				{imageReady && <div className="absolute right-3 bottom-3 z-20 w-[470px] max-w-[calc(100%-24px)] rounded-lg border border-[#3d4a57] bg-[#20272e]/96 shadow-xl overflow-hidden">
 					<div className="flex items-center justify-between px-3 py-2 border-b border-[#3d4a57]"><div><div className="text-xs font-medium text-[#e1e6ea]">Tilesheet</div><div className="text-[10px] text-[#637588]">Click a tile on the sheet to paint with it</div></div><div className="text-[10px] font-mono text-[#637588]">{columns} × {rows}</div></div>
