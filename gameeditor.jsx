@@ -1660,7 +1660,7 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 			{showEditor && <div className="mt-1 mb-1 rounded-md border border-[#3d4a57] bg-[#252d35] p-2" style={{ marginLeft: (depth + 1) * 16 }}>
 				{activeField ? <>
 					<div className="flex items-center justify-between mb-1.5"><span className="text-[10px] uppercase tracking-wide text-[#637588]">Edit {readableType(activeField)}</span><button type="button" onClick={() => setActiveField(null)} className="text-[#637588] hover:text-[#c5ccd3]"><X size={12} /></button></div>
-					<ScriptFieldInput kind={contextualScriptFieldKind(action, activeField, fieldSchema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, action?.[activeField]), gameData)} value={action?.[activeField]} gameData={gameData} onChange={(v) => { onOp([...path, activeField], 'setField', v); setActiveField(null); }} />
+					<ScriptFieldInput kind={contextualScriptFieldKind(action, activeField, fieldSchema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, action?.[activeField]), gameData)} value={action?.[activeField]} gameData={gameData} onChange={(v) => { onOp([...path, activeField], 'setField', v); }} />
 				</> : <div className="text-[10px] text-[#637588]">Click a blue value above to edit it.</div>}
 			</div>}
 			{hasChildren && open && <div>
