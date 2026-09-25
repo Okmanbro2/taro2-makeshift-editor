@@ -1434,7 +1434,7 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKi
 		{pickerOpen && <ScriptValuePicker expectedKind={expectedKind} value={value} gameData={gameData} onChange={(next) => onChange(next)} onClose={() => setPickerOpen(false)} />}
 		{activeField && <div className="mt-1.5 rounded-md border border-[#3d4a57] bg-[#252d35] p-2">
 			<div className="flex items-center justify-between mb-1.5"><span className="text-[10px] uppercase tracking-wide text-[#637588]">Edit {readableType(activeField)}</span><button type="button" onClick={() => setActiveField(null)} className="text-[#637588] hover:text-[#c5ccd3]"><X size={12} /></button></div>
-			<ScriptFieldInput kind={schema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, value?.[activeField])} value={value?.[activeField]} gameData={gameData} onChange={(next) => { setField(activeField, next); setActiveField(null); }} />
+			<ScriptFieldInput kind={schema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, value?.[activeField])} value={value?.[activeField]} gameData={gameData} onChange={(next) => { setField(activeField, next); }} />
 		</div>}
 		{advanced && <div className="mt-1.5 ml-4 rounded-md border border-[#3d4a57] bg-[#252d35] p-2 space-y-1.5">
 			{schema.map((field) => <div key={field.key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] w-28 shrink-0 pt-1">{readableType(field.key)}</span><div className="min-w-0 flex-1"><ScriptFieldInput kind={field.kind} value={value?.[field.key]} gameData={gameData} onChange={(next) => setField(field.key, next)} /></div></div>)}
@@ -1919,6 +1919,15 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 		});
 	};
 
+	const getDefaultBodyDimensions = (def, fallback = 64) => {
+		const bodies = def?.bodies && typeof def.bodies === 'object' ? def.bodies : {};
+		const states = def?.states && typeof def.states === 'object' ? def.states : {};
+		const defaultState = states.default || Object.values(states)[0] || {};
+		const bodyKey = defaultState?.body || 'default';
+		const body = bodies[bodyKey] || bodies.default || Object.values(bodies)[0] || {};
+		return { width: Number(body.width) || Number(def?.width) || fallback, height: Number(body.height) || Number(def?.height) || fallback };
+	};
+
 	const createObject = (kind, typeId, world) => {
 		if (!typeId) return;
 		const id = generateKey();
@@ -1930,7 +1939,7 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 			let action;
 			if (kind === 'unitTypes') {
 				const def = next.data.unitTypes?.[typeId] || {};
-				const w = Number(def.width) || Number(def.body?.width) || 64, h = Number(def.height) || Number(def.body?.height) || 64;
+				const { width: w, height: h } = getDefaultBodyDimensions(def);
 				action = { type: 'createEntityForPlayerAtPositionWithDimensions', entityType: 'unitTypes', entity: typeId, position, angle: 0, height: h, width: w };
 			} else if (kind === 'itemTypes') {
 				action = { type: 'createItemAtPositionWithQuantity', itemType: typeId, position, quantity: 1 };
@@ -2060,7 +2069,7 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 
 	const beginObjectDrag = (e, obj) => { if (e.button !== 0 || tool !== 'object') return; e.stopPropagation(); e.preventDefault(); const point = worldPointFromEvent(e); if (!point) return; setSelectedObjectId(obj.id); setObjectDrag({ id: obj.id, dx: point.x - obj.x, dy: point.y - obj.y }); setDragging(true); };
 	const filteredObjectOptions = Object.entries(typeCollections[objectMenuTab] || {}).filter(([id, v]) => { const q = objectSearch.trim().toLowerCase(); return !q || String(v?.name || id).toLowerCase().includes(q) || id.toLowerCase().includes(q); }).sort((a,b) => (a[1]?.name || a[0]).localeCompare(b[1]?.name || b[0]));
-	const createFromMenu = (kind, typeId) => { if (!objectMenu) return; const world = objectMenu.world; const newIndex = Array.isArray(gameData?.data?.scripts?.initialize?.actions) ? gameData.data.scripts.initialize.actions.length : 0; setGameData((prev) => { const next = structuredClone(prev); const script = getInitializeScript(next); if (!script) return prev; const position = makeXY(world.x, world.y); let action; if (kind === 'unitTypes') { const def = next.data.unitTypes?.[typeId] || {}; action = { type: 'createEntityForPlayerAtPositionWithDimensions', entityType: 'unitTypes', entity: typeId, position, angle: 0, height: Number(def.height) || Number(def.body?.height) || 64, width: Number(def.width) || Number(def.body?.width) || 64 }; } else if (kind === 'itemTypes') action = { type: 'createItemAtPositionWithQuantity', itemType: typeId, position, quantity: 1 }; else action = { type: 'createProjectileAtPosition', projectileType: typeId, position, force: 0, angle: 0 }; script.actions.push(action); return next; }); setObjectMenu(null); setObjectSearch(''); setSelectedObjectId(String(newIndex)); };
+	const createFromMenu = (kind, typeId) => { if (!objectMenu) return; const world = objectMenu.world; const newIndex = Array.isArray(gameData?.data?.scripts?.initialize?.actions) ? gameData.data.scripts.initialize.actions.length : 0; setGameData((prev) => { const next = structuredClone(prev); const script = getInitializeScript(next); if (!script) return prev; const position = makeXY(world.x, world.y); let action; if (kind === 'unitTypes') { const def = next.data.unitTypes?.[typeId] || {}; const { width, height } = getDefaultBodyDimensions(def); action = { type: 'createEntityForPlayerAtPositionWithDimensions', entityType: 'unitTypes', entity: typeId, position, angle: 0, height, width }; } else if (kind === 'itemTypes') action = { type: 'createItemAtPositionWithQuantity', itemType: typeId, position, quantity: 1 }; else action = { type: 'createProjectileAtPosition', projectileType: typeId, position, force: 0, angle: 0 }; script.actions.push(action); return next; }); setObjectMenu(null); setObjectSearch(''); setSelectedObjectId(String(newIndex)); };
 
 	if (!map) return <div className="flex-1 flex items-center justify-center text-sm text-[#637588]">This game has no map data.</div>;
 	const sheetImage = imageRef.current;
