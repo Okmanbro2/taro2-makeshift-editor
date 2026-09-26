@@ -1030,7 +1030,9 @@ const ENGINE_FUNCTION_SCHEMAS = {
   "vector3": [{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"},{"key":"z","kind":"valueExpr"}],
   "xyCoordinate": [{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"}]
 };
+// parameterComponent.js is the source of truth on god
 const ENGINE_FUNCTION_TYPES = Object.keys(ENGINE_FUNCTION_SCHEMAS);
+
 
 function getFunctionVocabulary(gameData) {
 	const byName = new Map();
@@ -1145,7 +1147,7 @@ const SCRIPT_VALUE_GROUPS = [
 	{
 		label: 'Position & map',
 		color: '#8291A1',
-		functions: ['getEntityPosition', 'getPositionX', 'getPositionY', 'getMouseCursorPosition', 'positionInFrontOfPosition', 'distanceBetweenPositions', 'angleBetweenPositions', 'centerOfRegion', 'getRandomPositionInRegion', 'dynamicRegion', 'getEntireMapRegion', 'getMapWidth', 'getMapHeight']
+		functions: ['getEntityPosition', 'getPositionX', 'getPositionY', 'getMouseCursorPosition', 'distanceBetweenPositions', 'angleBetweenPositions', 'centerOfRegion', 'getRandomPositionInRegion', 'dynamicRegion', 'getEntireMapRegion', 'getMapWidth', 'getMapHeight']
 	},
 ];
 
@@ -1516,11 +1518,7 @@ const SCRIPT_FUNCTION_PHRASES = {
 	getUnitTypeOfUnit: (fields) => <>unit type of <ScriptInlineFunctionField field="unit" fields={fields} /></>,
 	getItemTypeOfItem: (fields) => <>item type of <ScriptInlineFunctionField field="item" fields={fields} /></>,
 	getProjectileTypeOfProjectile: (fields) => <>projectile type of <ScriptInlineFunctionField field="projectile" fields={fields} /></>,
-	getOwnerOfUnit: (fields) => <>owner of <ScriptInlineFunctionField field="unit" fields={fields} /></>,
 	getOwnerOfItem: (fields) => <>owner of <ScriptInlineFunctionField field="item" fields={fields} /></>,
-	getOwnerOfProjectile: (fields) => <>owner of <ScriptInlineFunctionField field="projectile" fields={fields} /></>,
-	getPositionOfEntity: (fields) => <>position of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
-	getDistanceBetweenEntities: (fields) => <>distance between <ScriptInlineFunctionField field="entityA" fields={fields} /> and <ScriptInlineFunctionField field="entityB" fields={fields} /></>,
 	getDistanceBetweenPositions: (fields) => <>distance between <ScriptInlineFunctionField field="positionA" fields={fields} /> and <ScriptInlineFunctionField field="positionB" fields={fields} /></>,
 	isUnitMoving: (fields) => <><ScriptInlineFunctionField field="unit" fields={fields} /> is moving</>,
 	unitIsInRegion: (fields) => <><ScriptInlineFunctionField field="unit" fields={fields} /> is in <ScriptInlineFunctionField field="region" fields={fields} /></>,
@@ -1529,12 +1527,6 @@ const SCRIPT_FUNCTION_PHRASES = {
 	playersAreFriendly: (fields) => <><ScriptInlineFunctionField field="playerA" fields={fields} /> is friendly with <ScriptInlineFunctionField field="playerB" fields={fields} /></>,
 	playersAreHostile: (fields) => <><ScriptInlineFunctionField field="playerA" fields={fields} /> is hostile to <ScriptInlineFunctionField field="playerB" fields={fields} /></>,
 	playersAreNeutral: (fields) => <><ScriptInlineFunctionField field="playerA" fields={fields} /> is neutral to <ScriptInlineFunctionField field="playerB" fields={fields} /></>,
-	numberOfUnitsOfUnitType: (fields) => <>number of units of <ScriptInlineFunctionField field="unitType" fields={fields} /></>,
-	numberOfItemsOfItemType: (fields) => <>number of items of <ScriptInlineFunctionField field="itemType" fields={fields} /></>,
-	numberOfProjectilesOfProjectileType: (fields) => <>number of projectiles of <ScriptInlineFunctionField field="projectileType" fields={fields} /></>,
-	randomNumber: (fields) => <>random number from <ScriptInlineFunctionField field="min" fields={fields} /> to <ScriptInlineFunctionField field="max" fields={fields} /></>,
-	maxValue: (fields) => <>maximum of <ScriptInlineFunctionField field="valueA" fields={fields} /> and <ScriptInlineFunctionField field="valueB" fields={fields} /></>,
-	minValue: (fields) => <>minimum of <ScriptInlineFunctionField field="valueA" fields={fields} /> and <ScriptInlineFunctionField field="valueB" fields={fields} /></>,
 	notValue: (fields) => <>not <ScriptInlineFunctionField field="boolean" fields={fields} /></>,
 };
 
@@ -2370,6 +2362,7 @@ export default function GameContentEditor() {
 	const [editingPlayerTypeKey, setEditingPlayerTypeKey] = useState(null);
 	const [fileName, setFileName] = useState('');
 	const [fileError, setFileError] = useState('');
+	const [importNotice, setImportNotice] = useState('');
 	const [activeTab, setActiveTab] = useState('unitTypes');
 	const [selectedKey, setSelectedKey] = useState(null);
 	const [selectedEntityKeys, setSelectedEntityKeys] = useState([]);
@@ -2629,6 +2622,10 @@ export default function GameContentEditor() {
 				normalizeItemAttributeVisibility(parsed);
 				normalizeAttributeTypes(parsed);
 				normalizeSetPlayerAttributeTargets(parsed);
+				const repairReport = normalizeScriptFunctions(parsed);
+				setImportNotice(repairReport.repaired.length || repairReport.unresolved.length
+					? `Import cleanup: ${repairReport.repaired.length} known script issue(s) repaired${repairReport.unresolved.length ? `; ${repairReport.unresolved.length} function(s) could not be safely repaired: ${repairReport.unresolved.join(', ')}` : '.'}`
+					: '');
 				setGameData(parsed);
 				setSelectedKey(null);
 				setSelectedFolderId(null);
@@ -4010,7 +4007,7 @@ export default function GameContentEditor() {
 		return parsed;
 	}
 
-	// fix
+	//  prod
 	function normalizeSetPlayerAttributeTargets(parsed) {
 		const scripts = parsed?.data?.scripts || {};
 		const repairActions = (actions) => {
@@ -4028,6 +4025,73 @@ export default function GameContentEditor() {
 		};
 		for (const script of Object.values(scripts)) repairActions(script?.actions);
 		return parsed;
+	}
+
+	// repair
+	function normalizeScriptFunctions(parsed) {
+		const scripts = parsed?.data?.scripts || {};
+		const repaired = [];
+		const unresolved = [];
+		const recordUnresolved = (name) => {
+			if (!unresolved.includes(name)) unresolved.push(name);
+		};
+		const repair = (value, path) => {
+			if (Array.isArray(value)) {
+				value.forEach((item, index) => repair(item, `${path}[${index}]`));
+				return;
+			}
+			if (!value || typeof value !== 'object') return;
+			if (typeof value.function === 'string') {
+				const fn = value.function;
+				if (fn === 'getOwnerOfUnit') {
+					const entity = value.entity ?? value.unit;
+					value.function = 'getOwner';
+					delete value.unit;
+					if (entity !== undefined) value.entity = entity;
+					repaired.push(`${path}: getOwnerOfUnit → getOwner`);
+				} else if (fn === 'getPositionOfEntity') {
+					value.function = 'getEntityPosition';
+					repaired.push(`${path}: getPositionOfEntity → getEntityPosition`);
+				} else if (fn === 'getDistanceBetweenEntities') {
+					const a = value.positionA ?? (value.entityA !== undefined ? { function: 'getEntityPosition', entity: value.entityA } : undefined);
+					const b = value.positionB ?? (value.entityB !== undefined ? { function: 'getEntityPosition', entity: value.entityB } : undefined);
+					if (a !== undefined && b !== undefined) {
+						value.function = 'distanceBetweenPositions';
+						delete value.entityA;
+						delete value.entityB;
+						value.positionA = a;
+						value.positionB = b;
+						repaired.push(`${path}: getDistanceBetweenEntities → distanceBetweenPositions`);
+					} else recordUnresolved(fn);
+				} else if (fn === 'randomNumber') {
+					value.function = 'getRandomNumberBetween';
+					if (value.min === undefined && value.minimum !== undefined) value.min = value.minimum;
+					if (value.max === undefined && value.maximum !== undefined) value.max = value.maximum;
+					delete value.minimum;
+					delete value.maximum;
+					repaired.push(`${path}: randomNumber → getRandomNumberBetween`);
+				} else if (fn === 'maxValue') {
+					value.function = 'getMax';
+					if (value.num1 === undefined && value.a !== undefined) value.num1 = value.a;
+					if (value.num2 === undefined && value.b !== undefined) value.num2 = value.b;
+					delete value.a; delete value.b;
+					repaired.push(`${path}: maxValue → getMax`);
+				} else if (fn === 'minValue') {
+					value.function = 'getMin';
+					if (value.num1 === undefined && value.a !== undefined) value.num1 = value.a;
+					if (value.num2 === undefined && value.b !== undefined) value.num2 = value.b;
+					delete value.a; delete value.b;
+					repaired.push(`${path}: minValue → getMin`);
+				} else if (fn === 'getOwnerOfProjectile' || fn === 'numberOfItemsOfItemType' || fn === 'numberOfProjectilesOfProjectileType' || fn === 'positionInFrontOfPosition') {
+					recordUnresolved(fn);
+				} else if (!Object.prototype.hasOwnProperty.call(ENGINE_FUNCTION_SCHEMAS, fn)) {
+					recordUnresolved(fn);
+				}
+			}
+			Object.entries(value).forEach(([key, child]) => repair(child, `${path}.${key}`));
+		};
+		Object.entries(scripts).forEach(([key, script]) => repair(script, `data.scripts.${key}`));
+		return { parsed, repaired, unresolved };
 	}
 
 	function addAttributeType() {
@@ -4222,6 +4286,7 @@ export default function GameContentEditor() {
 	function downloadJson() {
 		const exportData = deepClone(gameData);
 		normalizeSetPlayerAttributeTargets(exportData);
+		normalizeScriptFunctions(exportData);
 		const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
@@ -4425,6 +4490,9 @@ export default function GameContentEditor() {
 				</div>
 			</header>
 
+			{importNotice && (
+				<div className="mx-4 mt-3 rounded-md border border-[#3d4a57] bg-[#303b47] px-3 py-2 text-xs text-[#c5ccd3]">{importNotice}</div>
+			)}
 			{fileError && (
 				<div className="mx-6 mt-4 flex items-start gap-2 rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">
 					<AlertCircle size={16} className="mt-0.5 shrink-0" /> {fileError}
