@@ -284,8 +284,11 @@ function describeValue(val, gameData) {
 		case 'entitiesBetweenTwoPositions':
 			return `entities between ${describeValue(val.positionA, gameData)} and ${describeValue(val.positionB, gameData)}`;
 		case 'calculate': {
-			const [opDesc, a, b] = val.items || [];
+			const items = Array.isArray(val.items) ? val.items : [];
+			const [opDesc, a, b] = items;
 			const op = CALC_OPERATORS[opDesc?.operator] || opDesc?.operator || '?';
+			if (!items.length) return 'calculate(?)';
+			if (items.length < 3) return `calculate(${items.map((item) => describeValue(item, gameData)).join(', ')})`;
 			return `(${describeValue(a, gameData)} ${op} ${describeValue(b, gameData)})`;
 		}
 		default: {
@@ -302,7 +305,7 @@ function describeCondition(cond, gameData) {
 	if (Array.isArray(cond) && cond.length === 3 && cond[0]?.operator) {
 		const [desc, a, b] = cond;
 		if (desc.operandType === 'or' || desc.operator === 'OR') {
-			return (a || []).map((sub) => describeCondition(sub, gameData)).join(' OR ');
+			return Array.isArray(a) ? a.map((sub) => describeCondition(sub, gameData)).join(' OR ') : describeValue(a, gameData);
 		}
 		return `${describeValue(a, gameData)} ${desc.operator} ${describeValue(b, gameData)}`;
 	}
@@ -1066,6 +1069,7 @@ function collectScriptVocabulary(gameData) {
 
 function defaultFunctionExpression(entry) {
 	if (!entry) return { function: 'undefinedValue' };
+	if (entry.name === 'calculate') return { function: 'calculate', items: [{ operator: '+' }, 0, 0] };
 	const out = { function: entry.name };
 	for (const field of (entry.schema || [])) {
 		out[field.key] = defaultValueForScriptField(field.kind);
@@ -1433,7 +1437,34 @@ function ScriptInlineFunctionField({ field: fieldKey, fields }) {
 	return <button type="button" onClick={() => fields.setActiveField(fieldKey)} className="inline-flex items-center align-middle mx-0.5 px-1.5 py-0.5 rounded-md bg-[#303b47] border border-[#506174] text-[#85B7EB] text-[11px] font-sans whitespace-nowrap hover:border-[#85B7EB] hover:bg-[#364453]">{inlineFieldText(field, fields.values[fieldKey], fields.gameData)}</button>;
 }
 
+function CalculateFunctionEditor({ value, gameData, onChange }) {
+	const items = Array.isArray(value?.items) ? value.items : [{ operator: '+' }, 0, 0];
+	const operator = ['+', '-', '*', '/', '%'].includes(items[0]?.operator) ? items[0].operator : '+';
+	const left = items.length > 1 ? items[1] : 0;
+	const right = items.length > 2 ? items[2] : 0;
+	const update = (index, next) => {
+		const nextItems = [{ operator }, left, right];
+		if (index === 0) nextItems[0] = { operator: next };
+		else nextItems[index] = next;
+		onChange({ function: 'calculate', items: nextItems });
+	};
+	return <div className="relative w-full">
+		<div className="flex items-center gap-1.5 flex-wrap min-h-8 rounded-lg bg-[#20272e] border border-[#48596a] px-2 py-1.5">
+			<Zap size={11} className="text-[#AFA9EC] shrink-0" />
+			<span className="text-xs font-medium text-[#c5ccd3]">Calculate</span>
+			<div className="flex items-center gap-1.5 flex-wrap w-full pl-4">
+				<ScriptExpressionInput value={left} gameData={gameData} expectedKind="number" onChange={(next) => update(1, next)} />
+				<select value={operator} onChange={(e) => update(0, e.target.value)} className="bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-xs text-[#c5ccd3] font-mono">
+					{['+', '-', '*', '/', '%'].map((op) => <option key={op} value={op}>{op}</option>)}
+				</select>
+				<ScriptExpressionInput value={right} gameData={gameData} expectedKind="number" onChange={(next) => update(2, next)} />
+			</div>
+		</div>
+	</div>;
+}
+
 function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKind = 'valueExpr' }) {
+	if (value?.function === 'calculate') return <CalculateFunctionEditor value={value} gameData={gameData} onChange={onChange} />;
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [activeField, setActiveField] = useState(null);
 	const [advanced, setAdvanced] = useState(false);
@@ -2200,6 +2231,9 @@ export default function GameContentEditor() {
 	const [scriptBodyError, setScriptBodyError] = useState('');
 	const [dialogueDraft, setDialogueDraft] = useState(null);
 	const [draft, setDraft] = useState(null);
+	const [draftBaseline, setDraftBaseline] = useState(null);
+	const [advancedBaseline, setAdvancedBaseline] = useState('');
+	const baselineCaptureRef = useRef(false);
 	const [unitEditorTab, setUnitEditorTab] = useState('general');
 	const [groupDraft, setGroupDraft] = useState(null);
 	const [shopDraft, setShopDraft] = useState(null);
@@ -2230,6 +2264,34 @@ export default function GameContentEditor() {
 	const [previewingSoundKey, setPreviewingSoundKey] = useState(null);
 	const fileInputRef = useRef(null);
 	const soundPreviewAudioRef = useRef(null);
+
+	const entityEditorDirty = !!draft && (
+		!!draft.isNew ||
+		!draftBaseline ||
+		JSON.stringify(draft) !== JSON.stringify(draftBaseline) ||
+		advancedText !== advancedBaseline
+	);
+
+	useEffect(() => {
+		if (!entityEditorDirty) return;
+		const handleBeforeUnload = (event) => {
+			event.preventDefault();
+			event.returnValue = '';
+		};
+		window.addEventListener('beforeunload', handleBeforeUnload);
+		return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+	}, [entityEditorDirty]);
+
+	function confirmLeaveEntityEditor() {
+		if (!entityEditorDirty) return true;
+		return window.confirm('You have unsaved changes. Leave this editor and discard them?');
+	}
+
+	function clearEntityEditorSelection() {
+		setDraft(null);
+		setDraftBaseline(null);
+		setAdvancedBaseline('');
+	}
 
 	function updateAssetBaseUrl(value) {
 		setAssetBaseUrl(value);
@@ -2399,6 +2461,10 @@ export default function GameContentEditor() {
 	}, [isDialoguesTab, gameData, dialoguesCollection, search]);
 
 	function handleUpload(e) {
+		if (!confirmLeaveEntityEditor()) {
+			e.target.value = '';
+			return;
+		}
 		const file = e.target.files[0];
 		if (!file) return;
 		setFileError('');
@@ -2443,7 +2509,6 @@ export default function GameContentEditor() {
 			scripts: deepClone(scripts) || {},
 			controls: activeTab === 'unitTypes' ? (Object.keys(controls || {}).length ? deepClone(controls) : deepClone(DEFAULT_UNIT_CONTROLS)) : (deepClone(controls) || {}),
 			...(activeTab === 'unitTypes' ? { ai: deepClone(ai) || { pathFindingMethod: 'simple', idleBehaviour: 'stay', sensorResponse: 'none', attackResponse: 'none', maxTravelDistance: '', sensorRadius: 150, maxAttackRange: 400, enabled: false, letGoDistance: '' } } : {}),
-			...(activeTab === 'unitTypes' ? { ai: deepClone(ai) || { pathFindingMethod: 'simple', idleBehaviour: 'stay', sensorResponse: 'none', attackResponse: 'none', maxTravelDistance: '', sensorRadius: 150, maxAttackRange: 400, enabled: false, letGoDistance: '' } } : {}),
 			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, knockbackForce: Number.isFinite(Number(knockbackForce)) ? Number(knockbackForce) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
 			costUnitAttributes: deepClone(entity.cost?.unitAttributes) || {},
@@ -2463,9 +2528,18 @@ export default function GameContentEditor() {
 		setAdvancedText(JSON.stringify(rest, null, 2));
 		setAdvancedError('');
 		setSavedMsg('');
+		baselineCaptureRef.current = true;
 	}
 
+	useEffect(() => {
+		if (!baselineCaptureRef.current || !draft) return;
+		setDraftBaseline(deepClone(draft));
+		setAdvancedBaseline(advancedText);
+		baselineCaptureRef.current = false;
+	}, [draft, advancedText]);
+
 	function selectEntity(key, event) {
+		if (!confirmLeaveEntityEditor()) return;
 		if (event?.shiftKey) {
 			setSelectedEntityKeys((keys) => {
 				const base = keys.length ? keys : (selectedKey ? [selectedKey] : []);
@@ -2527,6 +2601,7 @@ export default function GameContentEditor() {
 	}
 
 	function startNew(baseKey) {
+		if (!confirmLeaveEntityEditor()) return;
 		const defaultUnitControls = {
 			movementMethod: 'velocity',
 			movementControlScheme: 'wasd',
@@ -2582,6 +2657,7 @@ export default function GameContentEditor() {
 		setShowNewModal(false);
 		setCloneFrom('');
 		setSavedMsg('');
+		baselineCaptureRef.current = true;
 	}
 
 	function addAttribute(attrKey) {
@@ -3170,7 +3246,10 @@ export default function GameContentEditor() {
 			};
 			return next;
 		});
-		setDraft((d) => ({ ...d, isNew: false }));
+		const savedDraft = { ...deepClone(draft), isNew: false };
+		setDraftBaseline(savedDraft);
+		setAdvancedBaseline(advancedText);
+		setDraft(savedDraft);
 		setSavedMsg('Saved to the working copy in this tool. Download the file below to keep it.');
 	}
 
@@ -4131,11 +4210,12 @@ export default function GameContentEditor() {
 							<button
 								key={t.key}
 								onClick={() => {
+									if (!confirmLeaveEntityEditor()) return;
 									setActiveTab(t.key);
 									setSelectedKey(null);
 									setSelectedEntityKeys([]);
 									setSelectedFolderId(null);
-									setDraft(null);
+									clearEntityEditorSelection();
 									setGroupDraft(null);
 									setSearch('');
 								}}
@@ -4151,6 +4231,7 @@ export default function GameContentEditor() {
 						))}
 						<button
 							onClick={() => {
+								if (!confirmLeaveEntityEditor()) return;
 							setActiveTab(SHOP_TAB.key);
 							setSelectedKey(null);
 							setSelectedEntityKeys([]);
@@ -4172,6 +4253,7 @@ export default function GameContentEditor() {
 						</button>
 						<button
 							onClick={() => {
+								if (!confirmLeaveEntityEditor()) return;
 							setActiveTab(MAP_TAB.key);
 							setSelectedKey(null);
 							setDraft(null);
@@ -4191,6 +4273,7 @@ export default function GameContentEditor() {
 							<button
 								key={t.key}
 								onClick={() => {
+									if (!confirmLeaveEntityEditor()) return;
 									setActiveTab(t.key);
 									setSelectedKey(null);
 									setDraft(null);
@@ -4211,6 +4294,7 @@ export default function GameContentEditor() {
 							<button
 								key={t.key}
 								onClick={() => {
+									if (!confirmLeaveEntityEditor()) return;
 									setActiveTab(t.key);
 									setSelectedKey(null);
 									setDraft(null);
@@ -4232,6 +4316,7 @@ export default function GameContentEditor() {
 						<div className="px-4 text-xs uppercase tracking-wide text-[#637588] mt-5 mb-1.5">Scripts</div>
 						<button
 							onClick={() => {
+								if (!confirmLeaveEntityEditor()) return;
 								setActiveTab('globalScripts');
 								setSelectedKey(null);
 								setSelectedScriptFolderId(null);
@@ -4251,6 +4336,7 @@ export default function GameContentEditor() {
 						</button>
 						<button
 							onClick={() => {
+								if (!confirmLeaveEntityEditor()) return;
 								setActiveTab('dialogues');
 								setSelectedKey(null);
 								setDialogueDraft(null);
@@ -4338,8 +4424,23 @@ export default function GameContentEditor() {
 														selectedEntityKeys.includes(key) ? 'bg-[#1a56da]/20' : selectedKey === key ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 													}`}
 												>
-													<div className="text-sm text-[#e1e6ea] truncate">{entity?.name || '(unnamed)'}</div>
-													<div className="text-xs text-[#637588] font-mono truncate">{key}</div>
+													<div className="flex items-center gap-2 min-w-0">
+														{(() => {
+															const sheet = entity?.cellSheet;
+															const state = entity?.states?.default || Object.values(entity?.states || {})[0] || {};
+															const animation = entity?.animations?.[state.animation] || entity?.animations?.default || Object.values(entity?.animations || {})[0] || {};
+															const cols = Math.max(1, Number(sheet?.columnCount) || 1), rows = Math.max(1, Number(sheet?.rowCount) || 1);
+															const frame = Math.max(1, Number(animation?.frames?.[0]) || 1), zero = frame - 1;
+															if (activeTab === 'itemTypes' && entity?.inventoryImage) return <div className="w-10 h-10 shrink-0 rounded border border-[#48596a] bg-[#1f252c] overflow-hidden flex items-center justify-center"><img src={resolveAssetUrl(entity.inventoryImage)} alt="" className="max-w-full max-h-full object-contain" /></div>;
+															if (!sheet?.url || zero >= cols * rows) return <div className="w-10 h-10 shrink-0 rounded border border-[#3d4a57] bg-[#20272e]" />;
+															const col = zero % cols, row = Math.floor(zero / cols);
+															return <div className="w-10 h-10 shrink-0 rounded border border-[#48596a] bg-[#1f252c] overflow-hidden"><img src={resolveAssetUrl(sheet.url)} alt="" className="max-w-none max-h-none" style={{ width: `${cols * 100}%`, height: `${rows * 100}%`, marginLeft: `${-col * 100}%`, marginTop: `${-row * 100}%`, imageRendering: 'pixelated' }} /></div>;
+														})()}
+														<div className="min-w-0 flex-1">
+															<div className="text-sm text-[#e1e6ea] truncate">{entity?.name || '(unnamed)'}</div>
+															<div className="text-xs text-[#637588] font-mono truncate">{key}</div>
+														</div>
+													</div>
 												</button>
 											))}
 											{filteredEntries.length === 0 && (
@@ -4359,8 +4460,24 @@ export default function GameContentEditor() {
 															selectedEntityKeys.includes(node.id) ? 'bg-[#1a56da]/20' : selectedKey === node.id ? 'bg-[#323d48]' : 'hover:bg-[#323d48]/50'
 														}`}
 													>
-														<div className="text-sm text-[#e1e6ea] truncate">{categoryMap[node.id]?.name || '(unnamed)'}</div>
-														<div className="text-xs text-[#637588] font-mono truncate">{node.id}</div>
+														<div className="flex items-center gap-2 min-w-0">
+															{(() => {
+																const entity = categoryMap[node.id] || {};
+																const sheet = entity?.cellSheet;
+																const state = entity?.states?.default || Object.values(entity?.states || {})[0] || {};
+																const animation = entity?.animations?.[state.animation] || entity?.animations?.default || Object.values(entity?.animations || {})[0] || {};
+																const cols = Math.max(1, Number(sheet?.columnCount) || 1), rows = Math.max(1, Number(sheet?.rowCount) || 1);
+																const frame = Math.max(1, Number(animation?.frames?.[0]) || 1), zero = frame - 1;
+																if (activeTab === 'itemTypes' && entity?.inventoryImage) return <div className="w-10 h-10 shrink-0 rounded border border-[#48596a] bg-[#1f252c] overflow-hidden flex items-center justify-center"><img src={resolveAssetUrl(entity.inventoryImage)} alt="" className="max-w-full max-h-full object-contain" /></div>;
+																if (!sheet?.url || zero >= cols * rows) return <div className="w-10 h-10 shrink-0 rounded border border-[#3d4a57] bg-[#20272e]" />;
+																const col = zero % cols, row = Math.floor(zero / cols);
+																return <div className="w-10 h-10 shrink-0 rounded border border-[#48596a] bg-[#1f252c] overflow-hidden"><img src={resolveAssetUrl(sheet.url)} alt="" className="max-w-none max-h-none" style={{ width: `${cols * 100}%`, height: `${rows * 100}%`, marginLeft: `${-col * 100}%`, marginTop: `${-row * 100}%`, imageRendering: 'pixelated' }} /></div>;
+															})()}
+															<div className="min-w-0 flex-1">
+																<div className="text-sm text-[#e1e6ea] truncate">{categoryMap[node.id]?.name || '(unnamed)'}</div>
+																<div className="text-xs text-[#637588] font-mono truncate">{node.id}</div>
+															</div>
+														</div>
 													</button>
 												)
 											)}
@@ -4381,8 +4498,23 @@ export default function GameContentEditor() {
 								) : (
 									<div className="max-w-2xl">
 										<div className="flex items-center justify-between mb-4">
-											<div>
-												<input
+											<div className="flex items-center gap-3 min-w-0">
+												{(() => {
+													const typeDef = draft;
+													const sheet = typeDef?.cellSheet;
+													const state = typeDef?.states?.default || Object.values(typeDef?.states || {})[0] || {};
+													const animation = typeDef?.animations?.[state.animation] || typeDef?.animations?.default || Object.values(typeDef?.animations || {})[0] || {};
+													const cols = Math.max(1, Number(sheet?.columnCount) || 1);
+													const rows = Math.max(1, Number(sheet?.rowCount) || 1);
+													const frame = Math.max(1, Number(animation?.frames?.[0]) || 1);
+													const zero = frame - 1;
+													if (activeTab === 'itemTypes' && typeDef?.inventoryImage) return <div className="w-12 h-12 shrink-0 rounded-md border border-[#48596a] bg-[#1f252c] overflow-hidden flex items-center justify-center"><img src={resolveAssetUrl(typeDef.inventoryImage)} alt="" className="max-w-full max-h-full object-contain" /></div>;
+													if (!sheet?.url || zero >= cols * rows) return <div className="w-12 h-12 shrink-0 rounded-md border border-[#3d4a57] bg-[#20272e]" />;
+													const col = zero % cols, row = Math.floor(zero / cols);
+													return <div className="w-12 h-12 shrink-0 rounded-md border border-[#48596a] bg-[#1f252c] overflow-hidden"><img src={resolveAssetUrl(sheet.url)} alt="" draggable={false} className="max-w-none max-h-none select-none" style={{ width: `${cols * 100}%`, height: `${rows * 100}%`, marginLeft: `${-col * 100}%`, marginTop: `${-row * 100}%`, imageRendering: 'pixelated' }} /></div>;
+												})()}
+												<div className="min-w-0">
+													<input
 													value={draft.name}
 													onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
 													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-[#48596a] focus:border-[#1a56da] focus:outline-none px-0.5"
@@ -4390,6 +4522,10 @@ export default function GameContentEditor() {
 												<div className="text-xs text-[#637588] font-mono mt-1">
 													{draft.key} {draft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}
 												</div>
+												<div className={`mt-1 text-[10px] ${entityEditorDirty ? 'text-amber-300' : 'text-[#5DCAA5]'}`}>
+													{entityEditorDirty ? 'Unsaved changes' : 'Saved to working copy'}
+												</div>
+											</div>
 											</div>
 											<div className="flex gap-2">
 												{!draft.isNew && (
