@@ -1632,8 +1632,13 @@ function defaultConditionOperand(type) {
 	return null;
 }
 function ScriptTypedValueEditor({ value, operandType, gameData, onChange }) {
+	const [pickerOpen, setPickerOpen] = useState(false);
 	const refKind = { region: 'regionRef', unit: 'unitRef', item: 'itemRef', projectile: 'projectileRef', player: 'playerRef', entity: 'entityRef', unitType: 'unitTypeRef', itemType: 'itemTypeRef', playerType: 'playerTypeRef', projectileType: 'projectileTypeRef', unitGroup: 'unitGroupRef', itemGroup: 'itemGroupRef', unitTypeGroup: 'unitTypeGroupRef', itemTypeGroup: 'itemTypeGroupRef', playerGroup: 'playerGroupRef', state: 'stateId', attributeType: 'attributeId' }[operandType];
-	if (refKind) return <ScriptFieldInput kind={refKind} value={value} gameData={gameData} onChange={onChange} />;
+	if (refKind) return <div className="relative flex items-center gap-1 min-w-0">
+		<div className="min-w-0"><ScriptFieldInput kind={refKind} value={value} gameData={gameData} onChange={onChange} /></div>
+		<button type="button" title="Choose a function or expression" onClick={() => setPickerOpen((v) => !v)} className="shrink-0 p-1 rounded border border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]"><Zap size={11} /></button>
+		{pickerOpen && <ScriptValuePicker expectedKind={operandType} value={value} gameData={gameData} onChange={(next) => { onChange(next); setPickerOpen(false); }} onClose={() => setPickerOpen(false)} />}
+	</div>;
 	if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} expectedKind={operandType} />;
 	if (operandType === 'boolean') return <ScriptExpressionInput value={typeof value === 'boolean' ? value : false} gameData={gameData} onChange={onChange} expectedKind="boolean" />;
 	if (operandType === 'number') return <ScriptExpressionInput value={typeof value === 'number' ? value : 0} gameData={gameData} onChange={onChange} expectedKind="number" />;
