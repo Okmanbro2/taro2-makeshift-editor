@@ -1467,14 +1467,8 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 		...variableReferenceOptions('item', gameData).map((o) => [`variable:${o.id}`, o.name, 'Item variable', o.id]),
 		...variableReferenceOptions('projectile', gameData).map((o) => [`variable:${o.id}`, o.name, 'Projectile variable', o.id]),
 	].sort((a,b) => a[1].localeCompare(b[1]) || a[3].localeCompare(b[3])) : [];
-	const derivedOptions = kind === 'playerRef' ? [
-		...getRuntimeReferenceOptions('unitRef').map(([id, label]) => [`ownerOfUnit:${id}`, `Owner of ${label.toLowerCase()}`, 'Derived from unit', { function: 'getOwnerOfUnit', unit: runtimeReferenceFunction(id) }]),
-		...getRuntimeReferenceOptions('itemRef').map(([id, label]) => [`ownerOfItem:${id}`, `Owner of ${label.toLowerCase()}`, 'Derived from item', { function: 'getOwnerOfItem', item: runtimeReferenceFunction(id) }]),
-		...getRuntimeReferenceOptions('projectileRef').map(([id, label]) => [`ownerOfProjectile:${id}`, `Owner of ${label.toLowerCase()}`, 'Derived from projectile', { function: 'getOwnerOfProjectile', projectile: runtimeReferenceFunction(id) }]),
-	] : [];
-	const allOptions = [...options, ...derivedOptions, ...variableOptions, ...entityVariableOptions];
+	const allOptions = [...options, ...variableOptions, ...entityVariableOptions];
 	const selected = allOptions.find(([id]) => id === value);
-	const selectedObject = typeof value === 'object' && value?.function ? describeValue(value, gameData) : null;
 	const filtered = allOptions.filter(([, label, group, rawId]) => { const q = query.trim().toLowerCase(); return !q || label.toLowerCase().includes(q) || group.toLowerCase().includes(q) || String(rawId || '').toLowerCase().includes(q); });
 	if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
 	return <div className="relative min-w-0">
@@ -1482,7 +1476,7 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 		{open && <div className="absolute z-[90] left-0 top-full mt-1 w-72 max-h-80 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search references..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div className="max-h-60 overflow-y-auto p-1">
-				{filtered.map(([id, label, group, rawId]) => <button key={id} type="button" onClick={() => { const fn = id.startsWith('variable:') ? { function: 'getVariable', variableName: rawId || id.slice(9) } : (typeof rawId === 'object' ? rawId : runtimeReferenceFunction(id)); setOpen(false); setQuery(''); onChange(fn || id); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[10px] text-[#637588]">{group}</div></button>)}
+				{filtered.map(([id, label, group, rawId]) => <button key={id} type="button" onClick={() => { const fn = id.startsWith('variable:') ? { function: 'getVariable', variableName: rawId || id.slice(9) } : runtimeReferenceFunction(id); setOpen(false); setQuery(''); onChange(fn || id); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[10px] text-[#637588]">{group}</div></button>)}
 				<button type="button" onClick={() => { setOpen(false); setQuery(''); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48] text-xs text-[#8291a1]">Keep raw value</button>
 			</div>
 		</div>}
@@ -2633,6 +2627,7 @@ export default function GameContentEditor() {
 				if (!parsed?.data) throw new Error("This doesn't look like a game.json - no top-level \"data\" field found.");
 				normalizeFolders(parsed);
 				normalizeItemAttributeVisibility(parsed);
+				normalizeAttributeTypes(parsed);
 				setGameData(parsed);
 				setSelectedKey(null);
 				setSelectedFolderId(null);
@@ -3986,22 +3981,54 @@ export default function GameContentEditor() {
 		});
 	}
 
+	function normalizeAttributeTypes(parsed) {
+		if (!parsed?.data) return parsed;
+		if (!parsed.data.attributeTypes || typeof parsed.data.attributeTypes !== 'object' || Array.isArray(parsed.data.attributeTypes)) {
+			parsed.data.attributeTypes = {};
+		}
+		const defaults = {
+			dataType: '',
+			decimalPlaces: 0,
+			displayValue: true,
+			isVisible: true,
+			showAsHUD: false,
+			showWhen: '',
+			color: 'white',
+			regenerateSpeed: 0,
+			min: 0,
+			max: 100,
+			value: 0,
+		};
+		for (const [key, attr] of Object.entries(parsed.data.attributeTypes)) {
+			if (!attr || typeof attr !== 'object' || Array.isArray(attr)) parsed.data.attributeTypes[key] = {};
+			const target = parsed.data.attributeTypes[key];
+			for (const [field, value] of Object.entries(defaults)) {
+				if (target[field] === undefined || target[field] === null) target[field] = deepClone(value);
+			}
+		}
+		return parsed;
+	}
+
 	function addAttributeType() {
 		const name = prompt('New attribute name (e.g. Shield):');
 		if (!name) return;
 		const key = generateKey();
 		setGameData((gd) => {
 			const next = deepClone(gd);
+			next.data.attributeTypes = next.data.attributeTypes || {};
 			next.data.attributeTypes[key] = {
 				name,
+				dataType: '',
 				min: 0,
 				max: 100,
 				value: 0,
 				isVisible: true,
 				displayValue: true,
 				showAsHUD: false,
+				showWhen: '',
 				color: 'white',
 				decimalPlaces: 0,
+				regenerateSpeed: 0,
 			};
 			return next;
 		});
@@ -4011,6 +4038,38 @@ export default function GameContentEditor() {
 		setGameData((gd) => {
 			const next = deepClone(gd);
 			next.data.attributeTypes[key] = { ...next.data.attributeTypes[key], [field]: value };
+			return next;
+		});
+	}
+
+	function findAttributeReferences(value, targetKey, path = 'data', out = []) {
+		if (value === targetKey) { out.push(path); return out; }
+		if (!value || typeof value !== 'object') return out;
+		if (Array.isArray(value)) {
+			value.forEach((item, index) => findAttributeReferences(item, targetKey, `${path}[${index}]`, out));
+			return out;
+		}
+		for (const [childKey, child] of Object.entries(value)) {
+			if (childKey === targetKey) continue;
+			findAttributeReferences(child, targetKey, `${path}.${childKey}`, out);
+		}
+		return out;
+	}
+
+	function deleteAttributeType(key) {
+		const attr = gameData?.data?.attributeTypes?.[key];
+		if (!attr) return;
+		const references = findAttributeReferences(gameData?.data, key).filter(
+			(path) => path !== `data.attributeTypes.${key}` && !path.startsWith(`data.attributeTypes.${key}.`)
+		);
+		const name = attr.name || key;
+		const warning = references.length
+			? `The attribute "${name}" (${key}) is referenced ${references.length} time(s) elsewhere in the game data. Deleting its definition will leave those references pointing to a missing attribute.\n\nDelete it anyway?`
+			: `Delete the attribute "${name}" (${key})?\n\nThis removes its global attribute definition.`;
+		if (!window.confirm(warning)) return;
+		setGameData((gd) => {
+			const next = deepClone(gd);
+			if (next.data?.attributeTypes?.[key]) delete next.data.attributeTypes[key];
 			return next;
 		});
 	}
@@ -6125,41 +6184,39 @@ export default function GameContentEditor() {
 									<Plus size={14} /> New attribute type
 								</button>
 							</div>
-							<div className="space-y-2">
+							<div className="space-y-3">
 								{Object.entries(attributeTypes).map(([key, attr]) => (
-									<div key={key} className="flex items-center gap-2 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2">
-										<div className="flex-1 min-w-0"><input
-											value={attr.name || ''}
-											onChange={(e) => updateAttributeType(key, 'name', e.target.value)}
-											className="w-full bg-transparent text-sm focus:outline-none"
-										/><div className="text-[10px] text-[#637588] font-mono mt-0.5">{key}</div></div>
-										<label className="text-xs text-[#8291a1]">default</label>
-										<input
-											type="number"
-											value={attr.value ?? 0}
-											onChange={(e) => updateAttributeType(key, 'value', Number(e.target.value))}
-											className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
-										/>
-										<label className="text-xs text-[#8291a1]">min</label>
-										<input
-											type="number"
-											value={attr.min ?? 0}
-											onChange={(e) => updateAttributeType(key, 'min', Number(e.target.value))}
-											className="w-14 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
-										/>
-										<label className="text-xs text-[#8291a1]">max</label>
-										<input
-											type="number"
-											value={attr.max ?? 100}
-											onChange={(e) => updateAttributeType(key, 'max', Number(e.target.value))}
-											className="w-16 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm"
-										/>
+									<div key={key} className="bg-[#323d48] border border-[#3d4a57] rounded-lg p-3">
+										<div className="flex items-start gap-3">
+											<div className="flex-1 min-w-0">
+												<div className="flex items-center gap-2">
+													<input value={attr.name || ''} onChange={(e) => updateAttributeType(key, 'name', e.target.value)} className="flex-1 min-w-0 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm focus:outline-none focus:border-[#1a56da]" placeholder="Attribute name" />
+													<span className="text-[10px] text-[#637588] font-mono shrink-0">{key}</span>
+												</div>
+												<div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+													<label className="text-[11px] text-[#8291a1]">Default<input type="number" step="any" value={attr.value ?? 0} onChange={(e) => updateAttributeType(key, 'value', Number(e.target.value))} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></label>
+													<label className="text-[11px] text-[#8291a1]">Minimum<input type="number" step="any" value={attr.min ?? 0} onChange={(e) => updateAttributeType(key, 'min', Number(e.target.value))} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></label>
+													<label className="text-[11px] text-[#8291a1]">Maximum<input type="number" step="any" value={attr.max ?? 100} onChange={(e) => updateAttributeType(key, 'max', Number(e.target.value))} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></label>
+													<label className="text-[11px] text-[#8291a1]">Decimal places<input type="number" min="0" step="1" value={attr.decimalPlaces ?? 0} onChange={(e) => updateAttributeType(key, 'decimalPlaces', Math.max(0, Number(e.target.value) || 0))} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></label>
+												</div>
+												<div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+													<label className="text-[11px] text-[#8291a1]">Data type<input value={attr.dataType ?? ''} onChange={(e) => updateAttributeType(key, 'dataType', e.target.value)} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" placeholder="e.g. number" /></label>
+													<label className="text-[11px] text-[#8291a1]">Regenerate speed<input type="number" step="any" value={attr.regenerateSpeed ?? 0} onChange={(e) => updateAttributeType(key, 'regenerateSpeed', Number(e.target.value))} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></label>
+													<label className="text-[11px] text-[#8291a1]">Color<input value={attr.color ?? 'white'} onChange={(e) => updateAttributeType(key, 'color', e.target.value)} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></label>
+													<label className="text-[11px] text-[#8291a1]">Show when<input value={attr.showWhen ?? ''} onChange={(e) => updateAttributeType(key, 'showWhen', e.target.value)} className="mt-1 w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></label>
+												</div>
+												<div className="flex flex-wrap items-center gap-4 mt-3">
+													<label className="flex items-center gap-1.5 text-xs text-[#a3adb8]"><input type="checkbox" checked={!!attr.isVisible} onChange={(e) => updateAttributeType(key, 'isVisible', e.target.checked)} /> Visible</label>
+													<label className="flex items-center gap-1.5 text-xs text-[#a3adb8]"><input type="checkbox" checked={!!attr.displayValue} onChange={(e) => updateAttributeType(key, 'displayValue', e.target.checked)} /> Display value</label>
+													<label className="flex items-center gap-1.5 text-xs text-[#a3adb8]"><input type="checkbox" checked={!!attr.showAsHUD} onChange={(e) => updateAttributeType(key, 'showAsHUD', e.target.checked)} /> Show as HUD</label>
+												</div>
+											</div>
+											<button type="button" onClick={() => deleteAttributeType(key)} className="shrink-0 p-1.5 rounded border border-red-900 text-red-400 hover:bg-red-950/40" title="Delete attribute type"><Trash2 size={14} /></button>
+										</div>
 									</div>
 								))}
 							</div>
-							<p className="text-xs text-[#637588] mt-4">
-								These are the attribute types available to attach on any unit, item, or projectile from its editor tab.
-							</p>
+							<p className="text-xs text-[#637588] mt-4">Attribute definitions are kept here in <span className="font-mono">data.attributeTypes</span>. New definitions use the normal core metadata fields, while incomplete existing definitions are filled with safe defaults when a game file is opened.</p>
 						</div>
 					) : activeTab === 'sounds' ? (
 						<div className="flex-1 overflow-y-auto p-6">
