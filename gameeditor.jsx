@@ -1277,6 +1277,32 @@ function ScriptVariableField({ value, gameData, onChange }) {
 	</div>;
 }
 
+function ScriptRegionField({ value, gameData, onChange }) {
+	const [query, setQuery] = useState('');
+	const variables = gameData?.data?.variables || {};
+	const regions = [];
+	for (const [id, region] of Object.entries(variables)) {
+		if (region?.dataType === 'region') regions.push({ id, name: region?.name || region?.text || id });
+	}
+	const directRegions = gameData?.data?.regions;
+	if (directRegions && typeof directRegions === 'object' && !Array.isArray(directRegions)) {
+		for (const [id, region] of Object.entries(directRegions)) {
+			if (!regions.some((entry) => entry.id === id)) regions.push({ id, name: region?.name || region?.text || id });
+		}
+	}
+	regions.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+	const selectedId = value && typeof value === 'object' && value.function === 'getVariable' ? value.variableName : (typeof value === 'string' ? value : '');
+	const q = query.trim().toLowerCase();
+	const filtered = regions.filter((region) => !q || region.name.toLowerCase().includes(q) || region.id.toLowerCase().includes(q));
+	return <div className="w-full rounded-md border border-[#3d4a57] bg-[#252d35] overflow-hidden">
+		<div className="p-1.5 border-b border-[#3d4a57] flex items-center gap-2"><Search size={12} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search regions..." className="flex-1 bg-[#20272e] border border-[#48596a] rounded px-2 py-1 text-xs outline-none" /></div>
+		<div className="max-h-[180px] overflow-y-auto p-1">
+			{filtered.map((region) => <button key={region.id} type="button" onClick={() => onChange({ function: 'getVariable', variableName: region.id })} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] ${region.id === selectedId ? 'bg-[#303b47]' : ''}`}><div>{region.name}</div><div className="text-[9px] font-mono text-[#637588] mt-0.5">{region.id}</div></button>)}
+			{!filtered.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching regions.</div>}
+		</div>
+	</div>;
+}
+
 function getRuntimeReferenceOptions(kind) {
 	const common = [
 		['triggeringUnit', 'Triggering unit', 'Unit'],
@@ -1334,6 +1360,10 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 }
 
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
+	if (kind === 'regionRef') {
+		if (value && typeof value === 'object' && value.function && value.function !== 'getVariable') return <ScriptExpressionInput value={value} gameData={gameData} expectedKind={kind} onChange={onChange} />;
+		return <ScriptRegionField value={value} gameData={gameData} onChange={onChange} />;
+	}
 	if (['entityRef','unitRef','itemRef','projectileRef','playerRef'].includes(kind)) return <ScriptRuntimeReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
 	if (kind === 'variableName' || kind === 'variable') return <ScriptVariableField value={value} gameData={gameData} onChange={onChange} />;
 	if (getScriptReferenceInfo(kind, gameData)) {
@@ -1451,7 +1481,15 @@ function ScriptExpressionInput({ value, gameData, onChange, expectedKind = 'valu
 }
 
 const SCRIPT_OPERATORS_BY_TYPE = { boolean: ['==', '!='], number: ['==', '!=', '>', '<', '>=', '<='], string: ['==', '!='], player: ['==', '!='], unit: ['==', '!='], item: ['==', '!='], projectile: ['==', '!='], playerType: ['==', '!='], unitType: ['==', '!='], itemType: ['==', '!='], projectileType: ['==', '!='], attributeType: ['==', '!='], state: ['==', '!='], region: ['==', '!='], and: ['AND'], or: ['OR'] };
-function ScriptTypedValueEditor({ value, operandType, gameData, onChange }) { if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; if (operandType === 'boolean') return <select value={String(value)} onChange={(e) => onChange(e.target.value === 'true')} className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="true">true</option><option value="false">false</option></select>; if (operandType === 'number') return <ScriptExpressionInput value={typeof value === 'number' ? value : 0} gameData={gameData} onChange={onChange} />; return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; }
+function ScriptTypedValueEditor({ value, operandType, gameData, onChange }) {
+	const refKind = { region: 'regionRef', unit: 'unitRef', item: 'itemRef', projectile: 'projectileRef', player: 'playerRef', entity: 'entityRef' }[operandType];
+	if (refKind) return <ScriptFieldInput kind={refKind} value={value} gameData={gameData} onChange={onChange} />;
+	if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+	if (operandType === 'boolean') return <select value={String(value)} onChange={(e) => onChange(e.target.value === 'true')} className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="true">true</option><option value="false">false</option></select>;
+	if (operandType === 'number') return <ScriptExpressionInput value={typeof value === 'number' ? value : 0} gameData={gameData} onChange={onChange} expectedKind="number" />;
+	if (operandType === 'string') return <ScriptFieldInput kind="string" value={typeof value === 'string' ? value : ''} gameData={gameData} onChange={onChange} />;
+	return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+}
 function ScriptConditionEditor({ value, gameData, onChange }) {
 	const vocab = collectScriptVocabulary(gameData);
 	const cond = Array.isArray(value) && value.length >= 3 && value[0] && typeof value[0] === 'object' ? value : [{ operandType: 'boolean', operator: '==' }, true, true];
@@ -1493,9 +1531,16 @@ const SCRIPT_STRING_FUNCTIONS = new Set(['concat', 'numberToString', 'getPlayerN
 const SCRIPT_NUMBER_FUNCTIONS = new Set(['stringToNumber', 'getMin', 'getMax', 'absoluteValueOfNumber', 'mathFloor', 'mathCeiling', 'getRandomNumberBetween', 'toRadians', 'cos', 'sin', 'tan', 'arctan', 'getExponent', 'getLengthOfString']);
 
 function semanticScriptFieldKind(key, kind = 'valueExpr') {
-	if (kind !== 'valueExpr') return kind;
-	if (SCRIPT_STRING_FIELD_KEYS.has(key)) return 'stringExpr';
-	if (SCRIPT_NUMBER_FIELD_KEYS.has(key)) return 'numberExpr';
+	const k = String(key || '');
+	const lower = k.toLowerCase();
+	if (lower === 'region' || lower === 'regiona' || lower === 'regionb') return 'regionRef';
+	if (/^(unit|sourceunit|targetunit|triggeringunit|selectedunit)$/.test(lower)) return 'unitRef';
+	if (/^(item|sourceitem|targetitem|triggeringitem|selecteditem)$/.test(lower)) return 'itemRef';
+	if (/^(projectile|sourceprojectile|targetprojectile|triggeringprojectile|selectedprojectile)$/.test(lower)) return 'projectileRef';
+	if (/^(player|playera|playerb|triggeringplayer|selectedplayer)$/.test(lower)) return 'playerRef';
+	if (lower === 'entity' || lower === 'sourceentity' || lower === 'targetentity' || lower === 'owner') return 'entityRef';
+	if (SCRIPT_STRING_FIELD_KEYS.has(k)) return 'stringExpr';
+	if (SCRIPT_NUMBER_FIELD_KEYS.has(k)) return 'numberExpr';
 	return kind;
 }
 
