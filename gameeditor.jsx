@@ -1030,7 +1030,7 @@ const ENGINE_FUNCTION_SCHEMAS = {
   "vector3": [{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"},{"key":"z","kind":"valueExpr"}],
   "xyCoordinate": [{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"}]
 };
-// parameterComponent.js is the source of truth on god
+
 const ENGINE_FUNCTION_TYPES = Object.keys(ENGINE_FUNCTION_SCHEMAS);
 
 
@@ -1732,6 +1732,9 @@ function contextualScriptFieldKind(action, key, kind, gameData) {
 	if (dataType === 'string') return 'string';
 	if (dataType === 'number') return 'number';
 	if (dataType === 'boolean') return 'boolean';
+	if (dataType === 'unit') return 'unitRef';
+	if (dataType === 'player') return 'playerRef';
+	if (dataType === 'region') return 'regionRef';
 	return resolved;
 }
 
@@ -4006,8 +4009,7 @@ export default function GameContentEditor() {
 		}
 		return parsed;
 	}
-
-	//  prod
+	
 	function normalizeSetPlayerAttributeTargets(parsed) {
 		const scripts = parsed?.data?.scripts || {};
 		const repairActions = (actions) => {
@@ -4027,7 +4029,6 @@ export default function GameContentEditor() {
 		return parsed;
 	}
 
-	// repair
 	function normalizeScriptFunctions(parsed) {
 		const scripts = parsed?.data?.scripts || {};
 		const repaired = [];
@@ -6422,6 +6423,9 @@ export default function GameContentEditor() {
 											<option value="string">string</option>
 											<option value="number">number</option>
 											<option value="boolean">boolean</option>
+										<option value="unit">unit</option>
+											<option value="player">player</option>
+											<option value="region">region</option>
 										</select>
 										<input
 											value={v.default ?? ''}
@@ -6433,7 +6437,7 @@ export default function GameContentEditor() {
 								))}
 							</div>
 							<p className="text-xs text-[#637588] mt-4">
-								Game-wide variables, not tied to any specific unit/item/projectile.
+								Game-wide variables. Reference types such as unit, player, and region store engine objects rather than primitive values. A unit-type ID should use a string variable.
 							</p>
 						</div>
 					)}
