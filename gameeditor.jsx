@@ -2200,6 +2200,7 @@ export default function GameContentEditor() {
 	const [scriptBodyError, setScriptBodyError] = useState('');
 	const [dialogueDraft, setDialogueDraft] = useState(null);
 	const [draft, setDraft] = useState(null);
+	const [unitEditorTab, setUnitEditorTab] = useState('general');
 	const [groupDraft, setGroupDraft] = useState(null);
 	const [shopDraft, setShopDraft] = useState(null);
 	const [shopEntryDraft, setShopEntryDraft] = useState(null);
@@ -2421,7 +2422,7 @@ export default function GameContentEditor() {
 	}
 
 	function loadDraftFromEntity(key, entity) {
-		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = entity;
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, ai, projectileType, cost, damage, lifeSpan, ...rest } = entity;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX, 'z-index': { layer: 3, depth: 1 } } };
 		setDraft({
 			key,
@@ -2441,6 +2442,8 @@ export default function GameContentEditor() {
 				: {}),
 			scripts: deepClone(scripts) || {},
 			controls: activeTab === 'unitTypes' ? (Object.keys(controls || {}).length ? deepClone(controls) : deepClone(DEFAULT_UNIT_CONTROLS)) : (deepClone(controls) || {}),
+			...(activeTab === 'unitTypes' ? { ai: deepClone(ai) || { pathFindingMethod: 'simple', idleBehaviour: 'stay', sensorResponse: 'none', attackResponse: 'none', maxTravelDistance: '', sensorRadius: 150, maxAttackRange: 400, enabled: false, letGoDistance: '' } } : {}),
+			...(activeTab === 'unitTypes' ? { ai: deepClone(ai) || { pathFindingMethod: 'simple', idleBehaviour: 'stay', sensorResponse: 'none', attackResponse: 'none', maxTravelDistance: '', sensorRadius: 150, maxAttackRange: 400, enabled: false, letGoDistance: '' } } : {}),
 			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, knockbackForce: Number.isFinite(Number(knockbackForce)) ? Number(knockbackForce) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
 			costUnitAttributes: deepClone(entity.cost?.unitAttributes) || {},
@@ -2454,6 +2457,7 @@ export default function GameContentEditor() {
 		setSelectedAnimationName(entity.animations?.default ? 'default' : Object.keys(entity.animations || { default: {} })[0]);
 		setSelectedStateKey(Object.keys(entity.states || {})[0] || '');
 		setSelectedEntityScriptKey('');
+		setUnitEditorTab('general');
 		setSpriteNatural(null);
 		setGridPreview({ cols: cellSheet?.columnCount || 1, rows: cellSheet?.rowCount || 1 });
 		setAdvancedText(JSON.stringify(rest, null, 2));
@@ -2536,7 +2540,7 @@ export default function GameContentEditor() {
 		};
 		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
 		const newKey = generateKey();
-		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, projectileType, cost, damage, lifeSpan, ...rest } = base;
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, ai, projectileType, cost, damage, lifeSpan, ...rest } = base;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX, 'z-index': { layer: 3, depth: 1 } } };
 		const clonedAnimations = deepClone(base.animations) || { default: { name: 'default', frames: [1], loopCount: 0, framesPerSecond: 0 } };
 		const clonedStates = deepClone(base.states) || { [generateKey()]: { name: 'default', animation: 'default', body: 'default', particles: {}, sound: {} } };
@@ -2570,6 +2574,7 @@ export default function GameContentEditor() {
 		setSelectedAnimationName(clonedAnimations.default ? 'default' : Object.keys(clonedAnimations)[0]);
 		setSelectedStateKey(Object.keys(clonedStates)[0] || '');
 		setSelectedEntityScriptKey('');
+		setUnitEditorTab('general');
 		setSpriteNatural(null);
 		setGridPreview({ cols: cellSheet?.columnCount || 1, rows: cellSheet?.rowCount || 1 });
 		setAdvancedText(JSON.stringify(rest, null, 2));
@@ -3133,6 +3138,7 @@ export default function GameContentEditor() {
 			animations: deepClone(draft.animations) || {},
 			states: deepClone(draft.states) || {},
 			controls: deepClone(draft.controls) || {},
+			...(activeTab === 'unitTypes' ? { ai: deepClone(draft.ai) || { pathFindingMethod: 'simple', idleBehaviour: 'stay', sensorResponse: 'none', attackResponse: 'none', maxTravelDistance: '', sensorRadius: 150, maxAttackRange: 400, enabled: false, letGoDistance: '' } } : {}),
 			...(draft.effects !== undefined ? { effects: deepClone(draft.effects) } : {}),
 			scripts: Object.fromEntries(Object.entries(draft.scripts || {}).map(([key, value]) => {
 				const { _editorBodyText, ...cleanScript } = value || {};
@@ -4424,6 +4430,15 @@ export default function GameContentEditor() {
 											</div>
 										)}
 
+										{activeTab === 'unitTypes' && (
+											<div className="mb-5 flex rounded-md border border-[#3d4a57] overflow-hidden">
+												<button type="button" onClick={() => setUnitEditorTab('general')} className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${unitEditorTab === 'general' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}>General</button>
+												<button type="button" onClick={() => setUnitEditorTab('ai')} className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${unitEditorTab === 'ai' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}>AI</button>
+											</div>
+										)}
+
+										{activeTab !== 'unitTypes' || unitEditorTab === 'general' ? (
+											<>
 										{/* Attributes */}
 										<section className="mb-7">
 											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Attributes</h3>
@@ -5141,7 +5156,7 @@ export default function GameContentEditor() {
 										{}
 										<details className="mb-4">
 											<summary className="text-sm font-medium text-[#c5ccd3] cursor-pointer select-none">
-												Advanced (AI behavior, abilities, states, everything else)
+												Advanced (abilities, states, everything else)
 											</summary>
 											<textarea
 												value={advancedText}
@@ -5152,6 +5167,47 @@ export default function GameContentEditor() {
 											/>
 											{advancedError && <p className="text-xs text-red-400 mt-1">{advancedError}</p>}
 										</details>
+											</>
+										) : (
+											<section className="mb-7">
+												<div className="mb-4">
+													<h3 className="text-sm font-medium text-[#c5ccd3]">AI</h3>
+													<p className="text-[11px] text-[#637588] mt-1">These settings are read from this unit's <span className="font-mono">ai</span> definition by the engine.</p>
+												</div>
+												{(() => {
+													const ai = draft.ai || {};
+													const updateAI = (field, value) => setDraft((d) => ({ ...d, ai: { ...(d.ai || {}), [field]: value } }));
+													const updateOptionalNumber = (field, value) => updateAI(field, value === '' ? '' : Number(value));
+													return (
+														<div className="space-y-3">
+															<div className="flex items-center justify-between gap-3 bg-[#323d48] border border-[#3d4a57] rounded-md px-3 py-2.5">
+																<div>
+																	<div className="text-sm text-[#c5ccd3]">Enable AI</div>
+																	<div className="text-[10px] text-[#637588] mt-0.5">When disabled, the AI component does not initialize its behaviour.</div>
+																</div>
+																<label className="relative inline-flex items-center cursor-pointer">
+																	<input type="checkbox" className="sr-only peer" checked={!!ai.enabled} onChange={(e) => updateAI('enabled', e.target.checked)} />
+																	<span className="w-11 h-6 bg-[#68727d] rounded-full peer-checked:bg-[#1a56da] transition-colors" />
+																	<span className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5" />
+																</label>
+															</div>
+															<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+																<div><label className="block text-xs text-[#8291a1] mb-1">Attack response to hostile units</label><select value={ai.attackResponse || 'none'} onChange={(e) => updateAI('attackResponse', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm"><option value="none">None</option><option value="fight">Fight</option><option value="flee">Flee</option></select></div>
+																<div><label className="block text-xs text-[#8291a1] mb-1">Sensor response to hostile units</label><select value={ai.sensorResponse || 'none'} onChange={(e) => updateAI('sensorResponse', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm"><option value="none">None</option><option value="fight">Fight</option><option value="flee">Flee</option></select></div>
+																<div><label className="block text-xs text-[#8291a1] mb-1">Idle behaviour</label><select value={ai.idleBehaviour || 'stay'} onChange={(e) => updateAI('idleBehaviour', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm"><option value="stay">Stay</option><option value="wander">Wander</option></select></div>
+																<div><label className="block text-xs text-[#8291a1] mb-1">Path finding method</label><select value="simple" onChange={(e) => updateAI('pathFindingMethod', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm"><option value="simple">Simple</option></select><p className="text-[10px] text-[#637588] mt-1">Only Simple is exposed because the engine's AI source marks A* as “coming soon”.</p></div>
+															</div>
+															<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+																<div><label className="block text-xs text-[#8291a1] mb-1">Let go distance</label><input type="number" step="any" value={ai.letGoDistance ?? ''} onChange={(e) => updateOptionalNumber('letGoDistance', e.target.value)} placeholder="No limit" className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm" /><p className="text-[10px] text-[#637588] mt-1">Blank = no let-go distance limit.</p></div>
+																<div><label className="block text-xs text-[#8291a1] mb-1">Max attack range</label><input type="number" step="any" value={ai.maxAttackRange ?? 0} onChange={(e) => updateAI('maxAttackRange', Number(e.target.value) || 0)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm" /></div>
+																<div><label className="block text-xs text-[#8291a1] mb-1">Max chase/flee distance</label><input type="number" step="any" value={ai.maxTravelDistance ?? ''} onChange={(e) => updateOptionalNumber('maxTravelDistance', e.target.value)} placeholder="No limit" className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm" /><p className="text-[10px] text-[#637588] mt-1">Blank = no maximum travel limit.</p></div>
+																<div><label className="block text-xs text-[#8291a1] mb-1">Sensor radius</label><input type="number" step="any" min="0" value={ai.sensorRadius ?? 0} onChange={(e) => updateAI('sensorRadius', Math.max(0, Number(e.target.value) || 0))} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm" /></div>
+															</div>
+													</div>
+												);
+											})()}
+											</section>
+										)}
 									</div>
 								)}
 							</div>
