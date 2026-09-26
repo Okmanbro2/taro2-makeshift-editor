@@ -407,10 +407,10 @@ const ACTION_FIELD_SCHEMAS = {
 	sendChatMessage: [{ key: 'message', kind: 'string' }, { key: 'runMode', kind: 'number' }, { key: 'vars', kind: 'valueExpr' }],
 	sendChatMessageToPlayer: [{ key: 'message', kind: 'string' }, { key: 'player', kind: 'valueExpr' }, { key: 'runMode', kind: 'number' }, { key: 'vars', kind: 'valueExpr' }],
 	sendPostRequest: [{ key: 'string', kind: 'valueExpr' }, { key: 'url', kind: 'string' }, { key: 'varName', kind: 'string' }, { key: 'vars', kind: 'valueExpr' }],
-	setEntityAttribute: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }],
-	setEntityAttributeMax: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }],
-	setEntityAttributeMin: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }],
-	setEntityAttributeRegenerationRate: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }],
+	setEntityAttribute: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'entityRef' }, { key: 'value', kind: 'valueExpr' }],
+	setEntityAttributeMax: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'entityRef' }, { key: 'value', kind: 'valueExpr' }],
+	setEntityAttributeMin: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'entityRef' }, { key: 'value', kind: 'valueExpr' }],
+	setEntityAttributeRegenerationRate: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'entityRef' }, { key: 'value', kind: 'valueExpr' }],
 	setEntityLifeSpan: [{ key: 'entity', kind: 'valueExpr' }, { key: 'lifeSpan', kind: 'number' }],
 	setEntityState: [{ key: 'entity', kind: 'valueExpr' }, { key: 'state', kind: 'stateId' }],
 	setEntityVelocityAtAngle: [{ key: 'angle', kind: 'valueExpr' }, { key: 'entity', kind: 'valueExpr' }, { key: 'speed', kind: 'valueExpr' }],
@@ -420,7 +420,7 @@ const ACTION_FIELD_SCHEMAS = {
 	setLastAttackingUnit: [{ key: 'unit', kind: 'valueExpr' }],
 	setMaxAttackRange: [{ key: 'number', kind: 'number' }, { key: 'unit', kind: 'valueExpr' }],
 	setOwnerUnitOfProjectile: [{ key: 'projectile', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
-	setPlayerAttribute: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }, { key: 'vars', kind: 'valueExpr' }],
+	setPlayerAttribute: [{ key: 'attribute', kind: 'attributeId' }, { key: 'player', kind: 'playerRef' }, { key: 'value', kind: 'valueExpr' }, { key: 'vars', kind: 'valueExpr' }],
 	setPlayerAttributeMax: [{ key: 'attributeType', kind: 'attributeId' }, { key: 'number', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
 	setPlayerName: [{ key: 'name', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
 	setPlayerVariable: [{ key: 'player', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }, { key: 'variable', kind: 'valueExpr' }],
@@ -1781,7 +1781,7 @@ function getActionFieldSchema(type, gameData) {
 		.filter((k) => !['type', 'actions', 'then', 'else', 'conditions'].includes(k))
 		.map((key) => ({ key, kind: inferScriptFieldKind(key, example[key]) }));
 }
-function defaultActionForType(type, gameData) { if (type === 'condition') return { type: 'condition', conditions: [{ operandType: 'boolean', operator: '==' }, true, true], then: [], else: [] }; if (type === 'runScript') return { type: 'runScript', scriptName: '', isEntityScript: false }; const schema = getActionFieldSchema(type, gameData); if (schema) { const out = { type }; for (const field of schema) out[field.key] = defaultValueForScriptField(field.kind); if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) out.actions = []; return out; } if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) return { type, actions: [] }; return { type }; }
+function defaultActionForType(type, gameData) { if (type === 'condition') return { type: 'condition', conditions: [{ operandType: 'boolean', operator: '==' }, true, true], then: [], else: [] }; if (type === 'runScript') return { type: 'runScript', scriptName: '', isEntityScript: false }; if (type === 'setEntityAttribute' || type === 'setEntityAttributeMax' || type === 'setEntityAttributeMin' || type === 'setEntityAttributeRegenerationRate') return { type, attribute: '', entity: { function: 'getSelectedUnit' }, value: 0 }; if (type === 'setPlayerAttribute') return { type, attribute: '', player: { function: 'getSelectedPlayer' }, value: 0, vars: 0 }; const schema = getActionFieldSchema(type, gameData); if (schema) { const out = { type }; for (const field of schema) out[field.key] = defaultValueForScriptField(field.kind); if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) out.actions = []; return out; } if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) return { type, actions: [] }; return { type }; }
 
 
 const SCRIPT_ACTION_PHRASES = {
