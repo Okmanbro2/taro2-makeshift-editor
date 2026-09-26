@@ -1468,9 +1468,9 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 		...variableReferenceOptions('projectile', gameData).map((o) => [`variable:${o.id}`, o.name, 'Projectile variable', o.id]),
 	].sort((a,b) => a[1].localeCompare(b[1]) || a[3].localeCompare(b[3])) : [];
 	const derivedOptions = kind === 'playerRef' ? [
-		...getRuntimeReferenceOptions('unitRef').map(([id, label]) => [\`ownerOfUnit:\${id}\`, \`Owner of \${label.toLowerCase()}\`, 'Derived from unit', { function: 'getOwnerOfUnit', unit: runtimeReferenceFunction(id) }]),
-		...getRuntimeReferenceOptions('itemRef').map(([id, label]) => [\`ownerOfItem:\${id}\`, \`Owner of \${label.toLowerCase()}\`, 'Derived from item', { function: 'getOwnerOfItem', item: runtimeReferenceFunction(id) }]),
-		...getRuntimeReferenceOptions('projectileRef').map(([id, label]) => [\`ownerOfProjectile:\${id}\`, \`Owner of \${label.toLowerCase()}\`, 'Derived from projectile', { function: 'getOwnerOfProjectile', projectile: runtimeReferenceFunction(id) }]),
+		...getRuntimeReferenceOptions('unitRef').map(([id, label]) => [`ownerOfUnit:${id}`, `Owner of ${label.toLowerCase()}`, 'Derived from unit', { function: 'getOwnerOfUnit', unit: runtimeReferenceFunction(id) }]),
+		...getRuntimeReferenceOptions('itemRef').map(([id, label]) => [`ownerOfItem:${id}`, `Owner of ${label.toLowerCase()}`, 'Derived from item', { function: 'getOwnerOfItem', item: runtimeReferenceFunction(id) }]),
+		...getRuntimeReferenceOptions('projectileRef').map(([id, label]) => [`ownerOfProjectile:${id}`, `Owner of ${label.toLowerCase()}`, 'Derived from projectile', { function: 'getOwnerOfProjectile', projectile: runtimeReferenceFunction(id) }]),
 	] : [];
 	const allOptions = [...options, ...derivedOptions, ...variableOptions, ...entityVariableOptions];
 	const selected = allOptions.find(([id]) => id === value);
