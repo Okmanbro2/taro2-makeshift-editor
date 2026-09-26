@@ -1388,35 +1388,56 @@ function ScriptTypedReferenceField({ kind, value, gameData, onChange }) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState('');
 	const config = {
-		unitTypeRef: { idKind: 'unitTypeId', label: 'Unit type', selected: 'selectedUnitType', dataType: 'unitType' },
-		itemTypeRef: { idKind: 'itemTypeId', label: 'Item type', selected: 'selectedItemType', dataType: 'itemType' },
-		playerTypeRef: { idKind: 'playerTypeId', label: 'Player type', dataType: 'playerType' },
-		projectileTypeRef: { idKind: 'projectileTypeId', label: 'Projectile type', dataType: 'projectileType' },
+		unitTypeRef: { idKind: 'unitTypeId', label: 'Unit type', plural: 'Unit types', selected: 'selectedUnitType', dataType: 'unitType' },
+		itemTypeRef: { idKind: 'itemTypeId', label: 'Item type', plural: 'Item types', selected: 'selectedItemType', dataType: 'itemType' },
+		playerTypeRef: { idKind: 'playerTypeId', label: 'Player type', plural: 'Player types', dataType: 'playerType' },
+		projectileTypeRef: { idKind: 'projectileTypeId', label: 'Projectile type', plural: 'Projectile types', dataType: 'projectileType' },
 	}[kind];
 	if (!config) return null;
-	const info = getScriptReferenceInfo(config.idKind, gameData);
 	const staticOptions = scriptReferenceOptions(config.idKind, gameData);
 	const variableOptions = variableReferenceOptions(config.dataType, gameData);
 	const runtimeOptions = getRuntimeReferenceOptions(kind);
 	const sourceRuntimeKind = kind === 'unitTypeRef' ? 'unitRef' : kind === 'itemTypeRef' ? 'itemRef' : kind === 'projectileTypeRef' ? 'projectileRef' : null;
 	const sourceRuntimeOptions = sourceRuntimeKind ? getRuntimeReferenceOptions(sourceRuntimeKind) : [];
-	const derivedRuntimeOptions = kind === 'playerTypeRef' ? [...getRuntimeReferenceOptions('unitRef').map(([id,label]) => [id, `Player type of owner of ${label}`, { function:'playerTypeOfPlayer', player:{ function:'getOwner', entity:runtimeReferenceFunction(id) } }]), ...getRuntimeReferenceOptions('itemRef').map(([id,label]) => [id, `Player type of owner of ${label}`, { function:'playerTypeOfPlayer', player:{ function:'getOwner', entity:runtimeReferenceFunction(id) } }])] : sourceRuntimeOptions.map(([id,label]) => [id, `${config.label} of ${label}`, { function: kind === 'unitTypeRef' ? 'getUnitTypeOfUnit' : kind === 'itemTypeRef' ? 'getItemTypeOfItem' : 'getProjectileTypeOfProjectile', [kind === 'unitTypeRef' ? 'unit' : kind === 'itemTypeRef' ? 'item' : 'projectile']: runtimeReferenceFunction(id) }]);
+	const derivedRuntimeOptions = kind === 'playerTypeRef'
+		? [
+			...getRuntimeReferenceOptions('unitRef').map(([id, label]) => [id, `Player type of owner of ${label}`, { function:'playerTypeOfPlayer', player:{ function:'getOwner', entity:runtimeReferenceFunction(id) } }]),
+			...getRuntimeReferenceOptions('itemRef').map(([id, label]) => [id, `Player type of owner of ${label}`, { function:'playerTypeOfPlayer', player:{ function:'getOwner', entity:runtimeReferenceFunction(id) } }]),
+		]
+		: sourceRuntimeOptions.map(([id, label]) => [id, `${config.label} of ${label}`, { function: kind === 'unitTypeRef' ? 'getUnitTypeOfUnit' : kind === 'itemTypeRef' ? 'getItemTypeOfItem' : 'getProjectileTypeOfProjectile', [kind === 'unitTypeRef' ? 'unit' : kind === 'itemTypeRef' ? 'item' : 'projectile']: runtimeReferenceFunction(id) }]);
 	const selectedRuntime = typeof value === 'object' && value?.function ? value.function : null;
 	const selectedStatic = typeof value === 'string' ? staticOptions.find(o => o.id === value) : null;
 	const selectedVariable = typeof value === 'object' && value?.function === 'getVariable' ? variableOptions.find(o => o.id === value.variableName) : null;
 	const selected = selectedStatic?.name || selectedVariable?.name || (selectedRuntime ? describeValue(value, gameData) : 'Choose value...');
 	const q = query.trim().toLowerCase();
 	const matches = (name, id='') => !q || name.toLowerCase().includes(q) || id.toLowerCase().includes(q);
+	const filteredStatic = staticOptions.filter(o => matches(o.name, o.id));
+	const filteredVariables = variableOptions.filter(o => matches(o.name, o.id));
+	const filteredRuntime = runtimeOptions.filter(([id,label]) => matches(label,id));
+	const filteredDerived = derivedRuntimeOptions.filter(([id,label]) => matches(label,id));
+	const choose = (next) => { setOpen(false); setQuery(''); onChange(next); };
 	return <div className="relative min-w-0">
 		<button type="button" onClick={() => setOpen(v => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selected}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
 		{open && <div className="absolute z-[95] left-0 top-full mt-1 w-80 max-h-96 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search ${config.label.toLowerCase()}...`} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div className="max-h-80 overflow-y-auto p-1">
-				{runtimeOptions.filter(([id,label]) => matches(label,id)).map(([id,label]) => <button key={`runtime-${id}`} type="button" onClick={() => { setOpen(false); setQuery(''); onChange(runtimeReferenceFunction(id)); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[9px] text-[#637588]">Context</div></button>)}
-				{derivedRuntimeOptions.filter(([id,label]) => matches(label,id)).map(([id,label,expression]) => <button key={`derived-${id}-${label}`} type="button" onClick={() => { setOpen(false); setQuery(''); onChange(expression); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[9px] text-[#637588]">Derived context value</div></button>)}
-				{variableOptions.filter(o => matches(o.name,o.id)).map(o => <button key={`var-${o.id}`} type="button" onClick={() => { setOpen(false); setQuery(''); onChange({ function:'getVariable', variableName:o.id }); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588]">Variable · {o.id}</div></button>)}
-				{staticOptions.filter(o => matches(o.name,o.id)).map(o => <button key={`static-${o.id}`} type="button" onClick={() => { setOpen(false); setQuery(''); onChange(o.id); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588] font-mono">{o.id}</div></button>)}
-				{!runtimeOptions.some(([id,label])=>matches(label,id)) && !derivedRuntimeOptions.some(([id,label])=>matches(label,id)) && !variableOptions.some(o=>matches(o.name,o.id)) && !staticOptions.some(o=>matches(o.name,o.id)) && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values.</div>}
+				{filteredStatic.length > 0 && <>
+					<div className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-[#85B7EB]">Specific {config.plural}</div>
+					{filteredStatic.map(o => <button key={`static-${o.id}`} type="button" onClick={() => choose(o.id)} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588] font-mono">{o.id}</div></button>)}
+				</>}
+				{filteredVariables.length > 0 && <>
+					<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">{config.label} variables</div>
+					{filteredVariables.map(o => <button key={`var-${o.id}`} type="button" onClick={() => choose({ function:'getVariable', variableName:o.id })} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588]">Variable · {o.id}</div></button>)}
+				</>}
+				{filteredDerived.length > 0 && <>
+					<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-[#5DCAA5]">Derived from context</div>
+					{filteredDerived.map(([id,label,expression]) => <button key={`derived-${id}-${label}`} type="button" onClick={() => choose(expression)} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[9px] text-[#637588]">Context-derived value</div></button>)}
+				</>}
+				{filteredRuntime.length > 0 && <>
+					<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-[#ED93B1]">Context references</div>
+					{filteredRuntime.map(([id,label]) => <button key={`runtime-${id}`} type="button" onClick={() => choose(runtimeReferenceFunction(id))} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[9px] text-[#637588]">Context</div></button>)}
+				</>}
+				{!filteredStatic.length && !filteredVariables.length && !filteredDerived.length && !filteredRuntime.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values.</div>}
 			</div>
 		</div>}
 	</div>;
