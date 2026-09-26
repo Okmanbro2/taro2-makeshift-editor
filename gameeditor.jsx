@@ -1467,8 +1467,14 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 		...variableReferenceOptions('item', gameData).map((o) => [`variable:${o.id}`, o.name, 'Item variable', o.id]),
 		...variableReferenceOptions('projectile', gameData).map((o) => [`variable:${o.id}`, o.name, 'Projectile variable', o.id]),
 	].sort((a,b) => a[1].localeCompare(b[1]) || a[3].localeCompare(b[3])) : [];
-	const allOptions = [...options, ...variableOptions, ...entityVariableOptions];
+	const derivedOptions = kind === 'playerRef' ? [
+		...getRuntimeReferenceOptions('unitRef').map(([id, label]) => [\`ownerOfUnit:\${id}\`, \`Owner of \${label.toLowerCase()}\`, 'Derived from unit', { function: 'getOwnerOfUnit', unit: runtimeReferenceFunction(id) }]),
+		...getRuntimeReferenceOptions('itemRef').map(([id, label]) => [\`ownerOfItem:\${id}\`, \`Owner of \${label.toLowerCase()}\`, 'Derived from item', { function: 'getOwnerOfItem', item: runtimeReferenceFunction(id) }]),
+		...getRuntimeReferenceOptions('projectileRef').map(([id, label]) => [\`ownerOfProjectile:\${id}\`, \`Owner of \${label.toLowerCase()}\`, 'Derived from projectile', { function: 'getOwnerOfProjectile', projectile: runtimeReferenceFunction(id) }]),
+	] : [];
+	const allOptions = [...options, ...derivedOptions, ...variableOptions, ...entityVariableOptions];
 	const selected = allOptions.find(([id]) => id === value);
+	const selectedObject = typeof value === 'object' && value?.function ? describeValue(value, gameData) : null;
 	const filtered = allOptions.filter(([, label, group, rawId]) => { const q = query.trim().toLowerCase(); return !q || label.toLowerCase().includes(q) || group.toLowerCase().includes(q) || String(rawId || '').toLowerCase().includes(q); });
 	if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
 	return <div className="relative min-w-0">
@@ -1476,7 +1482,7 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 		{open && <div className="absolute z-[90] left-0 top-full mt-1 w-72 max-h-80 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search references..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div className="max-h-60 overflow-y-auto p-1">
-				{filtered.map(([id, label, group, rawId]) => <button key={id} type="button" onClick={() => { const fn = id.startsWith('variable:') ? { function: 'getVariable', variableName: rawId || id.slice(9) } : runtimeReferenceFunction(id); setOpen(false); setQuery(''); onChange(fn || id); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[10px] text-[#637588]">{group}</div></button>)}
+				{filtered.map(([id, label, group, rawId]) => <button key={id} type="button" onClick={() => { const fn = id.startsWith('variable:') ? { function: 'getVariable', variableName: rawId || id.slice(9) } : (typeof rawId === 'object' ? rawId : runtimeReferenceFunction(id)); setOpen(false); setQuery(''); onChange(fn || id); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[10px] text-[#637588]">{group}</div></button>)}
 				<button type="button" onClick={() => { setOpen(false); setQuery(''); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48] text-xs text-[#8291a1]">Keep raw value</button>
 			</div>
 		</div>}
