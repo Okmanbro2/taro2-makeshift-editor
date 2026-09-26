@@ -1612,15 +1612,33 @@ function ScriptExpressionInput({ value, gameData, onChange, expectedKind = 'valu
 	return <div className="relative flex items-center gap-1.5 w-full"><div className="flex-1 min-w-0"><ScriptValueEditor value={value} gameData={gameData} expectedKind={expectedKind} onChange={onChange} depth={2} /></div><button type="button" title="Choose a value or function" onClick={() => setOpen((v) => !v)} className="shrink-0 p-1 rounded border border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]"><Zap size={11} /></button>{open && <ScriptValuePicker expectedKind={expectedKind} value={value} gameData={gameData} onChange={onChange} onClose={() => setOpen(false)} />}</div>;
 }
 
-const SCRIPT_OPERATORS_BY_TYPE = { boolean: ['==', '!='], number: ['==', '!=', '>', '<', '>=', '<='], string: ['==', '!='], player: ['==', '!='], unit: ['==', '!='], item: ['==', '!='], projectile: ['==', '!='], playerType: ['==', '!='], unitType: ['==', '!='], itemType: ['==', '!='], projectileType: ['==', '!='], attributeType: ['==', '!='], state: ['==', '!='], region: ['==', '!='], and: ['AND'], or: ['OR'] };
+const SCRIPT_OPERATORS_BY_TYPE = { boolean: ['==', '!='], number: ['==', '!=', '>', '<', '>=', '<='], string: ['==', '!='], player: ['==', '!='], unit: ['==', '!='], item: ['==', '!='], projectile: ['==', '!='], entity: ['==', '!='], playerType: ['==', '!='], unitType: ['==', '!='], itemType: ['==', '!='], projectileType: ['==', '!='], attributeType: ['==', '!='], state: ['==', '!='], region: ['==', '!='], unitGroup: ['==', '!='], itemGroup: ['==', '!='], unitTypeGroup: ['==', '!='], itemTypeGroup: ['==', '!='], playerGroup: ['==', '!='], and: ['AND'], or: ['OR'] };
+const SCRIPT_CONDITION_TYPE_OPTIONS = [
+	['boolean', 'Boolean'], ['string', 'String'], ['number', 'Number'],
+	['unitType', 'Unit type'], ['unit', 'Unit'], ['unitTypeGroup', 'Unit type group'], ['unitGroup', 'Unit group'],
+	['itemType', 'Item type'], ['item', 'Item'], ['itemTypeGroup', 'Item type group'], ['itemGroup', 'Item group'],
+	['projectileType', 'Projectile type'], ['projectile', 'Projectile'],
+	['playerType', 'Player type'], ['player', 'Player'], ['playerGroup', 'Player group'],
+	['region', 'Region'], ['state', 'State'], ['attributeType', 'Attribute type'], ['entity', 'Entity'],
+	['and', 'AND'], ['or', 'OR']
+];
+function conditionTypeLabel(type) { return SCRIPT_CONDITION_TYPE_OPTIONS.find(([id]) => id === type)?.[1] || readableType(type); }
+function defaultConditionOperand(type) {
+	if (type === 'boolean') return false;
+	if (type === 'number') return 0;
+	if (type === 'string') return '';
+	if (type === 'and' || type === 'or') return [{ operandType: 'boolean', operator: '==' }, true, true];
+	if (type === 'region') return { function: 'getVariable', variableName: '' };
+	return null;
+}
 function ScriptTypedValueEditor({ value, operandType, gameData, onChange }) {
-	const refKind = { region: 'regionRef', unit: 'unitRef', item: 'itemRef', projectile: 'projectileRef', player: 'playerRef', entity: 'entityRef', unitType: 'unitTypeRef', itemType: 'itemTypeRef', playerType: 'playerTypeRef', projectileType: 'projectileTypeRef', unitGroup: 'unitGroupRef', itemGroup: 'itemGroupRef', unitTypeGroup: 'unitTypeGroupRef', itemTypeGroup: 'itemTypeGroupRef', playerGroup: 'playerGroupRef' }[operandType];
+	const refKind = { region: 'regionRef', unit: 'unitRef', item: 'itemRef', projectile: 'projectileRef', player: 'playerRef', entity: 'entityRef', unitType: 'unitTypeRef', itemType: 'itemTypeRef', playerType: 'playerTypeRef', projectileType: 'projectileTypeRef', unitGroup: 'unitGroupRef', itemGroup: 'itemGroupRef', unitTypeGroup: 'unitTypeGroupRef', itemTypeGroup: 'itemTypeGroupRef', playerGroup: 'playerGroupRef', state: 'stateId', attributeType: 'attributeId' }[operandType];
 	if (refKind) return <ScriptFieldInput kind={refKind} value={value} gameData={gameData} onChange={onChange} />;
-	if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
-	if (operandType === 'boolean') return <select value={String(value)} onChange={(e) => onChange(e.target.value === 'true')} className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="true">true</option><option value="false">false</option></select>;
+	if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} expectedKind={operandType} />;
+	if (operandType === 'boolean') return <ScriptExpressionInput value={typeof value === 'boolean' ? value : false} gameData={gameData} onChange={onChange} expectedKind="boolean" />;
 	if (operandType === 'number') return <ScriptExpressionInput value={typeof value === 'number' ? value : 0} gameData={gameData} onChange={onChange} expectedKind="number" />;
-	if (operandType === 'string') return <ScriptFieldInput kind="string" value={typeof value === 'string' ? value : ''} gameData={gameData} onChange={onChange} />;
-	return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+	if (operandType === 'string') return <ScriptExpressionInput value={typeof value === 'string' ? value : ''} gameData={gameData} onChange={onChange} expectedKind="string" />;
+	return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} expectedKind={operandType} />;
 }
 function ScriptConditionEditor({ value, gameData, onChange }) {
 	const vocab = collectScriptVocabulary(gameData);
@@ -1630,26 +1648,26 @@ function ScriptConditionEditor({ value, gameData, onChange }) {
 	const operators = SCRIPT_OPERATORS_BY_TYPE[operandType] || vocab.operators;
 	const isLogic = operandType === 'and' || operandType === 'or';
 	const setOperandType = (nextType) => {
-		const nextOperators = SCRIPT_OPERATORS_BY_TYPE[nextType] || vocab.operators;
+		const nextOperators = SCRIPT_OPERATORS_BY_TYPE[nextType] || ['==', '!='];
 		const nextOperator = nextOperators[0] || '==';
 		const logic = nextType === 'and' || nextType === 'or';
-		onChange([{ ...meta, operandType: nextType, operator: nextOperator }, logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : cond[1], logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : cond[2]]);
+		const left = logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : defaultConditionOperand(nextType);
+		const right = logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : defaultConditionOperand(nextType);
+		onChange([{ ...meta, operandType: nextType, operator: nextOperator }, left, right]);
 	};
 	return <div className="w-full rounded-lg bg-[#20272e] border border-[#48596a] px-2 py-1.5">
 		<div className="flex flex-wrap items-center gap-1.5">
 			{isLogic ? <>
-				<button type="button" onClick={() => setOperandType(operandType === 'and' ? 'or' : 'and')} className="px-1.5 py-0.5 rounded-md bg-[#303b47] border border-[#506174] text-[#85B7EB] text-[11px] hover:border-[#85B7EB]">{operandType.toUpperCase()}</button>
+				<select value={operandType} onChange={(e) => setOperandType(e.target.value)} className="bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-xs text-[#85B7EB]">{SCRIPT_CONDITION_TYPE_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
 				<ScriptTypedValueEditor value={cond[1]} operandType="boolean" gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} />
 				<span className="text-[#637588] text-xs">and/or</span>
 				<ScriptTypedValueEditor value={cond[2]} operandType="boolean" gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} />
 			</> : <>
 				<ScriptTypedValueEditor value={cond[1]} operandType={operandType} gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} />
-				<select value={meta.operator || operators[0] || '=='} onChange={(e) => onChange([{ ...meta, operator: e.target.value }, cond[1], cond[2]])} className="bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-xs text-[#c5ccd3] font-mono">
-					{operators.map((x) => <option key={x} value={x}>{x}</option>)}
-				</select>
+				<select value={meta.operator || operators[0] || '=='} onChange={(e) => onChange([{ ...meta, operator: e.target.value }, cond[1], cond[2]])} className="bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-xs text-[#c5ccd3] font-mono">{operators.map((x) => <option key={x} value={x}>{x}</option>)}</select>
 				<ScriptTypedValueEditor value={cond[2]} operandType={operandType} gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} />
 			</>}
-			<button type="button" title="Change value type" onClick={() => setOperandType(operandType === 'number' ? 'string' : 'number')} className="ml-auto px-1.5 py-0.5 rounded text-[9px] text-[#637588] border border-transparent hover:border-[#48596a] hover:text-[#a3adb8]">{readableType(operandType)}</button>
+			{!isLogic && <select title="Choose comparison type" value={operandType} onChange={(e) => setOperandType(e.target.value)} className="ml-auto max-w-44 bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-[10px] text-[#9aa8b6]">{SCRIPT_CONDITION_TYPE_OPTIONS.filter(([id]) => id !== 'and' && id !== 'or').map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>}
 		</div>
 	</div>;
 }
