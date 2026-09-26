@@ -420,7 +420,7 @@ const ACTION_FIELD_SCHEMAS = {
 	setLastAttackingUnit: [{ key: 'unit', kind: 'valueExpr' }],
 	setMaxAttackRange: [{ key: 'number', kind: 'number' }, { key: 'unit', kind: 'valueExpr' }],
 	setOwnerUnitOfProjectile: [{ key: 'projectile', kind: 'valueExpr' }, { key: 'unit', kind: 'valueExpr' }],
-	setPlayerAttribute: [{ key: 'attribute', kind: 'attributeId' }, { key: 'player', kind: 'playerRef' }, { key: 'value', kind: 'valueExpr' }, { key: 'vars', kind: 'valueExpr' }],
+	setPlayerAttribute: [{ key: 'attribute', kind: 'attributeId' }, { key: 'entity', kind: 'playerRef' }, { key: 'value', kind: 'valueExpr' }, { key: 'vars', kind: 'valueExpr' }],
 	setPlayerAttributeMax: [{ key: 'attributeType', kind: 'attributeId' }, { key: 'number', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
 	setPlayerName: [{ key: 'name', kind: 'valueExpr' }, { key: 'player', kind: 'valueExpr' }],
 	setPlayerVariable: [{ key: 'player', kind: 'valueExpr' }, { key: 'value', kind: 'valueExpr' }, { key: 'variable', kind: 'valueExpr' }],
@@ -1511,7 +1511,7 @@ const SCRIPT_FUNCTION_PHRASES = {
 	getEntityAttribute: (fields) => <>attribute <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
 	getPlayerAttribute: (fields) => <>attribute <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="player" fields={fields} /></>,
 	setEntityAttribute: (fields) => <>set <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /> to <ScriptInlineFunctionField field="value" fields={fields} /></>,
-	setPlayerAttribute: (fields) => <>set <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="player" fields={fields} /> to <ScriptInlineFunctionField field="value" fields={fields} /></>,
+	setPlayerAttribute: (fields) => <>set <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /> to <ScriptInlineFunctionField field="value" fields={fields} /></>,
 	getVariable: (fields) => <>variable <ScriptInlineFunctionField field="variableName" fields={fields} /></>,
 	getUnitTypeOfUnit: (fields) => <>unit type of <ScriptInlineFunctionField field="unit" fields={fields} /></>,
 	getItemTypeOfItem: (fields) => <>item type of <ScriptInlineFunctionField field="item" fields={fields} /></>,
@@ -1781,14 +1781,14 @@ function getActionFieldSchema(type, gameData) {
 		.filter((k) => !['type', 'actions', 'then', 'else', 'conditions'].includes(k))
 		.map((key) => ({ key, kind: inferScriptFieldKind(key, example[key]) }));
 }
-function defaultActionForType(type, gameData) { if (type === 'condition') return { type: 'condition', conditions: [{ operandType: 'boolean', operator: '==' }, true, true], then: [], else: [] }; if (type === 'runScript') return { type: 'runScript', scriptName: '', isEntityScript: false }; if (type === 'setEntityAttribute' || type === 'setEntityAttributeMax' || type === 'setEntityAttributeMin' || type === 'setEntityAttributeRegenerationRate') return { type, attribute: '', entity: { function: 'getSelectedUnit' }, value: 0 }; if (type === 'setPlayerAttribute') return { type, attribute: '', player: { function: 'getSelectedPlayer' }, value: 0, vars: 0 }; const schema = getActionFieldSchema(type, gameData); if (schema) { const out = { type }; for (const field of schema) out[field.key] = defaultValueForScriptField(field.kind); if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) out.actions = []; return out; } if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) return { type, actions: [] }; return { type }; }
+function defaultActionForType(type, gameData) { if (type === 'condition') return { type: 'condition', conditions: [{ operandType: 'boolean', operator: '==' }, true, true], then: [], else: [] }; if (type === 'runScript') return { type: 'runScript', scriptName: '', isEntityScript: false }; if (type === 'setEntityAttribute' || type === 'setEntityAttributeMax' || type === 'setEntityAttributeMin' || type === 'setEntityAttributeRegenerationRate') return { type, attribute: '', entity: { function: 'getSelectedUnit' }, value: 0 }; if (type === 'setPlayerAttribute') return { type, attribute: '', entity: { function: 'getSelectedPlayer' }, value: 0, vars: 0 }; const schema = getActionFieldSchema(type, gameData); if (schema) { const out = { type }; for (const field of schema) out[field.key] = defaultValueForScriptField(field.kind); if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) out.actions = []; return out; } if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) return { type, actions: [] }; return { type }; }
 
 
 const SCRIPT_ACTION_PHRASES = {
 	setVariable: (action, fields) => <><ScriptActionInlineField field="variableName" action={action} fields={fields} /> = <ScriptActionInlineField field="value" action={action} fields={fields} /></>,
 	setEntityVariable: (action, fields) => <><ScriptActionInlineField field="variable" action={action} fields={fields} /> of <ScriptActionInlineField field="entity" action={action} fields={fields} /> = <ScriptActionInlineField field="value" action={action} fields={fields} /></>,
 	setEntityAttribute: (action, fields) => <>set <ScriptActionInlineField field="attribute" action={action} fields={fields} /> of <ScriptActionInlineField field="entity" action={action} fields={fields} /> to <ScriptActionInlineField field="value" action={action} fields={fields} /></>,
-	setPlayerAttribute: (action, fields) => <>set <ScriptActionInlineField field="attribute" action={action} fields={fields} /> of <ScriptActionInlineField field="player" action={action} fields={fields} /> to <ScriptActionInlineField field="value" action={action} fields={fields} /></>,
+	setPlayerAttribute: (action, fields) => <>set <ScriptActionInlineField field="attribute" action={action} fields={fields} /> of <ScriptActionInlineField field="entity" action={action} fields={fields} /> to <ScriptActionInlineField field="value" action={action} fields={fields} /></>,
 	createUnitAtPosition: (action, fields) => <>create <ScriptActionInlineField field="unitType" action={action} fields={fields} /> for <ScriptActionInlineField field="entity" action={action} fields={fields} /> at <ScriptActionInlineField field="position" action={action} fields={fields} /> facing <ScriptActionInlineField field="angle" action={action} fields={fields} /></>,
 	createItemAtPositionWithQuantity: (action, fields) => <>create <ScriptActionInlineField field="itemType" action={action} fields={fields} /> at <ScriptActionInlineField field="position" action={action} fields={fields} /> with quantity <ScriptActionInlineField field="quantity" action={action} fields={fields} /></>,
 	createItemWithMaxQuantityAtPosition: (action, fields) => <>create <ScriptActionInlineField field="itemType" action={action} fields={fields} /> at <ScriptActionInlineField field="position" action={action} fields={fields} /> with max quantity</>,
@@ -2628,6 +2628,7 @@ export default function GameContentEditor() {
 				normalizeFolders(parsed);
 				normalizeItemAttributeVisibility(parsed);
 				normalizeAttributeTypes(parsed);
+				normalizeSetPlayerAttributeTargets(parsed);
 				setGameData(parsed);
 				setSelectedKey(null);
 				setSelectedFolderId(null);
@@ -4009,6 +4010,26 @@ export default function GameContentEditor() {
 		return parsed;
 	}
 
+	// fix
+	function normalizeSetPlayerAttributeTargets(parsed) {
+		const scripts = parsed?.data?.scripts || {};
+		const repairActions = (actions) => {
+			if (!Array.isArray(actions)) return;
+			for (const action of actions) {
+				if (!action || typeof action !== 'object') continue;
+				if (action.type === 'setPlayerAttribute' && action.player !== undefined && (action.entity == null || action.entity === '')) {
+					action.entity = action.player;
+					delete action.player;
+				}
+				repairActions(action.then);
+				repairActions(action.else);
+				repairActions(action.actions);
+			}
+		};
+		for (const script of Object.values(scripts)) repairActions(script?.actions);
+		return parsed;
+	}
+
 	function addAttributeType() {
 		const name = prompt('New attribute name (e.g. Shield):');
 		if (!name) return;
@@ -4199,7 +4220,9 @@ export default function GameContentEditor() {
 	}
 
 	function downloadJson() {
-		const blob = new Blob([JSON.stringify(gameData)], { type: 'application/json' });
+		const exportData = deepClone(gameData);
+		normalizeSetPlayerAttributeTargets(exportData);
+		const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
