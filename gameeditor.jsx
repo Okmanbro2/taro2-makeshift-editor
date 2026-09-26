@@ -35,6 +35,41 @@ const DEFAULT_UNIT_CONTROLS = {
 	abilities: {},
 };
 
+
+function EntitySpritePreview({ entity, kind, resolveUrl, size = 'sm' }) {
+	const inventoryUrl = kind === 'itemTypes' ? entity?.inventoryImage : '';
+	const sheet = entity?.cellSheet;
+	const state = entity?.states?.default || Object.values(entity?.states || {})[0] || {};
+	const animation = entity?.animations?.[state.animation] || entity?.animations?.default || Object.values(entity?.animations || {})[0] || {};
+	const cols = Math.max(1, Number(sheet?.columnCount) || 1);
+	const rows = Math.max(1, Number(sheet?.rowCount) || 1);
+	const frame = Math.max(1, Number(animation?.frames?.[0]) || 1);
+	const zero = frame - 1;
+	const sheetValid = !!sheet?.url && zero < cols * rows;
+	const candidates = [];
+	if (inventoryUrl) candidates.push({ url: inventoryUrl, direct: true });
+	if (sheetValid) candidates.push({ url: sheet.url, direct: false });
+	const [candidateIndex, setCandidateIndex] = useState(0);
+	useEffect(() => setCandidateIndex(0), [inventoryUrl, sheet?.url, cols, rows, frame]);
+
+	const box = size === 'lg' ? 'w-12 h-12 rounded-md' : 'w-10 h-10 rounded';
+	const candidate = candidates[candidateIndex];
+	if (!candidate) return <div className={`${box} shrink-0 border border-[#3d4a57] bg-[#20272e]`} />;
+
+	const src = resolveUrl(candidate.url);
+	if (candidate.direct || (cols === 1 && rows === 1)) {
+		return <div className={`${box} shrink-0 border border-[#48596a] bg-[#1f252c] overflow-hidden flex items-center justify-center`}>
+			<img src={src} alt="" draggable={false} onError={() => setCandidateIndex((i) => Math.min(i + 1, candidates.length))} className="w-full h-full object-contain select-none" style={{ imageRendering: 'pixelated' }} />
+		</div>;
+	}
+
+	const col = zero % cols;
+	const row = Math.floor(zero / cols);
+	return <div className={`${box} shrink-0 border border-[#48596a] bg-[#1f252c] overflow-hidden`}>
+		<img src={src} alt="" draggable={false} onError={() => setCandidateIndex((i) => Math.min(i + 1, candidates.length))} className="max-w-none max-h-none select-none" style={{ width: `${cols * 100}%`, height: `${rows * 100}%`, marginLeft: `${-col * 100}%`, marginTop: `${-row * 100}%`, imageRendering: 'pixelated' }} />
+	</div>;
+}
+
 function generateKey() {
 	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 	let out = '';
@@ -4425,17 +4460,7 @@ export default function GameContentEditor() {
 													}`}
 												>
 													<div className="flex items-center gap-2 min-w-0">
-														{(() => {
-															const sheet = entity?.cellSheet;
-															const state = entity?.states?.default || Object.values(entity?.states || {})[0] || {};
-															const animation = entity?.animations?.[state.animation] || entity?.animations?.default || Object.values(entity?.animations || {})[0] || {};
-															const cols = Math.max(1, Number(sheet?.columnCount) || 1), rows = Math.max(1, Number(sheet?.rowCount) || 1);
-															const frame = Math.max(1, Number(animation?.frames?.[0]) || 1), zero = frame - 1;
-															if (activeTab === 'itemTypes' && entity?.inventoryImage) return <div className="w-10 h-10 shrink-0 rounded border border-[#48596a] bg-[#1f252c] overflow-hidden flex items-center justify-center"><img src={resolveAssetUrl(entity.inventoryImage)} alt="" className="max-w-full max-h-full object-contain" /></div>;
-															if (!sheet?.url || zero >= cols * rows) return <div className="w-10 h-10 shrink-0 rounded border border-[#3d4a57] bg-[#20272e]" />;
-															const col = zero % cols, row = Math.floor(zero / cols);
-															return <div className="w-10 h-10 shrink-0 rounded border border-[#48596a] bg-[#1f252c] overflow-hidden"><img src={resolveAssetUrl(sheet.url)} alt="" className="max-w-none max-h-none" style={{ width: `${cols * 100}%`, height: `${rows * 100}%`, marginLeft: `${-col * 100}%`, marginTop: `${-row * 100}%`, imageRendering: 'pixelated' }} /></div>;
-														})()}
+														{<EntitySpritePreview entity={entity} kind={activeTab} resolveUrl={resolveAssetUrl} />}
 														<div className="min-w-0 flex-1">
 															<div className="text-sm text-[#e1e6ea] truncate">{entity?.name || '(unnamed)'}</div>
 															<div className="text-xs text-[#637588] font-mono truncate">{key}</div>
@@ -4461,18 +4486,7 @@ export default function GameContentEditor() {
 														}`}
 													>
 														<div className="flex items-center gap-2 min-w-0">
-															{(() => {
-																const entity = categoryMap[node.id] || {};
-																const sheet = entity?.cellSheet;
-																const state = entity?.states?.default || Object.values(entity?.states || {})[0] || {};
-																const animation = entity?.animations?.[state.animation] || entity?.animations?.default || Object.values(entity?.animations || {})[0] || {};
-																const cols = Math.max(1, Number(sheet?.columnCount) || 1), rows = Math.max(1, Number(sheet?.rowCount) || 1);
-																const frame = Math.max(1, Number(animation?.frames?.[0]) || 1), zero = frame - 1;
-																if (activeTab === 'itemTypes' && entity?.inventoryImage) return <div className="w-10 h-10 shrink-0 rounded border border-[#48596a] bg-[#1f252c] overflow-hidden flex items-center justify-center"><img src={resolveAssetUrl(entity.inventoryImage)} alt="" className="max-w-full max-h-full object-contain" /></div>;
-																if (!sheet?.url || zero >= cols * rows) return <div className="w-10 h-10 shrink-0 rounded border border-[#3d4a57] bg-[#20272e]" />;
-																const col = zero % cols, row = Math.floor(zero / cols);
-																return <div className="w-10 h-10 shrink-0 rounded border border-[#48596a] bg-[#1f252c] overflow-hidden"><img src={resolveAssetUrl(sheet.url)} alt="" className="max-w-none max-h-none" style={{ width: `${cols * 100}%`, height: `${rows * 100}%`, marginLeft: `${-col * 100}%`, marginTop: `${-row * 100}%`, imageRendering: 'pixelated' }} /></div>;
-															})()}
+															{<EntitySpritePreview entity={categoryMap[node.id] || {}} kind={activeTab} resolveUrl={resolveAssetUrl} />}
 															<div className="min-w-0 flex-1">
 																<div className="text-sm text-[#e1e6ea] truncate">{categoryMap[node.id]?.name || '(unnamed)'}</div>
 																<div className="text-xs text-[#637588] font-mono truncate">{node.id}</div>
@@ -4499,20 +4513,7 @@ export default function GameContentEditor() {
 									<div className="max-w-2xl">
 										<div className="flex items-center justify-between mb-4">
 											<div className="flex items-center gap-3 min-w-0">
-												{(() => {
-													const typeDef = draft;
-													const sheet = typeDef?.cellSheet;
-													const state = typeDef?.states?.default || Object.values(typeDef?.states || {})[0] || {};
-													const animation = typeDef?.animations?.[state.animation] || typeDef?.animations?.default || Object.values(typeDef?.animations || {})[0] || {};
-													const cols = Math.max(1, Number(sheet?.columnCount) || 1);
-													const rows = Math.max(1, Number(sheet?.rowCount) || 1);
-													const frame = Math.max(1, Number(animation?.frames?.[0]) || 1);
-													const zero = frame - 1;
-													if (activeTab === 'itemTypes' && typeDef?.inventoryImage) return <div className="w-12 h-12 shrink-0 rounded-md border border-[#48596a] bg-[#1f252c] overflow-hidden flex items-center justify-center"><img src={resolveAssetUrl(typeDef.inventoryImage)} alt="" className="max-w-full max-h-full object-contain" /></div>;
-													if (!sheet?.url || zero >= cols * rows) return <div className="w-12 h-12 shrink-0 rounded-md border border-[#3d4a57] bg-[#20272e]" />;
-													const col = zero % cols, row = Math.floor(zero / cols);
-													return <div className="w-12 h-12 shrink-0 rounded-md border border-[#48596a] bg-[#1f252c] overflow-hidden"><img src={resolveAssetUrl(sheet.url)} alt="" draggable={false} className="max-w-none max-h-none select-none" style={{ width: `${cols * 100}%`, height: `${rows * 100}%`, marginLeft: `${-col * 100}%`, marginTop: `${-row * 100}%`, imageRendering: 'pixelated' }} /></div>;
-												})()}
+												{<EntitySpritePreview entity={draft} kind={activeTab} resolveUrl={resolveAssetUrl} size="lg" />}
 												<div className="min-w-0">
 													<input
 													value={draft.name}
