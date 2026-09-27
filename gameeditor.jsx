@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Upload, Download, Plus, Trash2, Search, Copy, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2, Paintbrush, PaintBucket, Eraser, Move, Eye, EyeOff, ScanSearch } from 'lucide-react';
+import { Upload, Download, Plus, Trash2, Search, Copy, Clipboard, ClipboardPaste, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2, Paintbrush, PaintBucket, Eraser, Move, Eye, EyeOff, ScanSearch } from 'lucide-react';
 
 const ENTITY_TABS = [
 	{ key: 'unitTypes', label: 'Units', folderType: 'unit', root: 'units' },
@@ -2029,8 +2029,8 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 					<button title="Move down" disabled={!canMoveDown} onClick={() => onOp(path, 'moveDown')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] disabled:opacity-30 text-[10px] leading-none w-[19px] h-[19px]">▼</button>
 					<button title={action.disabled ? 'Enable' : 'Disable'} onClick={() => onOp(path, 'toggleDisabled')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><Square size={11} /></button>
 					<button title="Duplicate" onClick={() => onOp(path, 'duplicate')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><Copy size={11} /></button>
-					{onCopyNode && <button title="Copy line" onClick={() => onCopyNode(action)} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><Copy size={11} /></button>}
-					{onPasteNode && <button title="Paste line after this" onClick={() => onPasteNode(path.slice(0, -1), indexInParent + 1)} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] text-[10px] leading-none">Paste</button>}
+					{onCopyNode && <button title="Copy line" onClick={() => onCopyNode(action)} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><Clipboard size={11} /></button>}
+					{onPasteNode && <button title="Paste line after this" onClick={() => onPasteNode(path.slice(0, -1), indexInParent + 1)} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><ClipboardPaste size={11} /></button>}
 					<button title="Delete" onClick={() => onOp(path, 'delete')} className="p-1 rounded hover:bg-red-950/40 text-red-400"><Trash2 size={11} /></button>
 				</span>}
 			</div>
@@ -2079,7 +2079,7 @@ function ScriptTreeView({ script, gameData, onJumpToScript, onOp, onAddAction, o
 				<div className="flex items-center justify-between gap-2 mb-1"><div className="flex items-center gap-1.5"><span style={{ width: 7, height: 7, borderRadius: 2, background: SCRIPT_NODE_COLORS.condition, flexShrink: 0 }} /><span className="text-xs font-mono text-[#c5ccd3]">Top-level condition</span></div>{hasRealTopCondition && <button type="button" onClick={() => onOp?.(['conditions'], 'setField', [])} className="text-[10px] text-red-400 hover:underline">Remove</button>}</div>
 				{hasRealTopCondition ? <ScriptConditionEditor value={topConditions} gameData={gameData} onChange={(v) => onOp?.(['conditions'], 'setField', v)} /> : <div className="text-[10px] text-[#637588] flex items-center gap-2"><span>No extra gate.</span><button type="button" onClick={() => onOp?.(['conditions'], 'setField', [{ operandType: 'boolean', operator: '==' }, true, true])} className="text-[#1a56da] hover:underline">+ Add condition</button></div>}
 			</div>
-			<div className="flex items-center gap-1.5 pt-2 pb-1"><span className="text-[10px] uppercase tracking-wide text-[#637588] mr-1">Actions</span>{onAddAction && <ScriptAddMenu label="Add action" options={addActionOptions} onSelect={(type) => onAddAction(['actions'], topActions.length, defaultActionForType(type, gameData))} />}{onAddCondition && <button type="button" onClick={() => onAddCondition(['actions'], topActions.length)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#85B7EB] hover:text-[#85B7EB]"><Plus size={13} /> Add condition</button>}{onPasteNode && <button type="button" onClick={() => onPasteNode(['actions'], topActions.length)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#85B7EB] hover:text-[#85B7EB]">Paste line</button>}</div>
+			<div className="flex items-center gap-1.5 pt-2 pb-1"><span className="text-[10px] uppercase tracking-wide text-[#637588] mr-1">Actions</span>{onAddAction && <ScriptAddMenu label="Add action" options={addActionOptions} onSelect={(type) => onAddAction(['actions'], topActions.length, defaultActionForType(type, gameData))} />}{onAddCondition && <button type="button" onClick={() => onAddCondition(['actions'], topActions.length)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#85B7EB] hover:text-[#85B7EB]"><Plus size={13} /> Add condition</button>}{onPasteNode && <button type="button" onClick={() => onPasteNode(['actions'], topActions.length)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#85B7EB] hover:text-[#85B7EB]"><ClipboardPaste size={13} /> Paste line</button>}</div>
 			{topActions.map((a, i) => <ScriptActionNode key={i} action={a} gameData={gameData} depth={0} onJumpToScript={onJumpToScript} path={['actions', i]} onOp={onOp} siblingCount={topActions.length} indexInParent={i} onCopyNode={onCopyNode} onPasteNode={onPasteNode} />)}
 			{topActions.length === 0 && <div className="text-xs text-[#637588] italic px-1.5 py-2">No actions yet. Add an action or condition above.</div>}
 		</div>
@@ -3918,13 +3918,18 @@ export default function GameContentEditor() {
 		}
 	}
 
-	async function pasteScriptNode(listPath, index) {
+	async function getCopiedScriptNode() {
 		let node = scriptNodeClipboard ? deepClone(scriptNodeClipboard) : null;
 		if (!node) {
 			try {
 				if (navigator?.clipboard?.readText) node = parseScriptNodeFromClipboard(await navigator.clipboard.readText());
 			} catch (_) {}
 		}
+		return node;
+	}
+
+	async function pasteScriptNode(listPath, index) {
+		const node = await getCopiedScriptNode();
 		if (!node) {
 			setSavedMsg('Nothing to paste. Copy a script line first.');
 			return;
@@ -5410,6 +5415,8 @@ export default function GameContentEditor() {
 										onAddAction={(listPath, index, action) => { const next = applyScriptOp(parsed, listPath, 'insert', { index, value: action }); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }}
 										onAddCondition={(listPath, index) => { const next = applyScriptOp(parsed, listPath, 'insert', { index, value: defaultActionForType('condition', gameData) }); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }}
 										onAddTrigger={(trigger) => { const next = deepClone(parsed); if (!Array.isArray(next.triggers)) next.triggers = []; next.triggers.push(trigger); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }}
+												onCopyNode={copyScriptNode}
+												onPasteNode={async (listPath, index) => { const node = await getCopiedScriptNode(); if (!node) { setSavedMsg('Nothing to paste. Copy a script line first.'); return; } const next = applyScriptOp(parsed, listPath, 'insert', { index, value: node }); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); setSavedMsg('Pasted script line into entity script.'); }}
 									/>
 							) : <>
 								<textarea value={raw} onChange={(e)=>updateEntityScriptBody(selectedEntityScriptKey,e.target.value)} spellCheck={false} rows={18} className="w-full bg-[#262e36] border border-[#3d4a57] rounded p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]" />
@@ -6812,6 +6819,8 @@ export default function GameContentEditor() {
 									onAddAction={isGlobal ? addScriptAction : (listPath,index,action)=>{ const next=applyScriptOp(viewerScript,listPath,'insert',{index,value:action}); updateEntityScriptBody(selectedEntityScriptKey,JSON.stringify(next,null,2)); }}
 									onAddCondition={isGlobal ? addScriptCondition : (listPath,index)=>{ const next=applyScriptOp(viewerScript,listPath,'insert',{index,value:defaultActionForType('condition',gameData)}); updateEntityScriptBody(selectedEntityScriptKey,JSON.stringify(next,null,2)); }}
 									onAddTrigger={isGlobal ? addScriptTrigger : (trigger)=>{ const next=deepClone(viewerScript); if(!Array.isArray(next.triggers)) next.triggers=[]; next.triggers.push(trigger); updateEntityScriptBody(selectedEntityScriptKey,JSON.stringify(next,null,2)); }}
+											onCopyNode={copyScriptNode}
+											onPasteNode={async (listPath,index)=>{ const node=await getCopiedScriptNode(); if(!node){setSavedMsg('Nothing to paste. Copy a script line first.');return;} const next=applyScriptOp(viewerScript,listPath,'insert',{index,value:node}); if(isGlobal) setScriptDraft(d=>({...d,bodyText:JSON.stringify(next,null,2)})); else updateEntityScriptBody(selectedEntityScriptKey,JSON.stringify(next,null,2)); setSavedMsg(isGlobal ? 'Pasted script line.' : 'Pasted script line into entity script.'); }}
 								/>
 							</div> : <div className="text-sm text-red-400 p-4">This script cannot currently be displayed as a tree. Use Raw JSON in the main editor to inspect or repair it.</div>}
 						</div>
@@ -6873,3 +6882,4 @@ class EditorErrorBoundary extends React.Component {
 
 const appRoot = document.getElementById('root');
 if (appRoot) createRoot(appRoot).render(<EditorErrorBoundary><GameContentEditor /></EditorErrorBoundary>);
+F
