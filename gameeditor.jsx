@@ -1955,7 +1955,20 @@ function describeActionReadable(action, gameData, setActiveField, schema) {
 	return <><span>{readableType(action?.type || 'unknown action')}</span>{parts.length > 0 && <>{' '}{parts}</>}</>;
 }
 
-function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp, siblingCount, indexInParent }) {
+function serializeScriptNodeForClipboard(node) {
+	return JSON.stringify({ taroEditorClipboard: 1, kind: 'scriptNode', node: deepClone(node) }, null, 2);
+}
+
+function parseScriptNodeFromClipboard(text) {
+	try {
+		const parsed = JSON.parse(text);
+		if (parsed?.taroEditorClipboard === 1 && parsed?.kind === 'scriptNode' && parsed.node && typeof parsed.node === 'object' && !Array.isArray(parsed.node)) return parsed.node;
+		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && typeof parsed.type === 'string') return parsed;
+	} catch (_) {}
+	return null;
+}
+
+function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp, siblingCount, indexInParent, onCopyNode, onPasteNode }) {
 	const [open, setOpen] = useState(depth < 2);
 	const [fieldsOpen, setFieldsOpen] = useState(false);
 	const [activeField, setActiveField] = useState(null);
@@ -2016,6 +2029,8 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 					<button title="Move down" disabled={!canMoveDown} onClick={() => onOp(path, 'moveDown')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] disabled:opacity-30 text-[10px] leading-none w-[19px] h-[19px]">▼</button>
 					<button title={action.disabled ? 'Enable' : 'Disable'} onClick={() => onOp(path, 'toggleDisabled')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><Square size={11} /></button>
 					<button title="Duplicate" onClick={() => onOp(path, 'duplicate')} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><Copy size={11} /></button>
+					{onCopyNode && <button title="Copy line" onClick={() => onCopyNode(action)} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588]"><Copy size={11} /></button>}
+					{onPasteNode && <button title="Paste line after this" onClick={() => onPasteNode(path.slice(0, -1), indexInParent + 1)} className="p-1 rounded hover:bg-[#3d4a57] text-[#637588] text-[10px] leading-none">Paste</button>}
 					<button title="Delete" onClick={() => onOp(path, 'delete')} className="p-1 rounded hover:bg-red-950/40 text-red-400"><Trash2 size={11} /></button>
 				</span>}
 			</div>
@@ -2033,7 +2048,7 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 						<ScriptAddMenu label="Add action" options={collectScriptVocabulary(gameData).actions.map((type) => ({ value: type, label: readableType(type), category: scriptCategory(type) }))} onSelect={(type) => onOp?.(section.basePath, 'insert', { index: section.actions.length, value: defaultActionForType(type, gameData) })} />
 						<button type="button" onClick={() => onOp?.(section.basePath, 'insert', { index: section.actions.length, value: defaultActionForType('condition', gameData) })} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#8291a1] hover:text-[#85B7EB]"><Plus size={11} /> Condition</button>
 					</div>
-					{section.actions.length === 0 ? <div className="text-xs text-[#637588] italic" style={{ marginLeft: (depth + 1) * 16 }}>(nothing)</div> : section.actions.map((a, i2) => <ScriptActionNode key={i2} action={a} gameData={gameData} depth={depth + 1} onJumpToScript={onJumpToScript} path={[...section.basePath, i2]} onOp={onOp} siblingCount={section.actions.length} indexInParent={i2} />)}
+					{section.actions.length === 0 ? <div className="text-xs text-[#637588] italic" style={{ marginLeft: (depth + 1) * 16 }}>(nothing)</div> : section.actions.map((a, i2) => <ScriptActionNode key={i2} action={a} gameData={gameData} depth={depth + 1} onJumpToScript={onJumpToScript} path={[...section.basePath, i2]} onOp={onOp} siblingCount={section.actions.length} indexInParent={i2} onCopyNode={onCopyNode} onPasteNode={onPasteNode} />)}
 				</div>)}
 			</div>}
 		</div>
@@ -2044,7 +2059,7 @@ function ExternalLinkIcon() {
 	return <ChevronRight size={11} className="text-[#ED93B1] shrink-0 -ml-0.5" />;
 }
 
-function ScriptTreeView({ script, gameData, onJumpToScript, onOp, onAddAction, onAddCondition, onAddTrigger }) {
+function ScriptTreeView({ script, gameData, onJumpToScript, onOp, onAddAction, onAddCondition, onAddTrigger, onCopyNode, onPasteNode }) {
 	const triggers = script?.triggers || [];
 	const topConditions = script?.conditions;
 	const hasRealTopCondition = Array.isArray(topConditions) && topConditions.length >= 3;
@@ -2064,8 +2079,8 @@ function ScriptTreeView({ script, gameData, onJumpToScript, onOp, onAddAction, o
 				<div className="flex items-center justify-between gap-2 mb-1"><div className="flex items-center gap-1.5"><span style={{ width: 7, height: 7, borderRadius: 2, background: SCRIPT_NODE_COLORS.condition, flexShrink: 0 }} /><span className="text-xs font-mono text-[#c5ccd3]">Top-level condition</span></div>{hasRealTopCondition && <button type="button" onClick={() => onOp?.(['conditions'], 'setField', [])} className="text-[10px] text-red-400 hover:underline">Remove</button>}</div>
 				{hasRealTopCondition ? <ScriptConditionEditor value={topConditions} gameData={gameData} onChange={(v) => onOp?.(['conditions'], 'setField', v)} /> : <div className="text-[10px] text-[#637588] flex items-center gap-2"><span>No extra gate.</span><button type="button" onClick={() => onOp?.(['conditions'], 'setField', [{ operandType: 'boolean', operator: '==' }, true, true])} className="text-[#1a56da] hover:underline">+ Add condition</button></div>}
 			</div>
-			<div className="flex items-center gap-1.5 pt-2 pb-1"><span className="text-[10px] uppercase tracking-wide text-[#637588] mr-1">Actions</span>{onAddAction && <ScriptAddMenu label="Add action" options={addActionOptions} onSelect={(type) => onAddAction(['actions'], topActions.length, defaultActionForType(type, gameData))} />}{onAddCondition && <button type="button" onClick={() => onAddCondition(['actions'], topActions.length)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#85B7EB] hover:text-[#85B7EB]"><Plus size={13} /> Add condition</button>}</div>
-			{topActions.map((a, i) => <ScriptActionNode key={i} action={a} gameData={gameData} depth={0} onJumpToScript={onJumpToScript} path={['actions', i]} onOp={onOp} siblingCount={topActions.length} indexInParent={i} />)}
+			<div className="flex items-center gap-1.5 pt-2 pb-1"><span className="text-[10px] uppercase tracking-wide text-[#637588] mr-1">Actions</span>{onAddAction && <ScriptAddMenu label="Add action" options={addActionOptions} onSelect={(type) => onAddAction(['actions'], topActions.length, defaultActionForType(type, gameData))} />}{onAddCondition && <button type="button" onClick={() => onAddCondition(['actions'], topActions.length)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#85B7EB] hover:text-[#85B7EB]"><Plus size={13} /> Add condition</button>}{onPasteNode && <button type="button" onClick={() => onPasteNode(['actions'], topActions.length)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#85B7EB] hover:text-[#85B7EB]">Paste line</button>}</div>
+			{topActions.map((a, i) => <ScriptActionNode key={i} action={a} gameData={gameData} depth={0} onJumpToScript={onJumpToScript} path={['actions', i]} onOp={onOp} siblingCount={topActions.length} indexInParent={i} onCopyNode={onCopyNode} onPasteNode={onPasteNode} />)}
 			{topActions.length === 0 && <div className="text-xs text-[#637588] italic px-1.5 py-2">No actions yet. Add an action or condition above.</div>}
 		</div>
 	);
@@ -3888,6 +3903,34 @@ export default function GameContentEditor() {
 
 	function addScriptCondition(listPath, index) {
 		addScriptAction(listPath, index, defaultActionForType('condition', gameData));
+	}
+
+	const [scriptNodeClipboard, setScriptNodeClipboard] = useState(null);
+
+	async function copyScriptNode(node) {
+		const payload = serializeScriptNodeForClipboard(node);
+		setScriptNodeClipboard(deepClone(node));
+		try {
+			if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(payload);
+			setSavedMsg('Copied script line. You can paste it into this or another script.');
+		} catch (_) {
+			setSavedMsg('Copied script line to the editor clipboard. Browser clipboard access was unavailable.');
+		}
+	}
+
+	async function pasteScriptNode(listPath, index) {
+		let node = scriptNodeClipboard ? deepClone(scriptNodeClipboard) : null;
+		if (!node) {
+			try {
+				if (navigator?.clipboard?.readText) node = parseScriptNodeFromClipboard(await navigator.clipboard.readText());
+			} catch (_) {}
+		}
+		if (!node) {
+			setSavedMsg('Nothing to paste. Copy a script line first.');
+			return;
+		}
+		updateScriptTree(applyScriptOp(scriptDraftParsed.value, listPath, 'insert', { index, value: node }));
+		setSavedMsg('Pasted script line.');
 	}
 
 	function deleteScript() {
@@ -6172,6 +6215,8 @@ export default function GameContentEditor() {
 										onAddAction={addScriptAction}
 										onAddCondition={addScriptCondition}
 										onAddTrigger={addScriptTrigger}
+										onCopyNode={copyScriptNode}
+										onPasteNode={pasteScriptNode}
 									/>
 												</div>
 											)
