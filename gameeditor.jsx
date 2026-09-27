@@ -2519,6 +2519,11 @@ function MapPreview({ gameData, setGameData, resolveAssetUrl }) {
 export default function GameContentEditor() {
 	const [gameData, setGameData] = useState(null);
 	const [editingPlayerTypeKey, setEditingPlayerTypeKey] = useState(null);
+	const [playerTypeDraft, setPlayerTypeDraft] = useState(null);
+	const [playerTypeDraftBaseline, setPlayerTypeDraftBaseline] = useState(null);
+	const [unsavedPlayerTypeDrafts, setUnsavedPlayerTypeDrafts] = useState({});
+	const [expandedPlayerTypeAttributes, setExpandedPlayerTypeAttributes] = useState({});
+	const [unsavedEntityDrafts, setUnsavedEntityDrafts] = useState({});
 	const [fileName, setFileName] = useState('');
 	const [fileError, setFileError] = useState('');
 	const [importNotice, setImportNotice] = useState('');
@@ -2575,22 +2580,37 @@ export default function GameContentEditor() {
 		advancedText !== advancedBaseline
 	);
 
+	const playerTypeEditorDirty = !!playerTypeDraft && (playerTypeDraftBaseline === null || JSON.stringify(playerTypeDraft) !== JSON.stringify(playerTypeDraftBaseline));
+	const activeTabUnsavedEntityDrafts = Object.entries(unsavedEntityDrafts).filter(([id]) => id.startsWith(`${activeTab}:`));
+	const currentEntityIsUnsaved = entityEditorDirty && !!selectedKey && !!draft;
+	const unsavedEntityCount = activeTabUnsavedEntityDrafts.length + (currentEntityIsUnsaved && !unsavedEntityDrafts[`${activeTab}:${selectedKey}`] ? 1 : 0);
+	const unsavedPlayerTypeCount = Object.keys(unsavedPlayerTypeDrafts).length + (playerTypeEditorDirty && editingPlayerTypeKey && !unsavedPlayerTypeDrafts[editingPlayerTypeKey] ? 1 : 0);
+
 	useEffect(() => {
-		if (!entityEditorDirty) return;
+		if (!entityEditorDirty && !playerTypeEditorDirty) return;
 		const handleBeforeUnload = (event) => {
 			event.preventDefault();
 			event.returnValue = '';
 		};
 		window.addEventListener('beforeunload', handleBeforeUnload);
 		return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-	}, [entityEditorDirty]);
+	}, [entityEditorDirty, playerTypeEditorDirty]);
+
+	function stashCurrentEntityDraft() {
+		if (!draft || !selectedKey || !entityEditorDirty) return;
+		const cacheKey = `${activeTab}:${selectedKey}`;
+		setUnsavedEntityDrafts((prev) => ({ ...prev, [cacheKey]: { draft: deepClone(draft), advancedText } }));
+	}
 
 	function confirmLeaveEntityEditor() {
-		if (!entityEditorDirty) return true;
-		return window.confirm('You have unsaved changes. Leave this editor and discard them?');
+		stashCurrentEntityDraft();
+		if (playerTypeDraft && editingPlayerTypeKey && playerTypeEditorDirty) setUnsavedPlayerTypeDrafts((prev) => ({ ...prev, [editingPlayerTypeKey]: deepClone(playerTypeDraft) }));
+		if (editingPlayerTypeKey) { setEditingPlayerTypeKey(null); setPlayerTypeDraft(null); setPlayerTypeDraftBaseline(null); }
+		return true;
 	}
 
 	function clearEntityEditorSelection() {
+		stashCurrentEntityDraft();
 		setDraft(null);
 		setDraftBaseline(null);
 		setAdvancedBaseline('');
@@ -2797,6 +2817,23 @@ export default function GameContentEditor() {
 	}
 
 	function loadDraftFromEntity(key, entity) {
+		const cached = unsavedEntityDrafts[`${activeTab}:${key}`];
+		if (cached?.draft) {
+			const restored = deepClone(cached.draft);
+			setDraft(restored);
+			setDraftBaseline(deepClone(categoryMap[key] || {}));
+			setAdvancedText(cached.advancedText ?? '{}');
+			setAdvancedBaseline(cached.advancedText ?? '{}');
+			setAdvancedError('');
+			setSavedMsg('Unsaved changes restored. Save to working copy when ready.');
+			setSelectedBodyName(restored.bodies?.default ? 'default' : Object.keys(restored.bodies || {})[0]);
+			setSelectedAnimationName(restored.animations?.default ? 'default' : Object.keys(restored.animations || { default: {} })[0]);
+			setSelectedStateKey(Object.keys(restored.states || {})[0] || '');
+			setSelectedEntityScriptKey('');
+			setUnitEditorTab('general');
+			setSpriteNatural(null);
+			return;
+		}
 		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, ai, projectileType, cost, damage, lifeSpan, ...rest } = entity;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX, 'z-index': { layer: 3, depth: 1 } } };
 		setDraft({
@@ -2848,7 +2885,7 @@ export default function GameContentEditor() {
 	}, [draft, advancedText]);
 
 	function selectEntity(key, event) {
-		if (!confirmLeaveEntityEditor()) return;
+		stashCurrentEntityDraft();
 		if (event?.shiftKey) {
 			setSelectedEntityKeys((keys) => {
 				const base = keys.length ? keys : (selectedKey ? [selectedKey] : []);
@@ -3556,6 +3593,7 @@ export default function GameContentEditor() {
 			return next;
 		});
 		const savedDraft = { ...deepClone(draft), isNew: false };
+		setUnsavedEntityDrafts((prev) => { const next = { ...prev }; delete next[`${activeTab}:${draft.key}`]; return next; });
 		setDraftBaseline(savedDraft);
 		setAdvancedBaseline(advancedText);
 		setDraft(savedDraft);
@@ -4349,34 +4387,36 @@ export default function GameContentEditor() {
 		});
 	}
 
+	function openPlayerTypeEditor(key) {
+		if (playerTypeDraft && playerTypeEditorDirty && editingPlayerTypeKey) setUnsavedPlayerTypeDrafts((prev) => ({ ...prev, [editingPlayerTypeKey]: deepClone(playerTypeDraft) }));
+		const source = unsavedPlayerTypeDrafts[key] || gameData?.data?.playerTypes?.[key];
+		if (!source) return;
+		setEditingPlayerTypeKey(key); setPlayerTypeDraft(deepClone(source)); setPlayerTypeDraftBaseline(gameData?.data?.playerTypes?.[key] ? deepClone(gameData.data.playerTypes[key]) : null);
+	}
+	function closePlayerTypeEditor() {
+		if (playerTypeDraft && editingPlayerTypeKey && playerTypeEditorDirty) setUnsavedPlayerTypeDrafts((prev) => ({ ...prev, [editingPlayerTypeKey]: deepClone(playerTypeDraft) }));
+		setEditingPlayerTypeKey(null); setPlayerTypeDraft(null); setPlayerTypeDraftBaseline(null);
+	}
+	function savePlayerTypeDraft() {
+		if (!editingPlayerTypeKey || !playerTypeDraft) return;
+		const key = editingPlayerTypeKey;
+		setGameData((gd) => { const next = deepClone(gd); next.data.playerTypes[key] = deepClone(playerTypeDraft); return next; });
+		setUnsavedPlayerTypeDrafts((prev) => { const next = { ...prev }; delete next[key]; return next; });
+		setPlayerTypeDraftBaseline(deepClone(playerTypeDraft)); setSavedMsg('Saved to the working copy in this tool. Download the file below to keep it.');
+	}
+
 	function addPlayerType() {
 		const name = prompt('New team/player type name:');
 		if (!name) return;
 		const key = generateKey();
-		setGameData((gd) => {
-			const next = deepClone(gd);
-			if (!next.data.playerTypes) next.data.playerTypes = {};
-			next.data.playerTypes[key] = {
-				name,
-				color: '#ffffff',
-				showNameLabel: true,
-				hideChatBubble: false,
-				hideChatDistance: 0,
-				attributes: {},
-				variables: {},
-				relationships: {},
-			};
-			return next;
-		});
+		const newType = { name, color: '#ffffff', showNameLabel: true, hideChatBubble: false, hideChatDistance: 0, attributes: {}, variables: {}, relationships: {} };
+		setUnsavedPlayerTypeDrafts((prev) => ({ ...prev, [key]: deepClone(newType) }));
 		setEditingPlayerTypeKey(key);
+		setPlayerTypeDraft(newType); setPlayerTypeDraftBaseline(null);
 	}
 
 	function updatePlayerTypeField(key, field, value) {
-		setGameData((gd) => {
-			const next = deepClone(gd);
-			next.data.playerTypes[key] = { ...next.data.playerTypes[key], [field]: value };
-			return next;
-		});
+		setPlayerTypeDraft((d) => ({ ...(d || {}), [field]: value }));
 	}
 
 	function deletePlayerType(key) {
@@ -4393,65 +4433,31 @@ export default function GameContentEditor() {
 	}
 
 	function updatePlayerTypeRelationship(key, otherKey, value) {
-		setGameData((gd) => {
-			const next = deepClone(gd);
-			const pt = next.data.playerTypes[key];
-			pt.relationships = { ...(pt.relationships || {}), [otherKey]: value };
-			return next;
-		});
+		setPlayerTypeDraft((d) => ({ ...(d || {}), relationships: { ...((d || {}).relationships || {}), [otherKey]: value } }));
 	}
 
 	function addPlayerTypeAttribute(key, attrKey) {
 		if (!attrKey) return;
-		setGameData((gd) => {
-			const next = deepClone(gd);
-			const pt = next.data.playerTypes[key];
-			const source = next.data.attributeTypes[attrKey] || {};
-			pt.attributes = { ...(pt.attributes || {}), [attrKey]: { value: source.value ?? 0, min: source.min ?? 0, max: source.max ?? 100 } };
-			return next;
-		});
+		const source = attributeTypes[attrKey] || {};
+		setPlayerTypeDraft((d) => ({ ...(d || {}), attributes: { ...((d || {}).attributes || {}), [attrKey]: { value: source.value ?? 0, min: source.min ?? 0, max: source.max ?? 100, dataType: source.dataType ?? '', regenerateSpeed: source.regenerateSpeed ?? 0, isVisible: source.isVisible ?? true, displayValue: source.displayValue ?? true, showWhen: source.showWhen ?? '', showAsHUD: source.showAsHUD ?? false, color: source.color ?? 'white', decimalPlaces: source.decimalPlaces ?? 0 } } }));
 	}
 
 	function removePlayerTypeAttribute(key, attrKey) {
-		setGameData((gd) => {
-			const next = deepClone(gd);
-			const pt = next.data.playerTypes[key];
-			const attrs = { ...(pt.attributes || {}) };
-			delete attrs[attrKey];
-			pt.attributes = attrs;
-			return next;
-		});
+		setPlayerTypeDraft((d) => { const attrs = { ...((d || {}).attributes || {}) }; delete attrs[attrKey]; return { ...(d || {}), attributes: attrs }; });
 	}
 
 	function updatePlayerTypeAttributeField(key, attrKey, field, value) {
-		setGameData((gd) => {
-			const next = deepClone(gd);
-			const pt = next.data.playerTypes[key];
-			pt.attributes[attrKey] = { ...pt.attributes[attrKey], [field]: value };
-			return next;
-		});
+		setPlayerTypeDraft((d) => ({ ...(d || {}), attributes: { ...((d || {}).attributes || {}), [attrKey]: { ...(((d || {}).attributes || {})[attrKey] || {}), [field]: value } } }));
 	}
 
 	function addPlayerTypeVariable(key, varName) {
 		if (!varName) return;
-		setGameData((gd) => {
-			const next = deepClone(gd);
-			const pt = next.data.playerTypes[key];
-			const source = (next.data.variables || {})[varName] || {};
-			pt.variables = { ...(pt.variables || {}), [varName]: { default: source.default ?? '', dataType: source.dataType || 'string' } };
-			return next;
-		});
+		const source = (gameData?.data?.variables || {})[varName] || {};
+		setPlayerTypeDraft((d) => ({ ...(d || {}), variables: { ...((d || {}).variables || {}), [varName]: { default: source.default ?? '', dataType: source.dataType || 'string' } } }));
 	}
 
 	function removePlayerTypeVariable(key, varName) {
-		setGameData((gd) => {
-			const next = deepClone(gd);
-			const pt = next.data.playerTypes[key];
-			const vars = { ...(pt.variables || {}) };
-			delete vars[varName];
-			pt.variables = vars;
-			return next;
-		});
+		setPlayerTypeDraft((d) => { const vars = { ...((d || {}).variables || {}) }; delete vars[varName]; return { ...(d || {}), variables: vars }; });
 	}
 
 	function addGlobalVariable() {
@@ -4723,7 +4729,7 @@ export default function GameContentEditor() {
 								}`}
 							>
 								{t.label}
-								<span className="text-[#637588] ml-1.5 text-xs">{Object.keys(gameData?.data?.[t.key] || {}).length}</span>
+								<span className="text-[#637588] ml-1.5 text-xs">{Object.keys(gameData?.data?.[t.key] || {}).length}{unsavedEntityCount && activeTab === t.key ? <span className="text-amber-300 ml-1"># {unsavedEntityCount} unsaved</span> : ''}</span>
 							</button>
 						))}
 						<button
@@ -4784,7 +4790,7 @@ export default function GameContentEditor() {
 								}`}
 							>
 								{t.label}
-								<span className="text-[#637588] ml-1.5 text-xs">{t.key === 'music' ? Object.keys(gameData?.data?.music || {}).length : t.key === 'sounds' ? Object.keys(gameData?.data?.sound || {}).length : t.key === 'attributeTypes' ? Object.keys(gameData?.data?.attributeTypes || {}).length : t.key === 'playerTypes' ? Object.keys(gameData?.data?.playerTypes || {}).length : ''}</span>
+								<span className="text-[#637588] ml-1.5 text-xs">{t.key === 'music' ? Object.keys(gameData?.data?.music || {}).length : t.key === 'sounds' ? Object.keys(gameData?.data?.sound || {}).length : t.key === 'attributeTypes' ? Object.keys(gameData?.data?.attributeTypes || {}).length : t.key === 'playerTypes' ? `${Object.keys(gameData?.data?.playerTypes || {}).length}${unsavedPlayerTypeCount ? ` # ${unsavedPlayerTypeCount} unsaved` : ''}` : ''}</span>
 							</button>
 						))}
 						{GROUP_TABS.map((t) => (
@@ -4911,6 +4917,10 @@ export default function GameContentEditor() {
 									</div>
 								)}
 								<div className="flex-1 overflow-y-auto">
+									{activeTabUnsavedEntityDrafts.length > 0 && <div className="border-b border-[#3d4a57]">
+										<div className="px-3 py-2 text-[10px] uppercase tracking-wide text-amber-300 bg-[#2a2520]">Unsaved drafts · {activeTabUnsavedEntityDrafts.length}</div>
+										{activeTabUnsavedEntityDrafts.map(([cacheKey, cached]) => { const key = cacheKey.slice(activeTab.length + 1); const item = cached.draft || {}; return <button key={cacheKey} onClick={() => { stashCurrentEntityDraft(); setSelectedEntityKeys([]); setSelectedKey(key); loadDraftFromEntity(key, categoryMap[key] || {}); }} className="w-full text-left px-3 py-2 border-b border-[#323d48] bg-amber-950/10 hover:bg-amber-950/20"><div className="text-sm truncate text-amber-100">{item.name || '(unnamed)'} <span className="text-[10px] text-amber-300">(unsaved)</span></div><div className="text-[10px] text-[#637588] font-mono truncate">{key}</div></button>; })}
+										</div>}
 									{search.trim() ? (
 										<>
 											{filteredEntries.map(([key, entity]) => (
@@ -4924,7 +4934,7 @@ export default function GameContentEditor() {
 													<div className="flex items-center gap-2 min-w-0">
 														{<EntitySpritePreview entity={entity} kind={activeTab} resolveUrl={resolveAssetUrl} />}
 														<div className="min-w-0 flex-1">
-															<div className="text-sm text-[#e1e6ea] truncate">{entity?.name || '(unnamed)'}</div>
+															<div className="text-sm text-[#e1e6ea] truncate">{entity?.name || '(unnamed)'}{unsavedEntityDrafts[`${activeTab}:${key}`] && <span className="text-amber-300 ml-1 text-[10px]">(unsaved)</span>}</div>
 															<div className="text-xs text-[#637588] font-mono truncate">{key}</div>
 														</div>
 													</div>
@@ -4950,7 +4960,7 @@ export default function GameContentEditor() {
 														<div className="flex items-center gap-2 min-w-0">
 															{<EntitySpritePreview entity={categoryMap[node.id] || {}} kind={activeTab} resolveUrl={resolveAssetUrl} />}
 															<div className="min-w-0 flex-1">
-																<div className="text-sm text-[#e1e6ea] truncate">{categoryMap[node.id]?.name || '(unnamed)'}</div>
+																<div className="text-sm text-[#e1e6ea] truncate">{categoryMap[node.id]?.name || '(unnamed)'}{unsavedEntityDrafts[`${activeTab}:${node.id}`] && <span className="text-amber-300 ml-1 text-[10px]">(unsaved)</span>}</div>
 																<div className="text-xs text-[#637588] font-mono truncate">{node.id}</div>
 															</div>
 														</div>
@@ -6570,13 +6580,13 @@ export default function GameContentEditor() {
 										<div>Color</div>
 										<div className="text-right">Action</div>
 									</div>
-									{Object.entries(playerTypes).map(([key, pt]) => (
+									{Object.entries({ ...playerTypes, ...unsavedPlayerTypeDrafts }).map(([key, pt]) => (
 										<div
 											key={key}
-											onClick={() => setEditingPlayerTypeKey(key)}
+											onClick={() => openPlayerTypeEditor(key)}
 											className="grid grid-cols-[1fr_100px_80px] gap-2 px-3 py-2.5 border-b border-[#3d4a57] last:border-b-0 hover:bg-[#323d48]/60 cursor-pointer items-center"
 										>
-											<div className="text-sm truncate">{pt.name || key}</div>
+											<div className="text-sm truncate">{pt.name || key}{unsavedPlayerTypeDrafts[key] && <span className="text-amber-300 ml-2 text-[10px]">(unsaved)</span>}</div>
 											<div><div className="w-6 h-6 rounded border border-[#48596a]" style={{ background: pt.color || '#ffffff' }} /></div>
 											<div className="text-right">
 												<button
@@ -6637,8 +6647,8 @@ export default function GameContentEditor() {
 				</div>
 			)}
 
-			{editingPlayerTypeKey && playerTypes[editingPlayerTypeKey] && (() => {
-				const pt = playerTypes[editingPlayerTypeKey];
+			{editingPlayerTypeKey && playerTypeDraft && (() => {
+				const pt = playerTypeDraft;
 				const key = editingPlayerTypeKey;
 				const usedAttrKeys = new Set(Object.keys(pt.attributes || {}));
 				const unusedAttrKeys = Object.keys(attributeTypes).filter((k) => !usedAttrKeys.has(k));
@@ -6673,11 +6683,12 @@ export default function GameContentEditor() {
 					<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-20 px-4">
 						<div className="bg-[#323d48] border border-[#48596a] rounded-lg p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto">
 							<div className="flex items-center justify-between mb-4">
-								<h3 className="font-medium text-base">Player Types</h3>
-								<button onClick={() => setEditingPlayerTypeKey(null)} className="text-[#8291a1] hover:text-[#c5ccd3]">
+								<div><h3 className="font-medium text-base">Player Types</h3><div className={`text-[10px] mt-0.5 ${playerTypeEditorDirty ? 'text-amber-300' : 'text-[#5DCAA5]'}`}>{playerTypeEditorDirty ? 'Unsaved changes' : 'Saved to working copy'}</div></div>
+								<div className="flex items-center gap-2"><button onClick={savePlayerTypeDraft} disabled={!playerTypeEditorDirty} className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1a56da] text-white text-xs font-medium disabled:opacity-40"><Save size={12}/> Save to working copy</button><button onClick={closePlayerTypeEditor} className="text-[#8291a1] hover:text-[#c5ccd3]">
 									<X size={18} />
 								</button>
 							</div>
+						</div>
 
 							<div className="mb-4">
 								<label className="text-sm text-[#a3adb8] block mb-1.5">Name</label>
@@ -6724,14 +6735,7 @@ export default function GameContentEditor() {
 							<div className="mb-4">
 								<label className="text-sm text-[#a3adb8] block mb-1.5">Attributes</label>
 								<div className="space-y-2 mb-2">
-									{Object.entries(pt.attributes || {}).map(([attrKey, attr]) => (
-										<div key={attrKey} className="flex items-center gap-2 bg-[#13171b] border border-[#3d4a57] rounded-md px-3 py-2">
-											<span className="text-sm flex-1 truncate">{attributeTypes[attrKey]?.name || attrKey}</span>
-											<label className="text-xs text-[#8291a1]">value</label>
-											<input type="number" value={attr.value ?? 0} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'value', Number(e.target.value))} className="w-16 bg-[#323d48] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm" />
-											<button onClick={() => removePlayerTypeAttribute(key, attrKey)} className="text-[#637588] hover:text-red-400 ml-1"><X size={14} /></button>
-										</div>
-									))}
+									{Object.entries(pt.attributes || {}).map(([attrKey, attr]) => { const expanded = !!expandedPlayerTypeAttributes[`${key}:${attrKey}`]; return <div key={attrKey} className="bg-[#13171b] border border-[#3d4a57] rounded-md overflow-hidden"><div className="flex items-center gap-2 px-3 py-2"><button type="button" onClick={() => setExpandedPlayerTypeAttributes((v) => ({ ...v, [`${key}:${attrKey}`]: !expanded }))} className="text-[#8291a1] hover:text-[#e1e6ea]">{expanded ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}</button><span className="text-sm flex-1 truncate">{attributeTypes[attrKey]?.name || attrKey}</span><label className="text-xs text-[#8291a1]">value</label><input type="number" value={attr.value ?? 0} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'value', Number(e.target.value))} className="w-16 bg-[#323d48] border border-[#3d4a57] rounded px-1.5 py-0.5 text-sm" /><button onClick={() => removePlayerTypeAttribute(key, attrKey)} className="text-[#637588] hover:text-red-400 ml-1"><X size={14} /></button></div>{expanded && <div className="px-3 pb-3 pt-1 border-t border-[#3d4a57] space-y-2"><div className="text-[10px] uppercase tracking-wide text-[#637588]">Display</div><div className="grid grid-cols-2 gap-2"><label className="flex items-center gap-2 text-xs text-[#a3adb8]"><input type="checkbox" checked={attr.isVisible !== false} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'isVisible', e.target.checked)} /> Visible</label><label className="flex items-center gap-2 text-xs text-[#a3adb8]"><input type="checkbox" checked={attr.displayValue !== false} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'displayValue', e.target.checked)} /> Display value</label><label className="flex items-center gap-2 text-xs text-[#a3adb8]"><input type="checkbox" checked={!!attr.showAsHUD} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'showAsHUD', e.target.checked)} /> Show in HUD</label></div><div className="grid grid-cols-2 gap-2"><label className="text-[11px] text-[#8291a1]">Show when<select value={attr.showWhen ?? ''} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'showWhen', e.target.value)} className="mt-1 w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-xs"><option value="">all the time</option><option value="valueChanges">value changes</option><option value="whenIsGreaterThanMin">when greater than minimum</option></select></label><label className="text-[11px] text-[#8291a1]">Decimal places<input type="number" min="0" value={attr.decimalPlaces ?? 0} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'decimalPlaces', Math.max(0, Number(e.target.value) || 0))} className="mt-1 w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-xs" /></label></div><label className="text-[11px] text-[#8291a1]">Color<input value={attr.color ?? 'white'} onChange={(e) => updatePlayerTypeAttributeField(key, attrKey, 'color', e.target.value)} className="mt-1 w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-xs" /></label></div>}</div>; })}
 								</div>
 								<select
 									onChange={(e) => { addPlayerTypeAttribute(key, e.target.value); e.target.value = ''; }}
@@ -6882,4 +6886,3 @@ class EditorErrorBoundary extends React.Component {
 
 const appRoot = document.getElementById('root');
 if (appRoot) createRoot(appRoot).render(<EditorErrorBoundary><GameContentEditor /></EditorErrorBoundary>);
-F
