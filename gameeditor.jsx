@@ -1039,7 +1039,7 @@ function getFunctionVocabulary(gameData) {
 	for (const [name, schema] of Object.entries(ENGINE_FUNCTION_SCHEMAS || {})) {
 		byName.set(name, {
 			name,
-			schema: normalizeScriptFieldSchema(Array.isArray(schema) ? deepClone(schema) : []),
+			schema: normalizeScriptFunctionSchema(name, Array.isArray(schema) ? deepClone(schema) : []),
 			args: new Set((Array.isArray(schema) ? schema : []).map((field) => field.key)),
 			example: { function: name, ...Object.fromEntries((Array.isArray(schema) ? schema : []).map((field) => [field.key, defaultValueForScriptField(field.kind)])) },
 		});
@@ -1059,7 +1059,7 @@ function getFunctionVocabulary(gameData) {
 				if (key === 'function') continue;
 				entry.args.add(key);
 				if (!entry.schema.some((field) => field.key === key)) {
-					entry.schema.push({ key, kind: semanticScriptFieldKind(key, inferScriptFieldKind(key, value[key])) });
+					entry.schema.push({ key, kind: scriptFunctionFieldKind(name, key, semanticScriptFieldKind(key, inferScriptFieldKind(key, value[key]))) });
 				}
 			}
 			if (!entry.example || Object.keys(entry.example).length <= 1) entry.example = deepClone(value);
@@ -1102,6 +1102,86 @@ function collectScriptVocabulary(gameData) {
 		}
 	});
 	return { triggers: [...triggerTypes].sort((a,b) => readableType(a).localeCompare(readableType(b))), actions: [...actionTypes].sort((a,b) => readableType(a).localeCompare(readableType(b))), operators: [...conditionOperators].sort(), operandTypes: [...operandTypes].sort() };
+}
+
+const SCRIPT_FUNCTION_FIELD_KIND_OVERRIDES = {
+	getOwner: { entity: 'entityRef' },
+	getOwnerOfItem: { entity: 'itemRef' },
+	getEntityType: { entity: 'entityRef' },
+	getUnitTypeOfUnit: { entity: 'unitRef' },
+	getItemTypeOfItem: { item: 'itemRef' },
+	getProjectileTypeOfProjectile: { projectile: 'projectileRef' },
+	getEntityPosition: { entity: 'entityRef' },
+	getEntityAttribute: { entity: 'entityRef', attribute: 'attributeId' },
+	entityAttributeMax: { entity: 'entityRef', attribute: 'attributeId' },
+	entityAttributeMin: { entity: 'entityRef', attribute: 'attributeId' },
+	getEntityState: { entity: 'entityRef', state: 'stateId' },
+	getEntityVariable: { entity: 'entityRef', variable: 'variable' },
+	getValueOfEntityVariable: { entity: 'entityRef', variable: 'variable' },
+	getItemAtSlot: { unit: 'unitRef', slot: 'numberExpr' },
+	getItemCurrentlyHeldByUnit: { unit: 'unitRef' },
+	unitIsCarryingItemType: { unit: 'unitRef', itemType: 'itemTypeId' },
+	getUnitBody: { unit: 'unitRef' },
+	getUnitData: { unit: 'unitRef' },
+	getUnitId: { unit: 'unitRef' },
+	getSensorOfUnit: { unit: 'unitRef' },
+	unitSensorRadius: { unit: 'unitRef' },
+	unitsFacingAngle: { unit: 'unitRef' },
+	unitIsInRegion: { unit: 'unitRef', region: 'regionRef' },
+	isUnitMoving: { unit: 'unitRef' },
+	isAIEnabled: { unit: 'unitRef' },
+	playerTypeOfPlayer: { player: 'playerRef' },
+	getPlayerAttribute: { player: 'playerRef', attribute: 'attributeId' },
+	getPlayerVariable: { player: 'playerRef', variable: 'variable' },
+	getValueOfPlayerVariable: { player: 'playerRef', variable: 'variable' },
+	getPlayerSelectedUnit: { player: 'playerRef' },
+	playersAreFriendly: { playerA: 'playerRef', playerB: 'playerRef' },
+	playersAreHostile: { playerA: 'playerRef', playerB: 'playerRef' },
+	playersAreNeutral: { playerA: 'playerRef', playerB: 'playerRef' },
+	isBotPlayer: { player: 'playerRef' },
+	isComputerPlayer: { player: 'playerRef' },
+	isPlayerClient: { player: 'playerRef' },
+	isPlayerLoggedIn: { player: 'playerRef' },
+	isPlayerOnMobile: { player: 'playerRef' },
+	getProjectileBody: { projectile: 'projectileRef' },
+	getProjectileId: { projectile: 'projectileRef' },
+	getSourceUnitOfProjectile: { entity: 'projectileRef' },
+	getSourceItemOfProjectile: { entity: 'projectileRef' },
+	getItemTypeName: { itemType: 'itemTypeId' },
+	getUnitTypeName: { unitType: 'unitTypeId' },
+	getRotateSpeed: { unitType: 'unitTypeId' },
+	unitTypeHeight: { unitType: 'unitTypeId' },
+	unitTypeWidth: { unitType: 'unitTypeId' },
+	getQuantityOfUnitTypeInUnitTypeGroup: { unitType: 'unitTypeId' },
+	getQuantityOfItemTypeInItemTypeGroup: { itemType: 'itemTypeId' },
+	getRandomUnitTypeFromUnitTypeGroup: { unitTypeGroup: 'unitTypeGroupRef' },
+	getRandomItemTypeFromItemTypeGroup: { itemTypeGroup: 'itemTypeGroupRef' },
+	getRandomPositionInRegion: { region: 'regionRef' },
+	getRandomPlayablePositionInRegion: { region: 'regionRef' },
+	getWidthOfRegion: { region: 'regionRef' },
+	getXCoordinateOfRegion: { region: 'regionRef' },
+	getYCoordinateOfRegion: { region: 'regionRef' },
+	getStringArrayElement: { number: 'numberExpr', string: 'stringExpr' },
+	getStringArrayLength: { string: 'stringExpr' },
+	insertStringArrayElement: { number: 'numberExpr', string: 'stringExpr', value: 'stringExpr' },
+	removeStringArrayElement: { number: 'numberExpr', string: 'stringExpr' },
+	updateStringArrayElement: { number: 'numberExpr', string: 'stringExpr', value: 'stringExpr' },
+	getPositionX: { position: 'valueExpr' },
+	getPositionY: { position: 'valueExpr' },
+	getDistanceBetweenPositions: { positionA: 'valueExpr', positionB: 'valueExpr' },
+	angleBetweenPositions: { positionA: 'valueExpr', positionB: 'valueExpr' },
+	getPositionInFrontOfPosition: { angle: 'numberExpr', distance: 'numberExpr', position: 'valueExpr' },
+};
+
+function scriptFunctionFieldKind(functionName, key, fallback = 'valueExpr') {
+	return SCRIPT_FUNCTION_FIELD_KIND_OVERRIDES[functionName]?.[key] || fallback;
+}
+
+function normalizeScriptFunctionSchema(functionName, schema) {
+	return (Array.isArray(schema) ? schema : []).map((field) => ({
+		...field,
+		kind: scriptFunctionFieldKind(functionName, field.key, semanticScriptFieldKind(field.key, field.kind)),
+	}));
 }
 
 function defaultFunctionExpression(entry) {
@@ -1231,8 +1311,27 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	</div>;
 }
 
+function ScriptArrayEditor({ value, gameData, onChange, depth = 0, itemKind = 'valueExpr' }) {
+	const [open, setOpen] = useState(depth < 1);
+	const childDefault = defaultValueForScriptField(itemKind);
+	const updateAt = (index, next) => { const copy = value.slice(); copy[index] = next; onChange(copy); };
+	return <div className="w-full rounded-md border border-[#3d4a57] bg-[#20272e]/70 p-1.5">
+		<button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1.5 text-xs text-[#a3adb8] w-full text-left">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<span className="font-mono">Array [{value.length}]</span><span className="text-[10px] text-[#637588]">{itemKind !== 'valueExpr' ? readableType(itemKind) + ' children' : 'individual children'}</span></button>
+		{open && <div className="mt-1.5 ml-2 border-l border-[#48596a] pl-2 space-y-1.5">
+			{value.map((item, index) => <div key={index} className="flex items-start gap-1.5">
+				<span className="text-[10px] text-[#637588] font-mono w-7 pt-1.5 shrink-0">[{index}]</span>
+				<div className="flex-1 min-w-0"><ScriptValueEditor value={item} gameData={gameData} depth={depth + 1} expectedKind={itemKind} onChange={(next) => updateAt(index, next)} /></div>
+				<button type="button" title="Remove entry" onClick={() => onChange(value.filter((_, i) => i !== index))} className="p-1 text-[#637588] hover:text-red-400"><X size={11} /></button>
+			</div>)}
+			<button type="button" onClick={() => onChange([...value, childDefault])} className="text-[10px] text-[#637588] hover:text-[#1a56da]">+ Add array child</button>
+		</div>}
+	</div>;
+}
+
 function ScriptValueEditor({ value, gameData, onChange, depth = 0, expectedKind = 'valueExpr' }) {
 	const [open, setOpen] = useState(depth < 1);
+	const typedReferenceKinds = ['unitRef','itemRef','projectileRef','playerRef','entityRef','unitTypeRef','itemTypeRef','projectileTypeRef','playerTypeRef','regionRef'];
+	if (typedReferenceKinds.includes(expectedKind) && (value === null || value === undefined || (value && typeof value === 'object' && value.function === 'undefinedValue'))) return <ScriptFieldInput kind={expectedKind} value={value} gameData={gameData} onChange={onChange} />;
 	if (value && typeof value === 'object' && !Array.isArray(value) && typeof value.function === 'string') return <ScriptFunctionEditor value={value} gameData={gameData} depth={depth} expectedKind={expectedKind} onChange={onChange} />;
 	if (value === null) return <span className="text-xs text-[#8291a1] italic">nothing</span>;
 	if (expectedKind === 'string' || expectedKind === 'stringExpr') return <input type="text" value={typeof value === 'string' ? value : String(value ?? '')} onChange={(e) => onChange(e.target.value)} className="w-44 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" />;
@@ -1240,7 +1339,7 @@ function ScriptValueEditor({ value, gameData, onChange, depth = 0, expectedKind 
 	if (typeof value === 'boolean') return <select value={String(value)} onChange={(e) => onChange(e.target.value === 'true')} className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="true">true</option><option value="false">false</option></select>;
 	if (typeof value === 'number') return <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-24 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" />;
 	if (typeof value === 'string') return <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="w-44 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" />;
-	if (Array.isArray(value)) return <div className="w-full"><button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-[#a3adb8]">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<span className="font-mono">List [{value.length}]</span></button>{open && <div className="ml-3 mt-1 border-l border-[#48596a] pl-2 space-y-1">{value.map((item, index) => <div key={index} className="flex items-start gap-1.5"><span className="text-[10px] text-[#637588] font-mono w-5 pt-1">{index}</span><div className="flex-1 min-w-0"><ScriptValueEditor value={item} gameData={gameData} depth={depth + 1} onChange={(next) => { const copy = value.slice(); copy[index] = next; onChange(copy); }} /></div><button type="button" title="Remove entry" onClick={() => onChange(value.filter((_, i) => i !== index))} className="p-1 text-[#637588] hover:text-red-400"><X size={11} /></button></div>)}<button type="button" onClick={() => onChange([...value, null])} className="text-[10px] text-[#637588] hover:text-[#1a56da]">+ Add value</button></div>}</div>;
+	if (Array.isArray(value)) return <ScriptArrayEditor value={value} gameData={gameData} depth={depth} itemKind="valueExpr" onChange={onChange} />;
 	if (typeof value === 'object') {
 		const keys = Object.keys(value);
 		return <div className="w-full"><button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-[#a3adb8]">{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<span className="font-mono">Object</span><span className="text-[10px] text-[#637588]">{keys.length} fields</span></button>{open && <div className="ml-3 mt-1 border-l border-[#48596a] pl-2 space-y-1.5">{keys.map((key) => <div key={key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] font-mono w-24 shrink-0 pt-1 truncate">{key}</span><div className="flex-1 min-w-0"><ScriptValueEditor value={value[key]} gameData={gameData} depth={depth + 1} onChange={(next) => onChange({ ...value, [key]: next })} /></div></div>)}</div>}</div>;
@@ -1406,7 +1505,7 @@ function ScriptTypedReferenceField({ kind, value, gameData, onChange }) {
 			...getRuntimeReferenceOptions('unitRef').map(([id, label]) => [id, `Player type of owner of ${label}`, { function:'playerTypeOfPlayer', player:{ function:'getOwner', entity:runtimeReferenceFunction(id) } }]),
 			...getRuntimeReferenceOptions('itemRef').map(([id, label]) => [id, `Player type of owner of ${label}`, { function:'playerTypeOfPlayer', player:{ function:'getOwner', entity:runtimeReferenceFunction(id) } }]),
 		]
-		: sourceRuntimeOptions.map(([id, label]) => [id, `${config.label} of ${label}`, { function: kind === 'unitTypeRef' ? 'getUnitTypeOfUnit' : kind === 'itemTypeRef' ? 'getItemTypeOfItem' : 'getProjectileTypeOfProjectile', [kind === 'unitTypeRef' ? 'unit' : kind === 'itemTypeRef' ? 'item' : 'projectile']: runtimeReferenceFunction(id) }]);
+		: sourceRuntimeOptions.map(([id, label]) => [id, `${config.label} of ${label}`, { function: kind === 'unitTypeRef' ? 'getUnitTypeOfUnit' : kind === 'itemTypeRef' ? 'getItemTypeOfItem' : 'getProjectileTypeOfProjectile', entity: runtimeReferenceFunction(id) }]);
 	const selectedRuntime = typeof value === 'object' && value?.function ? value.function : null;
 	const selectedStatic = typeof value === 'string' ? staticOptions.find(o => o.id === value) : null;
 	const selectedVariable = typeof value === 'object' && value?.function === 'getVariable' ? variableOptions.find(o => o.id === value.variableName) : null;
@@ -1515,10 +1614,10 @@ const SCRIPT_FUNCTION_PHRASES = {
 	setEntityAttribute: (fields) => <>set <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /> to <ScriptInlineFunctionField field="value" fields={fields} /></>,
 	setPlayerAttribute: (fields) => <>set <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /> to <ScriptInlineFunctionField field="value" fields={fields} /></>,
 	getVariable: (fields) => <>variable <ScriptInlineFunctionField field="variableName" fields={fields} /></>,
-	getUnitTypeOfUnit: (fields) => <>unit type of <ScriptInlineFunctionField field="unit" fields={fields} /></>,
-	getItemTypeOfItem: (fields) => <>item type of <ScriptInlineFunctionField field="item" fields={fields} /></>,
-	getProjectileTypeOfProjectile: (fields) => <>projectile type of <ScriptInlineFunctionField field="projectile" fields={fields} /></>,
-	getOwnerOfItem: (fields) => <>owner of <ScriptInlineFunctionField field="item" fields={fields} /></>,
+	getUnitTypeOfUnit: (fields) => <>unit type of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	getItemTypeOfItem: (fields) => <>item type of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	getProjectileTypeOfProjectile: (fields) => <>projectile type of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	getOwnerOfItem: (fields) => <>owner of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
 	getDistanceBetweenPositions: (fields) => <>distance between <ScriptInlineFunctionField field="positionA" fields={fields} /> and <ScriptInlineFunctionField field="positionB" fields={fields} /></>,
 	isUnitMoving: (fields) => <><ScriptInlineFunctionField field="unit" fields={fields} /> is moving</>,
 	unitIsInRegion: (fields) => <><ScriptInlineFunctionField field="unit" fields={fields} /> is in <ScriptInlineFunctionField field="region" fields={fields} /></>,
@@ -1531,7 +1630,8 @@ const SCRIPT_FUNCTION_PHRASES = {
 };
 
 function inlineFieldText(field, value, gameData) {
-	if (value === undefined || value === null || value === '') return 'choose…';
+	const placeholderByKind = { unitRef: 'choose unit…', itemRef: 'choose item…', projectileRef: 'choose projectile…', playerRef: 'choose player…', entityRef: 'choose entity…', unitTypeRef: 'choose unit type…', itemTypeRef: 'choose item type…', projectileTypeRef: 'choose projectile type…', playerTypeRef: 'choose player type…', regionRef: 'choose region…', attributeId: 'choose attribute…', stateId: 'choose state…' };
+	if (value === undefined || value === null || value === '' || (typeof value === 'object' && value?.function === 'undefinedValue')) return placeholderByKind[field?.kind] || 'choose…';
 	if (typeof value === 'object' && value?.function) return valueFunctionLabel(value, gameData);
 	if (typeof value === 'boolean') return value ? 'true' : 'false';
 	if (typeof value === 'number') return String(value);
@@ -1759,9 +1859,50 @@ function inferScriptFieldKind(key, value) {
 	if (typeof value === 'string') return 'string';
 	return 'valueExpr';
 }
+const SCRIPT_ACTION_FIELD_KIND_OVERRIDES = {
+	createEntityForPlayerAtPositionWithDimensions: { player: 'playerRef' },
+	createUnitAtPosition: { entity: 'entityRef' },
+	createProjectileAtPosition: { unit: 'unitRef' },
+	addAttributeBuffToUnit: { entity: 'unitRef' },
+	aiAttackUnit: { targetUnit: 'unitRef', unit: 'unitRef' },
+	aiGoIdle: { unit: 'unitRef' },
+	aiMoveToPosition: { unit: 'unitRef' },
+	disableAI: { unit: 'unitRef' },
+	enableAI: { unit: 'unitRef' },
+	giveNewItemToUnit: { unit: 'unitRef' },
+	destroyEntity: { entity: 'entityRef' },
+	changeUnitType: { entity: 'unitRef' },
+	hideUnitFromPlayer: { entity: 'entityRef', player: 'playerRef' },
+	setPlayerAttribute: { entity: 'playerRef' },
+	setPlayerAttributeMax: { player: 'playerRef' },
+	setPlayerAttributeMin: { player: 'playerRef' },
+	setPlayerAttributeRegenerationRate: { player: 'playerRef' },
+	closeDialogueForPlayer: { player: 'playerRef' },
+	closeShopForPlayer: { player: 'playerRef' },
+	hideUiElementForPlayer: { player: 'playerRef' },
+	loadPlayerDataAndApplyIt: { player: 'playerRef', unit: 'unitRef' },
+	loadPlayerDataFromString: { player: 'playerRef' },
+	openDialogueForPlayer: { player: 'playerRef' },
+	openShopForPlayer: { player: 'playerRef' },
+	openWebsiteForPlayer: { player: 'playerRef' },
+	playMusicForPlayerRepeatedly: { player: 'playerRef' },
+	kickPlayer: { entity: 'playerRef' },
+};
+
+function scriptActionFieldKind(actionType, key, fallback = 'valueExpr') {
+	return SCRIPT_ACTION_FIELD_KIND_OVERRIDES[actionType]?.[key] || fallback;
+}
+
+function normalizeScriptActionFieldSchema(actionType, schema) {
+	return (Array.isArray(schema) ? schema : []).map((field) => ({
+		...field,
+		kind: scriptActionFieldKind(actionType, field.key, semanticScriptFieldKind(field.key, field.kind)),
+	}));
+}
+
 function getActionFieldSchema(type, gameData) {
-	if (ACTION_FIELD_SCHEMAS[type]) return normalizeScriptFieldSchema(ACTION_FIELD_SCHEMAS[type]);
-	if (ENGINE_ACTION_FIELD_SCHEMAS[type]) return normalizeScriptFieldSchema(ENGINE_ACTION_FIELD_SCHEMAS[type]);
+	if (ACTION_FIELD_SCHEMAS[type]) return normalizeScriptActionFieldSchema(type, ACTION_FIELD_SCHEMAS[type]);
+	if (ENGINE_ACTION_FIELD_SCHEMAS[type]) return normalizeScriptActionFieldSchema(type, ENGINE_ACTION_FIELD_SCHEMAS[type]);
 	let example = null;
 	function walk(value) {
 		if (example) return;
@@ -1774,7 +1915,7 @@ function getActionFieldSchema(type, gameData) {
 	if (!example) return null;
 	return Object.keys(example)
 		.filter((k) => !['type', 'actions', 'then', 'else', 'conditions'].includes(k))
-		.map((key) => ({ key, kind: inferScriptFieldKind(key, example[key]) }));
+		.map((key) => ({ key, kind: scriptActionFieldKind(type, key, inferScriptFieldKind(key, example[key])) }));
 }
 function defaultActionForType(type, gameData) { if (type === 'condition') return { type: 'condition', conditions: [{ operandType: 'boolean', operator: '==' }, true, true], then: [], else: [] }; if (type === 'runScript') return { type: 'runScript', scriptName: '', isEntityScript: false }; if (type === 'setEntityAttribute' || type === 'setEntityAttributeMax' || type === 'setEntityAttributeMin' || type === 'setEntityAttributeRegenerationRate') return { type, attribute: '', entity: { function: 'getSelectedUnit' }, value: 0 }; if (type === 'setPlayerAttribute') return { type, attribute: '', entity: { function: 'getSelectedPlayer' }, value: 0, vars: 0 }; const schema = getActionFieldSchema(type, gameData); if (schema) { const out = { type }; for (const field of schema) out[field.key] = defaultValueForScriptField(field.kind); if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) out.actions = []; return out; } if (SCRIPT_CONTAINER_ACTION_TYPES.has(type)) return { type, actions: [] }; return { type }; }
 
