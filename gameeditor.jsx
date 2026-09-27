@@ -1932,9 +1932,6 @@ const SCRIPT_ACTION_FIELD_KIND_OVERRIDES = {
 	openWebsiteForPlayer: { player: 'playerRef' },
 	playMusicForPlayerRepeatedly: { player: 'playerRef' },
 	kickPlayer: { entity: 'playerRef' },
-};
-
-const SCRIPT_ACTION_FIELD_KIND_OVERRIDES = {
 	for: { variableName: 'variableName', start: 'numberExpr', stop: 'numberExpr' },
 	forIn: { variableNameMain: 'variableName', variableNameSource: 'variableName' },
 	repeat: { count: 'numberExpr' },
