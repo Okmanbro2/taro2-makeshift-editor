@@ -35,7 +35,6 @@ const DEFAULT_UNIT_CONTROLS = {
 	abilities: {},
 };
 
-
 function EntitySpritePreview({ entity, kind, resolveUrl, size = 'sm' }) {
 	const inventoryUrl = kind === 'itemTypes' ? entity?.inventoryImage : '';
 	const sheet = entity?.cellSheet;
