@@ -4791,7 +4791,7 @@ export default function GameContentEditor() {
 				</div>
 			) : (
 				<div className="flex" style={{ minHeight: 'calc(100vh - 73px)' }}>
-					{/* Tab rail */}
+					{/* tab*/}
 					<nav className="w-40 shrink-0 border-r border-[#3d4a57] py-4">
 						<div className="px-4 text-xs uppercase tracking-wide text-[#637588] mb-1.5">Entities</div>
 						{ENTITY_TABS.map((t) => (
@@ -4945,7 +4945,7 @@ export default function GameContentEditor() {
 						<MapPreview gameData={gameData} setGameData={setGameData} resolveAssetUrl={resolveAssetUrl} />
 					) : isEntityTab ? (
 						<>
-							{/* List pane */}
+							{/* pane*/}
 							<div className="w-64 shrink-0 border-r border-[#3d4a57] flex flex-col">
 								<div className="p-3 border-b border-[#3d4a57]">
 									<div className="relative">
@@ -5060,7 +5060,7 @@ export default function GameContentEditor() {
 								</div>
 							</div>
 
-							{/* Editor pane */}
+							{/* pane2*/}
 							<div className="flex-1 overflow-y-auto p-6">
 								{!draft ? (
 									<div className="text-[#637588] text-sm mt-16 text-center">
@@ -5133,7 +5133,7 @@ export default function GameContentEditor() {
 
 										{activeTab !== 'unitTypes' || unitEditorTab === 'general' ? (
 											<>
-										{/* Attributes */}
+										{/* att*/}
 										<section className="mb-7">
 											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Attributes</h3>
 											<div className="space-y-2">
@@ -5523,7 +5523,7 @@ export default function GameContentEditor() {
 			)}
 		</section>
 
-		{/* Variables */}
+		{/* varstuff */}
 										<section className="mb-7">
 											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Variables</h3>
 											<div className="space-y-2">
@@ -5561,7 +5561,7 @@ export default function GameContentEditor() {
 											</button>
 										</section>
 
-										{/* Sprite sheet slicer */}
+										{/* splicing*/}
 										<section className="mb-7">
 											<h3 className="text-sm font-medium text-[#c5ccd3] mb-2">Sprite sheet</h3>
 											<input
@@ -6135,7 +6135,7 @@ export default function GameContentEditor() {
 						</>
 					) : isScriptsTab ? (
 						<>
-							{/* List pane */}
+							{/* pane*/}
 							<div className="w-64 shrink-0 border-r border-[#3d4a57] flex flex-col">
 								<div className="p-3 border-b border-[#3d4a57]">
 									<div className="relative">
@@ -6218,7 +6218,7 @@ export default function GameContentEditor() {
 								</div>
 							</div>
 
-							{/* Editor pane */}
+							{/* pane2*/}
 							<div className="flex-1 overflow-y-auto p-6">
 								{!scriptDraft ? (
 									<div className="text-[#637588] text-sm mt-16 text-center">
