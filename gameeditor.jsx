@@ -2021,7 +2021,6 @@ function parseScriptNodeFromClipboard(text) {
 	try {
 		const parsed = JSON.parse(text);
 		if (parsed?.taroEditorClipboard === 1 && parsed?.kind === 'scriptNode' && parsed.node && typeof parsed.node === 'object' && !Array.isArray(parsed.node)) return parsed.node;
-		// Also accept a plain action/condition object copied from another editor instance.
 		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && typeof parsed.type === 'string') return parsed;
 	} catch (_) {}
 	return null;
@@ -3056,7 +3055,11 @@ export default function GameContentEditor() {
 			scripts: deepClone(scripts) || {},
 			controls: activeTab === 'unitTypes' ? (Object.keys(controls || {}).length ? deepClone(controls) : deepClone(DEFAULT_UNIT_CONTROLS)) : (deepClone(controls) || {}),
 			...(activeTab === 'unitTypes'
-				? { defaultItems: deepClone(defaultItems) || [], inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1 }
+				? {
+					defaultItems: deepClone(defaultItems) || [],
+					inventorySize: Number.isFinite(Number(inventorySize)) ? Math.min(9, Math.max(0, Number(inventorySize))) : 1,
+					ai: deepClone(ai) || { pathFindingMethod: 'simple', idleBehaviour: 'stay', sensorResponse: 'none', attackResponse: 'none', maxTravelDistance: '', sensorRadius: 150, maxAttackRange: 400, enabled: false, letGoDistance: '' },
+				}
 				: {}),
 			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, knockbackForce: Number.isFinite(Number(knockbackForce)) ? Number(knockbackForce) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {} } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
@@ -5888,7 +5891,7 @@ export default function GameContentEditor() {
 																<div><label className="block text-xs text-[#8291a1] mb-1">Attack response to hostile units</label><select value={ai.attackResponse || 'none'} onChange={(e) => updateAI('attackResponse', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm"><option value="none">None</option><option value="fight">Fight</option><option value="flee">Flee</option></select></div>
 																<div><label className="block text-xs text-[#8291a1] mb-1">Sensor response to hostile units</label><select value={ai.sensorResponse || 'none'} onChange={(e) => updateAI('sensorResponse', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm"><option value="none">None</option><option value="fight">Fight</option><option value="flee">Flee</option></select></div>
 																<div><label className="block text-xs text-[#8291a1] mb-1">Idle behaviour</label><select value={ai.idleBehaviour || 'stay'} onChange={(e) => updateAI('idleBehaviour', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm"><option value="stay">Stay</option><option value="wander">Wander</option></select></div>
-																<div><label className="block text-xs text-[#8291a1] mb-1">Path finding method</label><select value="simple" onChange={(e) => updateAI('pathFindingMethod', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm"><option value="simple">Simple</option></select><p className="text-[10px] text-[#637588] mt-1">Only Simple is exposed because the engine's AI source marks A* as “coming soon”.</p></div>
+																<div><label className="block text-xs text-[#8291a1] mb-1">Path finding method</label><select value={ai.pathFindingMethod || 'simple'} onChange={(e) => updateAI('pathFindingMethod', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm"><option value="simple">Simple</option><option value="a*">A*</option></select><p className="text-[10px] text-[#637588] mt-1">Uses the path-finding method stored in this unit's AI definition.</p></div>
 															</div>
 															<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 																<div><label className="block text-xs text-[#8291a1] mb-1">Let go distance</label><input type="number" step="any" value={ai.letGoDistance ?? ''} onChange={(e) => updateOptionalNumber('letGoDistance', e.target.value)} placeholder="No limit" className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md px-2 py-2 text-sm" /><p className="text-[10px] text-[#637588] mt-1">Blank = no let-go distance limit.</p></div>
