@@ -5827,7 +5827,29 @@ export default function GameContentEditor() {
 											<div><label className="block text-xs text-[#8291a1] mb-1">Type</label><select value={draft.bodies[selectedBodyName].type || 'dynamic'} onChange={(e) => updateBodyField('type', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="dynamic">dynamic - can be moved by any internal/external influences</option><option value="kinematic">kinematic - can only be moved by any internal/external influences</option><option value="static">static - can only be moved by 'move entity' action</option><option value="spriteOnly">sprite-only - can only be moved by 'set velocity' or 'move entity' actions</option></select></div>
 											<div><label className="block text-xs text-[#8291a1] mb-1">Z-index</label><div className="grid grid-cols-2 gap-2"><div><label className="block text-[10px] text-[#637588] mb-1">Layer</label><select value={draft.bodies[selectedBodyName]['z-index']?.layer ?? 3} onChange={(e) => updateBodyZIndex('layer',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"><option value="1">floor</option><option value="2">floor2</option><option value="3">debris</option><option value="4">walls</option><option value="5">trees</option></select></div><div><label className="block text-[10px] text-[#637588] mb-1">Depth</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.depth ?? 0} onChange={(e) => updateBodyZIndex('depth',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div></div><p className="text-[10px] text-[#637588] mt-1">Layer chooses the broad render group; Depth controls ordering within that layer. These labels are based on the layer usage already present in this game.</p>
 														<div className="mt-4 border-t border-[#3d4a57] pt-3">
-															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Attachment position</h4><div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">{[['unitAnchor','Unit anchor'],['itemAnchor','Item anchor'],['holdPosition','Hold position']].map(([key,label]) => <div key={key} className="rounded border border-[#3d4a57] p-2"><div className="text-[10px] text-[#8291a1] mb-1">{label}</div><div className="grid grid-cols-3 gap-1">{[['x','X'],['y','Y'],['rotation','Rot']].map(([field,flabel]) => <label key={field} className="text-[9px] text-[#637588]">{flabel}<input type="number" step="any" value={draft.bodies[selectedBodyName]?.[key]?.[field] ?? 0} onChange={e=>updateBodyField(key,{...(draft.bodies[selectedBodyName]?.[key]||{}),[field]:Number(e.target.value)||0})} className="mt-0.5 w-full bg-[#323d48] border border-[#3d4a57] rounded px-1 py-1 text-xs" /></label>)}</div></div>)}</div><h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Collision</h4>
+															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Attachment position</h4>
+															<div className="flex flex-wrap gap-2 mb-3">
+																{[['unitAnchor','Unit anchor'],['itemAnchor','Item anchor'],['holdPosition','Hold position']].map(([key,label]) => (
+																	<div key={key} className="min-w-[8rem] flex-1 rounded border border-[#3d4a57] p-2">
+																		<div className="text-[10px] text-[#8291a1] mb-1">{label}</div>
+																		<div className="grid grid-cols-3 gap-1">
+																			{[['x','X'],['y','Y'],['rotation','Rot']].map(([field,flabel]) => (
+																				<label key={field} className="text-[9px] text-[#637588]">
+																					{flabel}
+																					<input
+																						type="number"
+																						step="any"
+																						value={draft.bodies[selectedBodyName]?.[key]?.[field] ?? 0}
+																						onChange={(e) => updateBodyField(key, { ...(draft.bodies[selectedBodyName]?.[key] || {}), [field]: Number(e.target.value) || 0 })}
+																						className="mt-0.5 w-full min-w-0 appearance-none rounded border border-[#3d4a57] bg-[#323d48] px-1 py-1 text-center text-xs text-[#e1e6ea]"
+																					/>
+																				</label>
+																			))}
+																		</div>
+																	</div>
+																))}
+															</div>
+															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Collision</h4>
 															<p className="text-[10px] text-[#637588] mb-2">Choose which kinds of entities this body can collide with.</p>
 															<div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
 																{[['units','Units'],['items','Items'],['projectiles','Projectiles'],['walls','Walls'],['debris','Debris']].map(([key,label]) => (
