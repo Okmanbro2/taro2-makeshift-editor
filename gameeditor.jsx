@@ -442,6 +442,8 @@ const ACTION_FIELD_SCHEMAS = {
 	useItemOnce: [{ key: 'item', kind: 'valueExpr' }],
 };
 
+const SOURCE_PARAMETER_FUNCTION_SCHEMAS = {"absoluteValueOfNumber":[{"key":"number","kind":"valueExpr"}],"allEntities":[],"allItemTypesInGame":[],"allItems":[],"allItemsDroppedOnGround":[],"allItemsOfItemType":[{"key":"itemType","kind":"valueExpr"}],"allPlayers":[],"allProjectiles":[],"allProjectilesOfProjectileType":[{"key":"projectileType","kind":"valueExpr"}],"allRegions":[],"allUnitTypesInGame":[],"allUnits":[],"allUnitsOfUnitType":[{"key":"unitType","kind":"valueExpr"}],"allUnitsOwnedByPlayer":[{"key":"player","kind":"valueExpr"}],"angleBetweenMouseAndWindowCenter":[{"key":"player","kind":"valueExpr"}],"angleBetweenPositions":[{"key":"positionA","kind":"valueExpr"},{"key":"positionB","kind":"valueExpr"}],"arctan":[{"key":"number","kind":"valueExpr"}],"areEntitiesTouching":[{"key":"sourceEntity","kind":"valueExpr"},{"key":"targetEntity","kind":"valueExpr"}],"botPlayers":[],"calculate":[],"centerOfRegion":[{"key":"region","kind":"valueExpr"}],"computerPlayers":[],"concat":[{"key":"textA","kind":"valueExpr"},{"key":"textB","kind":"valueExpr"}],"convertNumberToLargeNotation":[{"key":"value","kind":"valueExpr"}],"cos":[{"key":"angle","kind":"valueExpr"}],"currentTimeStamp":[],"defaultQuantityOfItemType":[{"key":"itemType","kind":"valueExpr"}],"distanceBetweenPositions":[{"key":"positionA","kind":"valueExpr"},{"key":"positionB","kind":"valueExpr"}],"dynamicRegion":[{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"},{"key":"width","kind":"valueExpr"},{"key":"height","kind":"valueExpr"}],"elementCount":[{"key":"object","kind":"valueExpr"}],"emptyObject":[],"entitiesBetweenTwoPositions":[{"key":"positionA","kind":"valueExpr"},{"key":"positionB","kind":"valueExpr"}],"entitiesCollidingWithLastRaycast":[],"entitiesInRegion":[{"key":"region","kind":"valueExpr"}],"entitiesInRegionInFrontOfEntityAtDistance":[{"key":"entity","kind":"valueExpr"},{"key":"distance","kind":"valueExpr"},{"key":"width","kind":"valueExpr"},{"key":"height","kind":"valueExpr"}],"entityAttributeMax":[{"key":"attribute","kind":"valueExpr"}],"entityAttributeMin":[{"key":"attribute","kind":"valueExpr"}],"entityAttributeRegen":[{"key":"attribute","kind":"valueExpr"}],"entityExists":[],"entityFacingAngle":[{"key":"entity","kind":"valueExpr"}],"entityHeight":[],"entityLastRaycastCollisionPosition":[{"key":"entity","kind":"valueExpr"}],"entityName":[{"key":"entity","kind":"valueExpr"}],"entityOpacity":[],"entityWidth":[],"filterString":[{"key":"string","kind":"valueExpr"}],"gameId":[],"getAllActiveQuestObjects":[{"key":"player","kind":"valueExpr"}],"getAllActiveQuestObjectsInThisMap":[{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],"getAttributeType":[{"key":"attributeType","kind":"valueExpr"}],"getAttributeTypeOfAttribute":[],"getCameraHeight":[],"getCameraPosition":[],"getCameraWidth":[],"getDefaultAttributeValueOfUnitType":[{"key":"attribute","kind":"valueExpr"},{"key":"unitType","kind":"valueExpr"}],"getEntireMapRegion":[],"getEntityFromId":[{"key":"string","kind":"valueExpr"}],"getEntityId":[{"key":"entity","kind":"valueExpr"}],"getEntityPosition":[{"key":"entity","kind":"valueExpr"}],"getEntityPositionOnScreen":[{"key":"entity","kind":"valueExpr"}],"getEntityState":[{"key":"entity","kind":"valueExpr"}],"getEntityType":[{"key":"entity","kind":"valueExpr"}],"getEntityVariable":[{"key":"variable","kind":"valueExpr"}],"getEntityVelocityX":[],"getEntityVelocityY":[],"getExponent":[{"key":"base","kind":"valueExpr"},{"key":"power","kind":"valueExpr"}],"getHeightOfRegion":[{"key":"region","kind":"valueExpr"}],"getHighScoreOfPlayer":[{"key":"player","kind":"valueExpr"}],"getItemAtSlot":[{"key":"unit","kind":"valueExpr"},{"key":"slot","kind":"valueExpr"}],"getItemBody":[{"key":"item","kind":"valueExpr"}],"getItemDescription":[{"key":"item","kind":"valueExpr"}],"getItemInInventorySlot":[{"key":"unit","kind":"valueExpr"},{"key":"slot","kind":"valueExpr"}],"getItemMaxQuantity":[{"key":"item","kind":"valueExpr"}],"getItemParticle":[{"key":"particleType","kind":"valueExpr"}],"getItemQuantity":[{"key":"item","kind":"valueExpr"}],"getItemType":[{"key":"itemType","kind":"valueExpr"}],"getItemTypeDamage":[{"key":"itemType","kind":"valueExpr"}],"getLastAttackedUnit":[],"getLastAttackingItem":[],"getLastAttackingUnit":[],"getLastCastingUnit":[],"getLastChatMessageSentByPlayer":[],"getLastCreatedItem":[],"getLastCreatedProjectile":[],"getLastPlayerSelectingDialogueOption":[],"getLastPurchasedUnit":[],"getLastTouchedItem":[],"getLastTouchedUnit":[],"getLastTouchingUnit":[],"getLastTriggeringQuestId":[],"getLastUsedItem":[],"getLengthOfString":[{"key":"string","kind":"valueExpr"}],"getLerpPosition":[{"key":"positionA","kind":"valueExpr"},{"key":"positionB","kind":"valueExpr"},{"key":"alpha","kind":"valueExpr"}],"getMapHeight":[],"getMapJson":[],"getMapTileId":[{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"},{"key":"layer","kind":"valueExpr"}],"getMapWidth":[],"getMax":[{"key":"num1","kind":"valueExpr"},{"key":"num2","kind":"valueExpr"}],"getMin":[{"key":"num1","kind":"valueExpr"},{"key":"num2","kind":"valueExpr"}],"getMouseCursorPosition":[{"key":"player","kind":"valueExpr"}],"getNumberOfItemsPresent":[],"getNumberOfPlayersOfPlayerType":[{"key":"playerType","kind":"valueExpr"}],"getOwner":[{"key":"entity","kind":"valueExpr"}],"getPlayTimeOfPlayer":[{"key":"player","kind":"valueExpr"}],"getPlayerAttribute":[{"key":"attribute","kind":"valueExpr"}],"getPlayerCount":[],"getPlayerData":[{"key":"player","kind":"valueExpr"}],"getPlayerFromId":[{"key":"string","kind":"valueExpr"}],"getPlayerId":[{"key":"player","kind":"valueExpr"}],"getPlayerName":[],"getPlayerSelectedUnit":[{"key":"player","kind":"valueExpr"}],"getPlayerUsername":[{"key":"player","kind":"valueExpr"}],"getPositionInFrontOfPosition":[{"key":"position","kind":"valueExpr"},{"key":"distance","kind":"valueExpr"},{"key":"angle","kind":"valueExpr"}],"getPositionX":[{"key":"position","kind":"valueExpr"}],"getPositionY":[{"key":"position","kind":"valueExpr"}],"getProjectileAttribute":[{"key":"attribute","kind":"valueExpr"}],"getProjectileBody":[{"key":"projectile","kind":"valueExpr"}],"getQuantityOfItemTypeInItemTypeGroup":[{"key":"itemTypeGroup","kind":"valueExpr"},{"key":"itemType","kind":"valueExpr"}],"getQuantityOfUnitTypeInUnitTypeGroup":[{"key":"unitTypeGroup","kind":"valueExpr"},{"key":"unitType","kind":"valueExpr"}],"getQuestObject":[{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],"getQuestProgress":[{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],"getRandomItemTypeFromItemTypeGroup":[{"key":"itemTypeGroup","kind":"valueExpr"}],"getRandomNumberBetween":[{"key":"min","kind":"valueExpr"},{"key":"max","kind":"valueExpr"}],"getRandomPlayablePositionInRegion":[{"key":"region","kind":"valueExpr"}],"getRandomPositionInRegion":[{"key":"region","kind":"valueExpr"}],"getRandomUnitTypeFromUnitTypeGroup":[{"key":"unitTypeGroup","kind":"valueExpr"}],"getRotateSpeed":[{"key":"unitType","kind":"valueExpr"}],"getSecondaryTouchPosition":[],"getSensorOfUnit":[{"key":"unit","kind":"valueExpr"}],"getServerAge":[],"getServerStartTime":[],"getStringArrayElement":[{"key":"string","kind":"valueExpr"},{"key":"number","kind":"valueExpr"}],"getStringArrayLength":[{"key":"string","kind":"valueExpr"}],"getTimeString":[{"key":"seconds","kind":"valueExpr"}],"getTriggeringPlayer":[],"getUnitBody":[{"key":"unit","kind":"valueExpr"}],"getUnitCount":[],"getUnitData":[{"key":"unit","kind":"valueExpr"}],"getUnitType":[{"key":"unitType","kind":"valueExpr"}],"getUnitTypeName":[{"key":"unitType","kind":"valueExpr"}],"getWidthOfRegion":[{"key":"region","kind":"valueExpr"}],"getXCoordinateOfRegion":[{"key":"region","kind":"valueExpr"}],"getYCoordinateOfRegion":[{"key":"region","kind":"valueExpr"}],"humanPlayers":[],"insertStringArrayElement":[{"key":"string","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],"isAIEnabled":[{"key":"unit","kind":"valueExpr"}],"isBotPlayer":[{"key":"player","kind":"valueExpr"}],"isComputerPlayer":[{"key":"player","kind":"valueExpr"}],"isPlayerClient":[{"key":"player","kind":"valueExpr"}],"isPlayerLoggedIn":[{"key":"player","kind":"valueExpr"}],"isPlayerOnMobile":[{"key":"player","kind":"valueExpr"}],"isPositionInWall":[{"key":"position","kind":"valueExpr"}],"isQuestActive":[{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],"isQuestCompleted":[{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],"isQuestProgressCompleted":[{"key":"player","kind":"valueExpr"},{"key":"questId","kind":"valueExpr"}],"isUnitMoving":[{"key":"unit","kind":"valueExpr"}],"itemFiresProjectiles":[{"key":"item","kind":"valueExpr"}],"itemIsInRegion":[{"key":"region","kind":"valueExpr"},{"key":"item","kind":"valueExpr"}],"lastClickedUiElementId":[{"key":"player","kind":"valueExpr"}],"lastCreatedItem":[],"lastPlayedTimeOfPlayer":[{"key":"player","kind":"valueExpr"}],"lastPlayerMessage":[{"key":"player","kind":"valueExpr"}],"lastPurchasedUnitTypetId":[],"lastReceivedPostResponse":[],"lastUpdatedVariableName":[],"lastUsedItem":[],"lerp":[{"key":"valueA","kind":"valueExpr"},{"key":"valueB","kind":"valueExpr"},{"key":"alpha","kind":"valueExpr"}],"localPlayer":[],"log10":[{"key":"value","kind":"valueExpr"}],"mathCeiling":[{"key":"value","kind":"valueExpr"}],"mathFloor":[{"key":"value","kind":"valueExpr"}],"mathRound":[{"key":"value","kind":"valueExpr"}],"mathSign":[{"key":"value","kind":"valueExpr"}],"maxValueOfItemType":[{"key":"itemType","kind":"valueExpr"}],"nameOfRegion":[{"key":"region","kind":"valueExpr"}],"nameOfUnit":[{"key":"unit","kind":"valueExpr"}],"notValue":[{"key":"boolean","kind":"valueExpr"}],"numberToString":[{"key":"value","kind":"valueExpr"}],"objectContainsElement":[{"key":"object","kind":"valueExpr"},{"key":"key","kind":"valueExpr"}],"objectToString":[{"key":"object","kind":"valueExpr"}],"ownerUnitOfSensor":[{"key":"sensor","kind":"valueExpr"}],"playerAttributeMax":[{"key":"attribute","kind":"valueExpr"}],"playerAttributeMin":[{"key":"attribute","kind":"valueExpr"}],"playerAttributeRegen":[{"key":"attribute","kind":"valueExpr"}],"playerCustomInput":[{"key":"player","kind":"valueExpr"}],"playerHasAdblockEnabled":[{"key":"player","kind":"valueExpr"}],"playerIsControlledByHuman":[{"key":"player","kind":"valueExpr"}],"playerIsCreator":[{"key":"player","kind":"valueExpr"}],"playerTypeOfPlayer":[{"key":"player","kind":"valueExpr"}],"playersAreFriendly":[{"key":"playerA","kind":"valueExpr"},{"key":"playerB","kind":"valueExpr"}],"playersAreHostile":[{"key":"playerA","kind":"valueExpr"},{"key":"playerB","kind":"valueExpr"}],"playersAreNeutral":[{"key":"playerA","kind":"valueExpr"},{"key":"playerB","kind":"valueExpr"}],"playersOfPlayerType":[{"key":"playerType","kind":"valueExpr"}],"realtimeCSSOfPlayer":[{"key":"player","kind":"valueExpr"}],"regionInFrontOfEntityAtDistance":[{"key":"entity","kind":"valueExpr"},{"key":"distance","kind":"valueExpr"},{"key":"width","kind":"valueExpr"},{"key":"height","kind":"valueExpr"}],"removeStringArrayElement":[{"key":"string","kind":"valueExpr"},{"key":"number","kind":"valueExpr"}],"replaceValuesInString":[{"key":"sourceString","kind":"valueExpr"},{"key":"matchString","kind":"valueExpr"},{"key":"newString","kind":"valueExpr"}],"roleExistsForPlayer":[{"key":"name","kind":"valueExpr"},{"key":"player","kind":"valueExpr"}],"selectedInventorySlot":[{"key":"unit","kind":"valueExpr"}],"sin":[{"key":"angle","kind":"valueExpr"}],"squareRoot":[{"key":"number","kind":"valueExpr"}],"stringContains":[{"key":"string","kind":"valueExpr"},{"key":"keyword","kind":"valueExpr"}],"stringEndsWith":[{"key":"sourceString","kind":"valueExpr"},{"key":"patternString","kind":"valueExpr"}],"stringIsANumber":[{"key":"string","kind":"valueExpr"}],"stringStartsWith":[{"key":"sourceString","kind":"valueExpr"},{"key":"patternString","kind":"valueExpr"}],"stringToNumber":[{"key":"value","kind":"valueExpr"}],"subString":[{"key":"sourceString","kind":"valueExpr"},{"key":"patternString","kind":"valueExpr"}],"substringOf":[{"key":"string","kind":"valueExpr"},{"key":"fromIndex","kind":"valueExpr"},{"key":"toIndex","kind":"valueExpr"}],"tan":[{"key":"angle","kind":"valueExpr"}],"targetUnit":[{"key":"unit","kind":"valueExpr"}],"thisEntity":[],"toDegrees":[{"key":"number","kind":"valueExpr"}],"toFixed":[{"key":"value","kind":"valueExpr"},{"key":"precision","kind":"valueExpr"}],"toLowerCase":[{"key":"string","kind":"valueExpr"}],"toRadians":[{"key":"number","kind":"valueExpr"}],"toUpperCase":[{"key":"string","kind":"valueExpr"}],"undefinedValue":[],"unitIsCarryingItemType":[{"key":"unit","kind":"valueExpr"},{"key":"itemType","kind":"valueExpr"}],"unitIsInRegion":[{"key":"region","kind":"valueExpr"},{"key":"unit","kind":"valueExpr"}],"unitSensorRadius":[{"key":"unit","kind":"valueExpr"}],"unitTypeHeight":[{"key":"unitType","kind":"valueExpr"}],"unitTypeWidth":[{"key":"unitType","kind":"valueExpr"}],"unitsFacingAngle":[{"key":"unit","kind":"valueExpr"}],"updateStringArrayElement":[{"key":"string","kind":"valueExpr"},{"key":"number","kind":"valueExpr"},{"key":"value","kind":"valueExpr"}],"vector3":[{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"},{"key":"z","kind":"valueExpr"}],"xyCoordinate":[{"key":"x","kind":"valueExpr"},{"key":"y","kind":"valueExpr"}]};
+
 function applyScriptOp(script, path, operation, payload) {
 	const next = deepClone(script);
 	const parentPath = path.slice(0, -1);
@@ -481,6 +483,7 @@ function defaultValueForScriptField(kind) {
 		case 'boolean': return false;
 		case 'number': return 0;
 		case 'xy': return { x: 0, y: 0 };
+		case 'positionExpr': return { x: 0, y: 0 };
 		case 'string': return '';
 		case 'valueExpr': return 0;
 		case 'itemTypeId': case 'unitTypeId': case 'projectileTypeId': case 'attributeId':
@@ -1036,6 +1039,9 @@ const ENGINE_FUNCTION_TYPES = Object.keys(ENGINE_FUNCTION_SCHEMAS);
 
 function getFunctionVocabulary(gameData) {
 	const byName = new Map();
+	Object.entries(SOURCE_PARAMETER_FUNCTION_SCHEMAS).forEach(([name, schema]) => {
+		byName.set(name, { name, schema: normalizeScriptFunctionSchema(name, schema), args: schema.map((f) => f.key), example: { function: name } });
+	});
 	for (const [name, schema] of Object.entries(ENGINE_FUNCTION_SCHEMAS || {})) {
 		byName.set(name, {
 			name,
@@ -1103,6 +1109,8 @@ function collectScriptVocabulary(gameData) {
 	});
 	return { triggers: [...triggerTypes].sort((a,b) => readableType(a).localeCompare(readableType(b))), actions: [...actionTypes].sort((a,b) => readableType(a).localeCompare(readableType(b))), operators: [...conditionOperators].sort(), operandTypes: [...operandTypes].sort() };
 }
+
+const SCRIPT_POSITION_FUNCTIONS = new Set(['centerOfRegion','getRandomPositionInRegion','getRandomPlayablePositionInRegion','getEntityPosition','getLerpPosition','getMouseCursorPosition','getSecondaryTouchPosition','entityLastRaycastCollisionPosition','xyCoordinate','getPositionInFrontOfPosition']);
 
 const SCRIPT_FUNCTION_FIELD_KIND_OVERRIDES = {
 	getOwner: { entity: 'entityRef' },
@@ -1174,6 +1182,7 @@ const SCRIPT_FUNCTION_FIELD_KIND_OVERRIDES = {
 };
 
 function scriptFunctionFieldKind(functionName, key, fallback = 'valueExpr') {
+	if (SCRIPT_POSITION_FUNCTIONS.has(functionName) && /^(position|positionA|positionB)$/.test(key)) return 'positionExpr';
 	return SCRIPT_FUNCTION_FIELD_KIND_OVERRIDES[functionName]?.[key] || fallback;
 }
 
@@ -1287,6 +1296,7 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	const functionVocabulary = getFunctionVocabulary(gameData);
 	const allowed = (entry) => {
 		if (!entry) return false;
+		if (expected === 'positionExpr') return SCRIPT_POSITION_FUNCTIONS.has(entry.name);
 		if (expected === 'boolean') return ['undefinedValue', 'getEntityAttribute', 'getPlayerAttribute', 'entityExists', 'isBotPlayer', 'isPlayerLoggedIn', 'playerIsControlledByHuman', 'playerIsCreator', 'playersAreFriendly', 'playersAreHostile', 'stringIsANumber'].includes(entry.name);
 		if (expected === 'number' || expected === 'numberExpr') return !SCRIPT_STRING_FUNCTIONS.has(entry.name) && !['selectedUnit', 'selectedItem', 'selectedProjectile', 'selectedPlayer', 'selectedUnitType', 'selectedItemType', 'selectedRegion', 'numberToString', 'getPlayerName', 'getPlayerUsername', 'getItemTypeName', 'getEntityId', 'getPlayerId', 'concat', 'subString', 'substringOf'].includes(entry.name);
 		if (expected === 'string' || expected === 'stringExpr') return !SCRIPT_NUMBER_FUNCTIONS.has(entry.name) && !['stringToNumber', 'getMin', 'getMax', 'absoluteValueOfNumber', 'mathFloor', 'mathCeiling', 'getRandomNumberBetween', 'toRadians', 'cos', 'sin', 'tan', 'arctan', 'getExponent'].includes(entry.name);
@@ -1328,8 +1338,20 @@ function ScriptArrayEditor({ value, gameData, onChange, depth = 0, itemKind = 'v
 	</div>;
 }
 
+function ScriptPositionEditor({ value, gameData, onChange, depth = 0 }) {
+	const [pickerOpen, setPickerOpen] = useState(false);
+	const isFunction = value && typeof value === 'object' && !Array.isArray(value) && typeof value.function === 'string';
+	if (isFunction) return <ScriptFunctionEditor value={value} gameData={gameData} depth={depth} expectedKind="positionExpr" onChange={onChange} />;
+	const isXY = value && typeof value === 'object' && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, 'x') && Object.prototype.hasOwnProperty.call(value, 'y');
+	if (!isXY) {
+		return <div className="relative flex items-center gap-1.5 w-full"><button type="button" onClick={() => onChange({ x: 0, y: 0 })} className="px-2 py-1 rounded border border-[#48596a] text-xs text-[#c5ccd3] hover:bg-[#323d48]">Use coordinates</button><button type="button" onClick={() => setPickerOpen((v) => !v)} className="p-1 rounded border border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]" title="Choose a position function"><Zap size={11} /></button>{pickerOpen && <ScriptValuePicker expectedKind="positionExpr" value={value} gameData={gameData} onChange={onChange} onClose={() => setPickerOpen(false)} />}</div>;
+	}
+	return <div className="relative flex items-center gap-1.5 flex-wrap w-full"><span className="text-[10px] text-[#637588]">x</span><ScriptExpressionInput value={value.x} gameData={gameData} expectedKind="number" onChange={(next) => onChange({ ...value, x: next })} /><span className="text-[10px] text-[#637588]">y</span><ScriptExpressionInput value={value.y} gameData={gameData} expectedKind="number" onChange={(next) => onChange({ ...value, y: next })} /><button type="button" onClick={() => setPickerOpen((v) => !v)} className="p-1 rounded border border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]" title="Replace with a position function"><Zap size={11} /></button>{pickerOpen && <ScriptValuePicker expectedKind="positionExpr" value={value} gameData={gameData} onChange={onChange} onClose={() => setPickerOpen(false)} />}</div>;
+}
+
 function ScriptValueEditor({ value, gameData, onChange, depth = 0, expectedKind = 'valueExpr' }) {
 	const [open, setOpen] = useState(depth < 1);
+	if (expectedKind === 'positionExpr') return <ScriptPositionEditor value={value} gameData={gameData} onChange={onChange} depth={depth} />;
 	const typedReferenceKinds = ['unitRef','itemRef','projectileRef','playerRef','entityRef','unitTypeRef','itemTypeRef','projectileTypeRef','playerTypeRef','regionRef','entityVariable'];
 	if (typedReferenceKinds.includes(expectedKind) && (value === null || value === undefined || (value && typeof value === 'object' && value.function === 'undefinedValue'))) return <ScriptFieldInput kind={expectedKind} value={value} gameData={gameData} onChange={onChange} />;
 	if (value && typeof value === 'object' && !Array.isArray(value) && typeof value.function === 'string') return <ScriptFunctionEditor value={value} gameData={gameData} depth={depth} expectedKind={expectedKind} onChange={onChange} />;
@@ -1365,6 +1387,7 @@ function getScriptReferenceInfo(kind, gameData) {
 	const info = map[kind];
 	if (!info) return null;
 	let collection = gameData?.data?.[info[0]] || {};
+	if (info[0] === 'sound' && !Object.keys(collection).length) collection = gameData?.data?.sounds || {};
 	if (kind === 'attributeId' && !Object.keys(collection).length) collection = gameData?.data?.attributes || {};
 	return { key: info[0], label: info[1], collection };
 }
@@ -1626,6 +1649,7 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 }
 
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
+	if (kind === 'positionExpr') return <ScriptPositionEditor value={value} gameData={gameData} onChange={onChange} />;
 	if (['unitTypeRef','itemTypeRef','playerTypeRef','projectileTypeRef'].includes(kind)) return <ScriptTypedReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
 	if (['unitGroupRef','itemGroupRef','unitTypeGroupRef','itemTypeGroupRef','playerGroupRef'].includes(kind)) return <ScriptGroupReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
 	if (kind === 'regionRef') {
@@ -1845,6 +1869,7 @@ function semanticScriptFieldKind(key, kind = 'valueExpr') {
 	if (kind !== 'valueExpr') return kind;
 	const k = String(key || '');
 	const lower = k.toLowerCase();
+	if (/^(position|positiona|positionb|targetposition|spawnposition)$/.test(lower)) return 'positionExpr';
 	if (lower === 'region' || lower === 'regiona' || lower === 'regionb') return 'regionRef';
 	if (/^(unitgroup|unitsgroup)$/.test(lower)) return 'unitGroupRef';
 	if (/^(itemgroup|itemsgroup)$/.test(lower)) return 'itemGroupRef';
@@ -1894,6 +1919,7 @@ function inferScriptFieldKind(key, value) {
 	if (map[key]) return map[key];
 	if (key === 'variable') return 'variable';
 	const k = String(key || '').toLowerCase();
+	if (/^(position|positiona|positionb|targetposition|spawnposition)$/.test(k)) return 'positionExpr';
 	if (k === 'entity' || k === 'sourceentity' || k === 'targetentity' || k === 'owner') return 'entityRef';
 	if (k === 'entityvariable' || k === 'entityvar') return 'entityVariable';
 	if (/^(unit|sourceunit|targetunit|triggeringunit|selectedunit)$/.test(k)) return 'unitRef';
@@ -2042,8 +2068,8 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 	if (action.type === 'condition') {
 		color = SCRIPT_NODE_COLORS.condition;
 		label = <><span className="text-[#c5ccd3]">if</span> <span className="text-[#85B7EB]">{describeCondition(action.conditions, gameData)}</span></>;
-		children = [{ heading: null, actions: action.then || [], basePath: [...path, 'then'] }];
-		if (action.else && action.else.length) children.push({ heading: 'else', actions: action.else, basePath: [...path, 'else'] });
+		children = [{ heading: 'then', actions: Array.isArray(action.then) ? action.then : [], basePath: [...path, 'then'] }];
+		if (Array.isArray(action.else)) children.push({ heading: 'else', actions: action.else, basePath: [...path, 'else'] });
 	} else if (action.type === 'runScript') {
 		color = SCRIPT_NODE_COLORS.script;
 		label = describeActionReadable(action, gameData, setActiveField, fieldSchema || []);
@@ -2111,6 +2137,7 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 				</span>}
 			</div>
 			{action.type === 'condition' && fieldsOpen && <div className="py-1" style={{ marginLeft: (depth + 1) * 16 }}><ScriptConditionEditor value={action.conditions} gameData={gameData} onChange={(v) => onOp([...path, 'conditions'], 'setField', v)} /></div>}
+			{action.type === 'condition' && !Array.isArray(action.else) && onOp && <div className="py-1" style={{ marginLeft: (depth + 1) * 16 }}><button type="button" onClick={() => onOp([...path, 'else'], 'setField', [])} className="text-[10px] text-[#85B7EB] hover:underline">+ Add else</button></div>}
 			{showEditor && <div className="mt-1 mb-1 rounded-md border border-[#3d4a57] bg-[#252d35] p-2" style={{ marginLeft: (depth + 1) * 16 }}>
 				{activeField ? <>
 					<div className="flex items-center justify-between mb-1.5"><span className="text-[10px] uppercase tracking-wide text-[#637588]">Edit {readableType(activeField)}</span><button type="button" onClick={() => setActiveField(null)} className="text-[#637588] hover:text-[#c5ccd3]"><X size={12} /></button></div>
