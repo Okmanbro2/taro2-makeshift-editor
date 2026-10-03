@@ -2686,6 +2686,8 @@ export default function GameContentEditor() {
 	const previewLoopRef = useRef(0);
 	const [scriptViewerOpen, setScriptViewerOpen] = useState(false);
 	const [selectedEntityScriptKey, setSelectedEntityScriptKey] = useState('');
+	const musicPreviewAudioRef = useRef(null);
+	const [previewingMusicKey, setPreviewingMusicKey] = useState(null);
 	const [entityScriptViewMode, setEntityScriptViewMode] = useState('tree');
 	const [projectileEventType, setProjectileEventType] = useState('entityCreated');
 	const [projectileEventTypeId, setProjectileEventTypeId] = useState('');
@@ -2958,7 +2960,7 @@ export default function GameContentEditor() {
 			setSpriteNatural(null);
 			return;
 		}
-		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, ai, projectileType, cost, damage, lifeSpan, ...rest } = entity;
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, recoilForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, ai, projectileType, cost, damage, lifeSpan, ...rest } = entity;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX, 'z-index': { layer: 3, depth: 1 } } };
 		setDraft({
 			key,
@@ -2979,7 +2981,7 @@ export default function GameContentEditor() {
 			scripts: deepClone(scripts) || {},
 			controls: activeTab === 'unitTypes' ? (Object.keys(controls || {}).length ? deepClone(controls) : deepClone(DEFAULT_UNIT_CONTROLS)) : (deepClone(controls) || {}),
 			...(activeTab === 'unitTypes' ? { ai: deepClone(ai) || { pathFindingMethod: 'simple', idleBehaviour: 'stay', sensorResponse: 'none', attackResponse: 'none', maxTravelDistance: '', sensorRadius: 150, maxAttackRange: 400, enabled: false, letGoDistance: '' } } : {}),
-			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, knockbackForce: Number.isFinite(Number(knockbackForce)) ? Number(knockbackForce) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {}, lifeSpan: lifeSpan ?? null } : {}),
+			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, recoilForce: Number.isFinite(Number(recoilForce)) ? Number(recoilForce) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {}, lifeSpan: lifeSpan ?? null } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
 			costUnitAttributes: deepClone(entity.cost?.unitAttributes) || {},
 			costPlayerAttributes: deepClone(entity.cost?.playerAttributes) || {},
@@ -3085,7 +3087,7 @@ export default function GameContentEditor() {
 		};
 		const base = baseKey ? deepClone(categoryMap[baseKey]) : {};
 		const newKey = generateKey();
-		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, knockbackForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, ai, projectileType, cost, damage, lifeSpan, ...rest } = base;
+		const { name, attributes, variables, cellSheet, bodies, effects, defaultItems, inventorySize, scripts, type, delayBeforeUse, quantity, maxQuantity, inventoryImage, description, fireRate, reloadRate, showCDOverlay, recoilForce, isStackable, isPurchasable, carriedBy, canBeUsedBy, controls, ai, projectileType, cost, damage, lifeSpan, ...rest } = base;
 		const clonedBodies = deepClone(bodies) || { default: { type: 'dynamic', width: TILE_PX, height: TILE_PX, 'z-index': { layer: 3, depth: 1 } } };
 		const clonedAnimations = deepClone(base.animations) || { default: { name: 'default', frames: [1], loopCount: 0, framesPerSecond: 0 } };
 		const clonedStates = deepClone(base.states) || { [generateKey()]: { name: 'default', animation: 'default', body: 'default', particles: {}, sound: {} } };
@@ -3110,7 +3112,7 @@ export default function GameContentEditor() {
 					ai: deepClone(ai) || { pathFindingMethod: 'simple', idleBehaviour: 'stay', sensorResponse: 'none', attackResponse: 'none', maxTravelDistance: '', sensorRadius: 150, maxAttackRange: 400, enabled: false, letGoDistance: '' },
 				}
 				: {}),
-			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, knockbackForce: Number.isFinite(Number(knockbackForce)) ? Number(knockbackForce) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {}, lifeSpan: lifeSpan ?? null } : {}),
+			...(activeTab === 'itemTypes' ? { type: type || '', delayBeforeUse: Number.isFinite(Number(delayBeforeUse)) ? Number(delayBeforeUse) : 0, quantity: quantity ?? null, maxQuantity: maxQuantity ?? null, inventoryImage: inventoryImage || '', description: description || '', fireRate: Number.isFinite(Number(fireRate)) ? Number(fireRate) : 0, reloadRate: Number.isFinite(Number(reloadRate)) ? Number(reloadRate) : 0, showCDOverlay: !!showCDOverlay, recoilForce: Number.isFinite(Number(recoilForce)) ? Number(recoilForce) : 0, isStackable: !!isStackable, isPurchasable: !!isPurchasable, carriedBy: deepClone(carriedBy) || [], canBeUsedBy: deepClone(canBeUsedBy) || [], projectileType: projectileType || '', cost: deepClone(cost) || {}, damage: deepClone(damage) || {}, lifeSpan: lifeSpan ?? null } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: lifeSpan ?? null } : {}),
 			costUnitAttributes: deepClone(base.cost?.unitAttributes) || {},
 			costPlayerAttributes: deepClone(base.cost?.playerAttributes) || {},
@@ -3453,6 +3455,20 @@ export default function GameContentEditor() {
 		setSelectedEntityScriptKey(key);
 	}
 
+	function addEntityScript() {
+		if (!draft) return; const name = prompt(`New ${activeTabDef?.label?.slice(0, -1).toLowerCase() || 'entity'} script name:`); if (!name) return;
+		const key = generateKey(); const script = { key, name, parent: null, order: Object.keys(draft.scripts || {}).length, triggers: [], conditions: [], actions: [] };
+		setDraft((d) => ({ ...d, scripts: { ...(d.scripts || {}), [key]: script } })); setSelectedEntityScriptKey(key); setEntityScriptViewMode('tree');
+		setSavedMsg(`Added "${name}". Save the ${activeTabDef?.label?.slice(0, -1).toLowerCase() || 'entity'} to keep it.`);
+	}
+
+	function deleteEntityScript(key) {
+		const script = draft?.scripts?.[key]; if (!script) return; if (script.isProtected === true) { alert('This script is protected and cannot be removed.'); return; }
+		if (!window.confirm(`Remove script "${script.name || key}" from this entity?`)) return;
+		setDraft((d) => { const scripts = { ...(d.scripts || {}) }; delete scripts[key]; return { ...d, scripts }; }); setSelectedEntityScriptKey('');
+	}
+
+
 	function updateEntityScriptBody(key, bodyText) {
 		setDraft((d) => ({
 			...d,
@@ -3571,6 +3587,17 @@ export default function GameContentEditor() {
 			next.data.music[key] = { ...(next.data.music[key] || {}), [field]: value };
 			return next;
 		});
+	}
+
+	function previewGlobalMusic(key) {
+		const track = gameData?.data?.music?.[key];
+		if (!track?.file) { alert('This music track does not have a file URL yet.'); return; }
+		if (musicPreviewAudioRef.current) { musicPreviewAudioRef.current.pause(); musicPreviewAudioRef.current.currentTime = 0; musicPreviewAudioRef.current = null; }
+		if (previewingMusicKey === key) { setPreviewingMusicKey(null); return; }
+		const audio = new Audio(resolveAssetUrl(track.file)); audio.loop = true; audio.volume = Math.max(0, Math.min(1, Number(track.volume ?? 100) / 100));
+		audio.addEventListener('error', () => { console.error('Music preview failed:', track.file, audio.error); musicPreviewAudioRef.current = null; setPreviewingMusicKey(null); });
+		audio.play().catch((err) => { console.error('Music preview could not start:', err); musicPreviewAudioRef.current = null; setPreviewingMusicKey(null); });
+		musicPreviewAudioRef.current = audio; setPreviewingMusicKey(key);
 	}
 
 	function deleteGlobalMusic(key) {
@@ -3701,7 +3728,7 @@ export default function GameContentEditor() {
 				return [key, cleanScript];
 			})),
 			...(activeTab === 'itemTypes' ? { cost: finalCost, damage: finalDamage } : {}),
-			...(activeTab === 'itemTypes' ? { type: draft.type || '', delayBeforeUse: Number(draft.delayBeforeUse) || 0, quantity: draft.quantity ?? null, maxQuantity: draft.maxQuantity ?? null, inventoryImage: draft.inventoryImage || '', description: draft.description || '', fireRate: Number(draft.fireRate) || 0, reloadRate: Number(draft.reloadRate) || 0, showCDOverlay: !!draft.showCDOverlay, knockbackForce: Number(draft.knockbackForce) || 0, isStackable: !!draft.isStackable, isPurchasable: !!draft.isPurchasable, carriedBy: deepClone(draft.carriedBy) || [], canBeUsedBy: deepClone(draft.canBeUsedBy) || [], projectileType: draft.projectileType || '', lifeSpan: draft.lifeSpan ?? null } : {}),
+			...(activeTab === 'itemTypes' ? { type: draft.type || '', delayBeforeUse: Number(draft.delayBeforeUse) || 0, quantity: draft.quantity ?? null, maxQuantity: draft.maxQuantity ?? null, inventoryImage: draft.inventoryImage || '', description: draft.description || '', fireRate: Number(draft.fireRate) || 0, reloadRate: Number(draft.reloadRate) || 0, showCDOverlay: !!draft.showCDOverlay, recoilForce: Number(draft.recoilForce) || 0, isStackable: !!draft.isStackable, isPurchasable: !!draft.isPurchasable, carriedBy: deepClone(draft.carriedBy) || [], canBeUsedBy: deepClone(draft.canBeUsedBy) || [], projectileType: draft.projectileType || '', lifeSpan: draft.lifeSpan ?? null } : {}),
 			...(activeTab === 'projectileTypes' ? { lifeSpan: draft.lifeSpan ?? null } : {}),
 		};
 		if (activeTab === 'unitTypes') {
@@ -4112,6 +4139,7 @@ export default function GameContentEditor() {
 
 	function deleteScript() {
 		if (!selectedKey) return;
+		if (scriptsCollection[selectedKey]?.isProtected === true) { alert('This script is protected and cannot be removed.'); return; }
 		if (!window.confirm("Remove this script from the working copy? This can't be undone in the tool.")) return;
 		setGameData((gd) => {
 			const next = deepClone(gd);
@@ -5383,9 +5411,9 @@ export default function GameContentEditor() {
 											<span>Show visual cooldown overlay</span>
 										</label>
 										<div className="mt-1 text-xs text-[#637588]">Uses the engine's <span className="font-mono">showCDOverlay</span> setting with <span className="font-mono">fireRate</span> to display the item's in-game cooldown overlay.</div>
-										<label className="block mt-3 text-xs text-[#aab7c4]">Knockback force</label>
-										<input type="number" value={draft.knockbackForce ?? 0} onChange={(e) => updateDraftField('knockbackForce', Number(e.target.value) || 0)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
-										<div className="mt-1 text-xs text-[#637588]">Positive values push the affected unit backward; negative values push it forward.</div>
+										<label className="block mt-3 text-xs text-[#aab7c4]">Recoil force</label>
+										<input type="number" value={draft.recoilForce ?? 0} onChange={(e) => updateDraftField('recoilForce', Number(e.target.value) || 0)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
+										<div className="mt-1 text-xs text-[#637588]">Positive values push the unit using this item backward; negative values push it forward.</div>
 									</div>
 									<div>
 										<label className="block text-xs text-[#8291a1] mb-1">Reload rate</label>
@@ -5537,7 +5565,7 @@ export default function GameContentEditor() {
 
 		<section className="mb-7">
 			<div className="flex items-center justify-between mb-2">
-				<div className="flex items-center gap-2"><h3 className="text-sm font-medium text-[#c5ccd3]">Scripts</h3>{selectedEntityScriptKey && draft?.scripts?.[selectedEntityScriptKey] && <button type="button" onClick={()=>setScriptViewerOpen(true)} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#a3adb8] hover:border-[#8291a1]"><Maximize2 size={11}/> Large viewer</button>}</div>
+				<div className="flex items-center gap-2"><h3 className="text-sm font-medium text-[#c5ccd3]">Scripts</h3><button type="button" onClick={addEntityScript} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#a3adb8]"><Plus size={11}/> New script</button>{selectedEntityScriptKey && draft?.scripts?.[selectedEntityScriptKey] && <button type="button" onClick={()=>setScriptViewerOpen(true)} className="flex items-center gap-1 px-2 py-1 rounded border border-dashed border-[#48596a] text-[10px] text-[#a3adb8] hover:border-[#8291a1]"><Maximize2 size={11}/> Large viewer</button>}</div>
 				{selectedEntityScriptKey && draft?.scripts?.[selectedEntityScriptKey] && <div className="flex rounded-md border border-[#3d4a57] overflow-hidden text-xs">
 					<button onClick={() => setEntityScriptViewMode('tree')} className={`px-2.5 py-1 ${entityScriptViewMode === 'tree' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}>Tree view</button>
 					<button onClick={() => setEntityScriptViewMode('raw')} className={`px-2.5 py-1 ${entityScriptViewMode === 'raw' ? 'bg-[#1a56da] text-[#262e36]' : 'text-[#a3adb8] hover:bg-[#323d48]'}`}>Raw JSON</button>
@@ -5557,7 +5585,7 @@ export default function GameContentEditor() {
 						let parsed = null; let parseError = null;
 						try { parsed = raw.trim() ? JSON.parse(raw) : { triggers: [], conditions: [], actions: [] }; } catch (e) { parseError = e.message; }
 						return <div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-2.5">
-							<div className="flex items-center justify-between gap-2 mb-2"><div className="text-xs text-[#8291a1]">{script.name || selectedEntityScriptKey}</div>{entityScriptViewMode === 'tree' && <span className="text-[10px] text-[#637588]">Editable tree</span>}</div>
+							<div className="flex items-center justify-between gap-2 mb-2"><div className="text-xs text-[#8291a1]">{script.name || selectedEntityScriptKey}{script.isProtected === true && <span className="ml-2 text-[9px] text-amber-400">Protected</span>}</div><div className="flex items-center gap-2">{entityScriptViewMode === 'tree' && <span className="text-[10px] text-[#637588]">Editable tree</span>}<button type="button" disabled={script.isProtected === true} onClick={()=>deleteEntityScript(selectedEntityScriptKey)} className="px-2 py-1 rounded border border-red-900 text-[10px] text-red-300 disabled:opacity-30">Delete</button></div></div>
 							{entityScriptViewMode === 'tree' ? (
 								parseError ? <div className="text-xs text-red-400 bg-red-950/20 border border-red-900 rounded-md p-3">Can't show the tree view - this script's JSON doesn't currently parse: {parseError}. Switch to Raw JSON to fix it.</div> :
 								<ScriptTreeView script={parsed} gameData={gameData} onJumpToScript={(id) => { if (id && scriptsCollection[id]) selectScript(id); }} onOp={(path, operation, payload) => { const next = applyScriptOp(parsed, path, operation, payload); updateEntityScriptBody(selectedEntityScriptKey, JSON.stringify(next, null, 2)); }} 
@@ -5799,7 +5827,7 @@ export default function GameContentEditor() {
 											<div><label className="block text-xs text-[#8291a1] mb-1">Type</label><select value={draft.bodies[selectedBodyName].type || 'dynamic'} onChange={(e) => updateBodyField('type', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="dynamic">dynamic - can be moved by any internal/external influences</option><option value="kinematic">kinematic - can only be moved by any internal/external influences</option><option value="static">static - can only be moved by 'move entity' action</option><option value="spriteOnly">sprite-only - can only be moved by 'set velocity' or 'move entity' actions</option></select></div>
 											<div><label className="block text-xs text-[#8291a1] mb-1">Z-index</label><div className="grid grid-cols-2 gap-2"><div><label className="block text-[10px] text-[#637588] mb-1">Layer</label><select value={draft.bodies[selectedBodyName]['z-index']?.layer ?? 3} onChange={(e) => updateBodyZIndex('layer',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"><option value="1">floor</option><option value="2">floor2</option><option value="3">debris</option><option value="4">walls</option><option value="5">trees</option></select></div><div><label className="block text-[10px] text-[#637588] mb-1">Depth</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.depth ?? 0} onChange={(e) => updateBodyZIndex('depth',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div></div><p className="text-[10px] text-[#637588] mt-1">Layer chooses the broad render group; Depth controls ordering within that layer. These labels are based on the layer usage already present in this game.</p>
 														<div className="mt-4 border-t border-[#3d4a57] pt-3">
-															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Collision</h4>
+															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Attachment position</h4><div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">{[['unitAnchor','Unit anchor'],['itemAnchor','Item anchor'],['holdPosition','Hold position']].map(([key,label]) => <div key={key} className="rounded border border-[#3d4a57] p-2"><div className="text-[10px] text-[#8291a1] mb-1">{label}</div><div className="grid grid-cols-3 gap-1">{[['x','X'],['y','Y'],['rotation','Rot']].map(([field,flabel]) => <label key={field} className="text-[9px] text-[#637588]">{flabel}<input type="number" step="any" value={body[key]?.[field] ?? 0} onChange={e=>updateBodyField(key,{...(body[key]||{}),[field]:Number(e.target.value)||0})} className="mt-0.5 w-full bg-[#323d48] border border-[#3d4a57] rounded px-1 py-1 text-xs" /></label>)}</div></div>)}</div><h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Collision</h4>
 															<p className="text-[10px] text-[#637588] mb-2">Choose which kinds of entities this body can collide with.</p>
 															<div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
 																{[['units','Units'],['items','Items'],['projectiles','Projectiles'],['walls','Walls'],['debris','Debris']].map(([key,label]) => (
@@ -6288,7 +6316,7 @@ export default function GameContentEditor() {
 													className="text-xl font-semibold bg-transparent border-b border-transparent hover:border-[#48596a] focus:border-[#1a56da] focus:outline-none px-0.5 w-full"
 												/>
 												<div className="text-xs text-[#637588] font-mono mt-1">
-													{scriptDraft.key} {scriptDraft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}
+													{scriptDraft.key} {scriptDraft.isProtected === true && <span className="text-amber-400 ml-2">(protected)</span>} {scriptDraft.isNew && <span className="text-[#1a56da] ml-1">(new, not saved yet)</span>}
 												</div>
 											</div>
 											<div className="flex gap-2 ml-4">
@@ -6694,7 +6722,7 @@ export default function GameContentEditor() {
 								<div className="space-y-2">
 									{Object.entries(gameData?.data?.music || {}).sort((a,b)=>(a[1]?.name||'').localeCompare(b[1]?.name||'')).map(([key, track]) => (
 										<div key={key} data-music-key={key} className="bg-[#323d48] border border-[#3d4a57] rounded-md p-3">
-											<div className="flex items-center gap-2 mb-2"><input value={track?.name || ''} onChange={(e)=>updateGlobalMusic(key,'name',e.target.value)} placeholder="Music name" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" />{Object.prototype.hasOwnProperty.call(track || {}, 'volume') && <><label className="text-xs text-[#637588]">volume</label><input type="number" min="0" max="100" value={track?.volume ?? 100} onChange={(e)=>updateGlobalMusic(key,'volume',Math.max(0,Math.min(100,Number(e.target.value)||0)))} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></>}<button onClick={()=>deleteGlobalMusic(key)} className="text-[#8291a1] hover:text-red-400" title="Delete music"><Trash2 size={14}/></button></div>
+											<div className="flex items-center gap-2 mb-2"><input value={track?.name || ''} onChange={(e)=>updateGlobalMusic(key,'name',e.target.value)} placeholder="Music name" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /><button type="button" onClick={()=>previewGlobalMusic(key)} disabled={!track?.file} className="px-2 py-1 rounded border border-[#48596a] text-xs text-[#a3adb8] disabled:opacity-40">{previewingMusicKey === key ? 'Stop' : 'Preview'}</button>{Object.prototype.hasOwnProperty.call(track || {}, 'volume') && <><label className="text-xs text-[#637588]">volume</label><input type="number" min="0" max="100" value={track?.volume ?? 100} onChange={(e)=>updateGlobalMusic(key,'volume',Math.max(0,Math.min(100,Number(e.target.value)||0)))} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" /></>}<button onClick={()=>deleteGlobalMusic(key)} className="text-[#8291a1] hover:text-red-400" title="Delete music"><Trash2 size={14}/></button></div>
 											<input value={track?.file || ''} onChange={(e)=>updateGlobalMusic(key,'file',e.target.value)} placeholder="https://.../music.ogg or /assets/audio/..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 											<div className="text-[11px] text-[#637588] mt-1.5 font-mono truncate">{key}</div>
 										</div>
