@@ -1660,9 +1660,9 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 	const allOptions = [...options, ...variableOptions, ...entityVariableOptions];
 	const selected = allOptions.find(([id]) => id === value);
 	const filtered = allOptions.filter(([, label, group, rawId]) => { const q = query.trim().toLowerCase(); return !q || label.toLowerCase().includes(q) || group.toLowerCase().includes(q) || String(rawId || '').toLowerCase().includes(q); });
-	if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
+	const selectedLabel = selected?.[1] || (value && typeof value === 'object' ? describeValue(value, gameData) : (value || 'Choose reference...'));
 	return <div className="relative min-w-0">
-		<button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selected?.[1] || (value || 'Choose reference...')}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
+		<button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selectedLabel}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
 		{open && <div className="absolute z-[90] left-0 top-full mt-1 w-72 max-h-80 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search references..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div className="max-h-60 overflow-y-auto p-1">
@@ -1858,31 +1858,43 @@ function ScriptConditionEditor({ value, gameData, onChange }) {
 	const operandType = meta.operandType || 'boolean';
 	const operators = SCRIPT_OPERATORS_BY_TYPE[operandType] || vocab.operators;
 	const isLogic = operandType === 'and' || operandType === 'or';
+	const logicLabel = operandType === 'and' ? 'AND' : 'OR';
+	const makeComparison = () => [{ operandType: 'boolean', operator: '==' }, true, true];
 	const setOperandType = (nextType) => {
 		const nextOperators = SCRIPT_OPERATORS_BY_TYPE[nextType] || ['==', '!='];
 		const nextOperator = nextOperators[0] || '==';
 		const logic = nextType === 'and' || nextType === 'or';
-		const left = logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : defaultConditionOperand(nextType);
-		const right = logic ? [{ operandType: 'boolean', operator: '==' }, true, true] : defaultConditionOperand(nextType);
+		const left = logic ? makeComparison() : defaultConditionOperand(nextType);
+		const right = logic ? makeComparison() : defaultConditionOperand(nextType);
 		onChange([{ ...meta, operandType: nextType, operator: nextOperator }, left, right]);
+	};
+	const wrapWithLogic = (operatorType) => {
+		const operator = operatorType === 'and' ? 'AND' : 'OR';
+		onChange([{ operandType: operatorType, operator }, cond, makeComparison()]);
 	};
 	return <div className="w-full rounded-lg bg-[#20272e] border border-[#48596a] px-2 py-1.5">
 		<div className="flex flex-wrap items-center gap-1.5">
 			{isLogic ? <>
-				<select value={operandType} onChange={(e) => setOperandType(e.target.value)} className="bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-xs text-[#85B7EB]">{SCRIPT_CONDITION_TYPE_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
-				<ScriptTypedValueEditor value={cond[1]} operandType="boolean" gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} />
-				<span className="text-[#637588] text-xs">and/or</span>
-				<ScriptTypedValueEditor value={cond[2]} operandType="boolean" gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} />
+				<select value={operandType} onChange={(e) => setOperandType(e.target.value)} className="bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-xs text-[#85B7EB]"><option value="and">AND</option><option value="or">OR</option></select>
+				<span className="text-[10px] uppercase tracking-wide text-[#637588]">left</span>
+				<ScriptConditionEditor value={cond[1]} gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} />
+				<span className="text-[#637588] text-xs font-bold">{logicLabel}</span>
+				<span className="text-[10px] uppercase tracking-wide text-[#637588]">right</span>
+				<ScriptConditionEditor value={cond[2]} gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} />
 			</> : <>
 				<ScriptTypedValueEditor value={cond[1]} operandType={operandType} gameData={gameData} onChange={(v) => onChange([cond[0], v, cond[2]])} />
 				<select value={meta.operator || operators[0] || '=='} onChange={(e) => onChange([{ ...meta, operator: e.target.value }, cond[1], cond[2]])} className="bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-xs text-[#c5ccd3] font-mono">{operators.map((x) => <option key={x} value={x}>{x}</option>)}</select>
 				<ScriptTypedValueEditor value={cond[2]} operandType={operandType} gameData={gameData} onChange={(v) => onChange([cond[0], cond[1], v])} />
 			</>}
-			{!isLogic && <select title="Choose comparison type" value={operandType} onChange={(e) => setOperandType(e.target.value)} className="ml-auto max-w-44 bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-[10px] text-[#9aa8b6]">{SCRIPT_CONDITION_TYPE_OPTIONS.filter(([id]) => id !== 'and' && id !== 'or').map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>}
+			{!isLogic && <select title="Choose comparison type" value={operandType} onChange={(e) => setOperandType(e.target.value)} className="ml-auto max-w-44 bg-[#303b47] border border-[#506174] rounded-md px-1.5 py-0.5 text-[10px] text-[#9aa8b6]">{SCRIPT_CONDITION_TYPE_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>}
+		</div>
+		<div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-[#303b47]">
+			<span className="text-[10px] text-[#637588]">Combine this condition:</span>
+			<button type="button" onClick={() => wrapWithLogic('and')} className="px-1.5 py-0.5 rounded border border-[#48596a] text-[10px] text-[#a3adb8] hover:text-[#85B7EB] hover:border-[#85B7EB]">+ AND</button>
+			<button type="button" onClick={() => wrapWithLogic('or')} className="px-1.5 py-0.5 rounded border border-[#48596a] text-[10px] text-[#a3adb8] hover:text-[#85B7EB] hover:border-[#85B7EB]">+ OR</button>
 		</div>
 	</div>;
 }
-
 function ScriptAddMenu({ label, options, onSelect, categorized = true }) { const [open, setOpen] = useState(false); const [query, setQuery] = useState(''); const filtered = options.filter((o) => !query || o.label.toLowerCase().includes(query.toLowerCase()) || (o.category || '').toLowerCase().includes(query.toLowerCase())); const groups = categorized ? filtered.reduce((acc, option) => { const key = option.category || 'Other'; (acc[key] ||= []).push(option); return acc; }, {}) : { '': filtered }; return <div className="relative inline-block"><button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-dashed border-[#48596a] text-xs text-[#a3adb8] hover:border-[#1a56da] hover:text-[#1a56da]"><Plus size={13} /> {label}</button>{open && <div className="absolute z-40 mt-1 left-0 w-80 max-h-96 overflow-hidden bg-[#262e36] border border-[#48596a] rounded-md shadow-xl p-1"><div className="p-1"><div className="relative"><Search size={12} className="absolute left-2 top-2 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${label.toLowerCase()}...`} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-7 py-1.5 text-xs" /></div></div><div className="max-h-80 overflow-y-auto">{Object.entries(groups).map(([category, items]) => <div key={category}>{categorized && <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">{category}</div>}{items.map((option) => <button key={option.value} type="button" onClick={() => { setOpen(false); setQuery(''); onSelect(option.value); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48]">{option.label}</button>)}</div>)}{!filtered.length && <div className="px-2 py-3 text-xs text-[#637588] italic">No matches.</div>}</div></div>}</div>; }
 function scriptCategory(type) { const t = String(type || '').toLowerCase(); if (/^(for|repeat|while|break|continue|return|if|condition)/.test(t)) return 'Control flow'; if (/(player|chat|dialogue|shop|website|camera|ui|modal)/.test(t)) return 'Players & UI'; if (/(unit|entity|ai|attack|move|velocity|force|stun|heal|damage|attribute|owner)/.test(t)) return 'Units & entities'; if (/(item|inventory|slot|purchase)/.test(t)) return 'Items'; if (/projectile/.test(t)) return 'Projectiles'; if (/(variable|data|save|load)/.test(t)) return 'Variables & data'; if (/(sound|music|particle|animation)/.test(t)) return 'Effects'; if (/(map|tile|region)/.test(t)) return 'Map & regions'; return 'Other'; }
 function triggerCategory(type) { const t = String(type || '').toLowerCase(); if (/player/.test(t)) return 'Players'; if (/item/.test(t)) return 'Items'; if (/projectile/.test(t)) return 'Projectiles'; if (/unit|entity/.test(t)) return 'Units & entities'; return 'Game'; }
