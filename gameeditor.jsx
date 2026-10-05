@@ -1331,7 +1331,8 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	};
 	const matches = (name) => {
 		const entry = functionVocabulary.find((x) => x.name === name);
-		return entry && allowed(entry) && (!q || functionDisplayName(name).toLowerCase().includes(q) || name.toLowerCase().includes(q));
+		const isGeneral = generalFunctionNames.has(name);
+		return entry && (isGeneral || allowed(entry)) && (!q || functionDisplayName(name).toLowerCase().includes(q) || name.toLowerCase().includes(q));
 	};
 	const generalFunctions = generalFunctionEntries.filter((entry) => !q || functionDisplayName(entry.name).toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
 	const quickGroups = SCRIPT_VALUE_GROUPS.map((group) => ({ ...group, functions: group.functions.filter((name) => matches(name)) })).filter((group) => group.functions.length);
@@ -1546,6 +1547,7 @@ function ScriptRegionField({ value, gameData, onChange }) {
 	const filtered = regions.filter((region) => !q || region.name.toLowerCase().includes(q) || region.id.toLowerCase().includes(q));
 	return <div className="w-full rounded-md border border-[#3d4a57] bg-[#252d35] overflow-hidden">
 		<div className="p-1.5 border-b border-[#3d4a57] flex items-center gap-2"><Search size={12} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search regions..." className="flex-1 bg-[#20272e] border border-[#48596a] rounded px-2 py-1 text-xs outline-none" /></div>
+		<ScriptCompatibleFunctionList kind="regionRef" value={value} gameData={gameData} onChange={onChange} />
 		<div className="max-h-[180px] overflow-y-auto p-1">
 			{filtered.map((region) => <button key={region.id} type="button" onClick={() => onChange({ function: 'getVariable', variableName: region.id })} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] ${region.id === selectedId ? 'bg-[#303b47]' : ''}`}><div>{region.name}</div><div className="text-[9px] font-mono text-[#637588] mt-0.5">{region.id}</div></button>)}
 			{!filtered.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching regions.</div>}
@@ -1754,8 +1756,9 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 	const filteredFunctions = functionOptions.filter((entry) => !q || functionDisplayName(entry.name).toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
 	const selectedLabel = selected?.[1] || (value && typeof value === 'object' ? describeValue(value, gameData) : (value || 'Choose reference...'));
 	const choose = (next) => { onChange(next); setOpen(false); setQuery(''); };
-	return <div className="relative min-w-0">
+	return <div className="relative min-w-0 flex items-center gap-1">
 		<button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d47]"><span className="truncate">{selectedLabel}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
+		<ScriptCompatibleFunctionPicker kind={kind} value={value} gameData={gameData} onChange={onChange} />
 		{open && <div className="absolute z-[110] left-0 top-full mt-1 w-80 max-h-96 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search references or functions..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div className="max-h-80 overflow-y-auto p-1">
@@ -1766,6 +1769,20 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 		</div>}
 	</div>;
 }
+function ScriptLiteralField({ kind, value, gameData, onChange }) {
+	const [pickerOpen, setPickerOpen] = useState(false);
+	const isBoolean = kind === 'boolean';
+	const isNumber = kind === 'number' || kind === 'numberExpr';
+	const isString = kind === 'string' || kind === 'stringExpr';
+	return <div className="relative flex items-center gap-1.5 min-w-0">
+		<div className="min-w-0 flex-1">
+			{isBoolean ? <input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} className="accent-[#1a56da]" /> : isNumber ? <input type="number" value={typeof value === 'number' ? value : 0} onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))} className="w-24 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /> : isString ? <input type="text" value={typeof value === 'string' ? value : ''} placeholder="Enter text..." onChange={(e) => onChange(e.target.value)} className="w-44 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /> : null}
+		</div>
+		<button type="button" title="Choose a value or function" onClick={() => setPickerOpen((v) => !v)} className={`shrink-0 p-1 rounded border ${pickerOpen ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]'}`}><Zap size={11} /></button>
+		{pickerOpen && <ScriptValuePicker expectedKind={kind} value={value} gameData={gameData} onChange={(next) => { onChange(next); setPickerOpen(false); }} onClose={() => setPickerOpen(false)} />}
+	</div>;
+}
+
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	if (kind === 'positionExpr') return <ScriptPositionEditor value={value} gameData={gameData} onChange={onChange} />;
 	if (['unitTypeRef','itemTypeRef','playerTypeRef','projectileTypeRef'].includes(kind)) return <ScriptTypedReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
@@ -1782,9 +1799,10 @@ function ScriptFieldInput({ kind, value, gameData, onChange }) {
 		return <ScriptReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
 	}
 	if (kind === 'xy') { if (!value || typeof value !== 'object' || typeof value.x !== 'number' || typeof value.y !== 'number') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />; return <span className="flex items-center gap-1"><span className="text-[10px] text-[#637588]">x</span><input type="number" value={value.x} onChange={(e) => onChange({ ...value, x: Number(e.target.value) })} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /><span className="text-[10px] text-[#637588]">y</span><input type="number" value={value.y} onChange={(e) => onChange({ ...value, y: Number(e.target.value) })} className="w-20 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /></span>; }
-	if (kind === 'boolean') return typeof value === 'boolean' ? <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="accent-[#1a56da]" /> : <ScriptExpressionInput value={value} gameData={gameData} expectedKind="boolean" onChange={onChange} />;
-	if (kind === 'number' || kind === 'numberExpr') return typeof value === 'number' ? <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-24 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" /> : <ScriptExpressionInput value={value} gameData={gameData} expectedKind={kind} onChange={onChange} />;
-	if (kind === 'string' || kind === 'stringExpr') { if (value && typeof value === 'object' && typeof value.function === 'string') return <ScriptExpressionInput value={value} gameData={gameData} expectedKind={kind} onChange={onChange} />; return <input type="text" value={typeof value === 'string' ? value : ''} placeholder="Enter text..." onChange={(e) => onChange(e.target.value)} className="w-44 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" />; }
+	if (kind === 'boolean' || kind === 'number' || kind === 'numberExpr' || kind === 'string' || kind === 'stringExpr') {
+		if (value && typeof value === 'object' && typeof value.function === 'string') return <ScriptExpressionInput value={value} gameData={gameData} expectedKind={kind} onChange={onChange} />;
+		return <ScriptLiteralField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
+	}
 	return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} />;
 }
 
