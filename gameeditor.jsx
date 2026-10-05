@@ -1289,6 +1289,8 @@ function functionDisplayName(name) {
 		getLastPlayerSelectingDialogueOption: 'Last player selecting dialogue option',
 		getPlayerVariable: 'Player variable',
 		getValueOfPlayerVariable: 'Value of player variable',
+		getOwner: 'Owner of',
+		getOwnerOfItem: 'Owner of item',
 		getEntityVariable: 'Entity variable',
 		getValueOfEntityVariable: 'Value of entity variable',
 		undefinedValue: 'Nothing',
@@ -1645,6 +1647,8 @@ function ScriptTypedReferenceField({ kind, value, gameData, onChange }) {
 	</div>;
 }
 
+const SCRIPT_GENERAL_FUNCTIONS = ['getOwner', 'getOwnerOfItem'];
+
 const SCRIPT_FUNCTIONS_BY_RESULT_KIND = {
   entityRef: ['thisEntity','selectedEntity','getEntityFromId','getSourceUnitOfProjectile','getSourceItemOfProjectile','getLastAttackedUnit','getLastAttackingUnit','getLastUnitToAttackEntity','getLastTouchedUnit','getLastTouchingUnit','getLastCastingUnit','getLastCreatedUnit','getLastPurchasedUnit','getTriggeringUnit','getPlayerSelectedUnit','getItemAtSlot','getItemInInventorySlot','getTriggeringItem','selectedItem','getLastCreatedItem','getLastUsedItem','getLastAttackingItem','getTriggeringProjectile','selectedProjectile','getLastCreatedProjectile'],
   unitRef: ['getOwnerOfItem','getSourceUnitOfProjectile','getTriggeringUnit','getSelectedUnit','selectedUnit','getLastAttackedUnit','getLastAttackingUnit','getLastUnitToAttackEntity','getLastTouchedUnit','getLastTouchingUnit','getLastCastingUnit','getLastCreatedUnit','getLastPurchasedUnit','getPlayerSelectedUnit'],
@@ -1653,7 +1657,7 @@ const SCRIPT_FUNCTIONS_BY_RESULT_KIND = {
   playerRef: ['getOwner','getTriggeringPlayer','getSelectedPlayer','selectedPlayer','getLastPlayerSelectingDialogueOption'],
   regionRef: ['allRegions','dynamicRegion','getEntireMapRegion'],
   unitGroupRef: ['allUnits','allUnitsOfUnitType','allUnitsOwnedByPlayer'],
-  itemGroupRef: ['allItems','allItemsOfItemType'],
+  itemGroupRef: ['allItems','allItemsDroppedOnGround','allItemsOfItemType'],
   projectileGroupRef: ['allProjectiles','allProjectilesOfProjectileType'],
   playerGroupRef: ['allPlayers','humanPlayers','computerPlayers','botPlayers','playersOfPlayerType'],
   entityGroupRef: ['allEntities','entitiesInRegion','entitiesBetweenTwoPositions','entitiesInRegionInFrontOfEntityAtDistance','entitiesCollidingWithLastRaycast'],
@@ -1668,7 +1672,7 @@ const SCRIPT_FUNCTIONS_BY_RESULT_KIND = {
 
 function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
   const [open, setOpen] = useState(false);
-  const names = SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || [];
+  const names = [...new Set([...(SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []), ...SCRIPT_GENERAL_FUNCTIONS])];
   const available = names.map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
   if (!available.length) return null;
   const currentName = value?.function;
@@ -1686,7 +1690,7 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
 }
 
 function ScriptCompatibleFunctionList({ kind, value, gameData, onChange, closeAfterSelect = false }) {
-  const names = SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || [];
+  const names = [...new Set([...(SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []), ...SCRIPT_GENERAL_FUNCTIONS])];
   const available = names.map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
   if (!available.length) return null;
   return <div className="border-t border-[#3d4a57] mt-1 pt-1">
@@ -1703,7 +1707,7 @@ function ScriptGroupReferenceField({ kind, value, gameData, onChange }) {
   const dataType = { unitGroupRef:'unitGroup', itemGroupRef:'itemGroup', unitTypeGroupRef:'unitTypeGroup', itemTypeGroupRef:'itemTypeGroup', playerGroupRef:'playerGroup', regionGroupRef:'regionGroup' }[kind];
   const label = { unitGroupRef:'Unit group', itemGroupRef:'Item group', unitTypeGroupRef:'Unit type group', itemTypeGroupRef:'Item type group', playerGroupRef:'Player group', regionGroupRef:'Region group', entityGroupRef:'Entity group', projectileGroupRef:'Projectile group' }[kind] || readableType(kind);
   const options = dataType ? variableReferenceOptions(dataType, gameData) : [];
-  const functionOptions = (SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []).map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
+  const functionOptions = [...new Set([...(SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []), ...SCRIPT_GENERAL_FUNCTIONS])].map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
   const selectedId = value?.function === 'getVariable' ? value.variableName : '';
   const selected = options.find(o => o.id === selectedId);
   const selectedLabel = selected?.name || (value?.function ? functionDisplayName(value.function) : (selectedId ? selectedId : `Choose ${label.toLowerCase()}...`));
@@ -1734,7 +1738,7 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 		...variableReferenceOptions('item', gameData).map((o) => [`variable:${o.id}`, o.name, 'Item variable', o.id]),
 		...variableReferenceOptions('projectile', gameData).map((o) => [`variable:${o.id}`, o.name, 'Projectile variable', o.id]),
 	].sort((a,b) => a[1].localeCompare(b[1]) || a[3].localeCompare(b[3])) : [];
-	const functionOptions = (SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []).map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
+	const functionOptions = [...new Set([...(SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []), ...SCRIPT_GENERAL_FUNCTIONS])].map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
 	const q = query.trim().toLowerCase();
 	const allOptions = [...options, ...variableOptions, ...entityVariableOptions];
 	const selected = allOptions.find(([id]) => id === value);
@@ -2206,14 +2210,17 @@ const FOR_ALL_ACTION_TYPES = [
 ];
 
 function ForAllTypePicker({ action, onChange }) {
-  const [open, setOpen] = useState(false);
   const current = FOR_ALL_ACTION_TYPES.find(([type]) => type === action.type);
-  return <div className="relative inline-block">
-    <button type="button" onClick={() => setOpen(v => !v)} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#303b47] border border-[#506174] text-[#85B7EB] text-[11px] font-sans hover:border-[#85B7EB] hover:bg-[#364453]">{current?.[1] || readableType(action.type)} <ChevronDown size={10}/></button>
-    {open && <div className="absolute z-[120] left-0 top-full mt-1 w-56 max-h-80 overflow-y-auto bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl p-1">
-      <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">For-all loop type</div>
-      {FOR_ALL_ACTION_TYPES.map(([type,label]) => <button key={type} type="button" onClick={() => { onChange(type); setOpen(false); }} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d47] ${type === action.type ? 'bg-[#303b47]' : ''}`}>{label}</button>)}
-    </div>}
+  return <div className="inline-flex items-center relative">
+    <select
+      value={current?.[0] || ''}
+      onChange={(e) => e.target.value && onChange(e.target.value)}
+      title="Change for-all loop type"
+      aria-label="For-all loop type"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#303b47] border border-[#506174] text-[#85B7EB] text-[11px] font-sans hover:border-[#85B7EB] focus:outline-none focus:border-[#85B7EB]"
+    >
+      {FOR_ALL_ACTION_TYPES.map(([type,label]) => <option key={type} value={type}>{label}</option>)}
+    </select>
   </div>;
 }
 
@@ -2279,7 +2286,8 @@ function ScriptActionNode({ action, gameData, depth, onJumpToScript, path, onOp,
 		} else if (action.start !== undefined) {
 			rangeBit = <> (<ScriptActionInlineField field="variableName" action={action} fields={actionFields} /> from <ScriptActionInlineField field="start" action={action} fields={actionFields} /> to <ScriptActionInlineField field="stop" action={action} fields={actionFields} />)</>;
 		}
-		const loopLabel = SCRIPT_CONTAINER_ACTION_TYPES.has(action.type) && action.type.startsWith('forAll')
+		const isForAllAction = FOR_ALL_ACTION_TYPES.some(([type]) => type === action.type);
+		const loopLabel = isForAllAction
       ? <ForAllTypePicker action={action} onChange={(type) => onOp(path, 'changeType', type)} />
       : <span>{readableType(action.type)}</span>;
 		label = <>{loopLabel}{rangeBit}</>;
