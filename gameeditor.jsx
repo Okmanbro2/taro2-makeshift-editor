@@ -1607,10 +1607,11 @@ function ScriptTypedReferenceField({ kind, value, gameData, onChange }) {
 	const filteredDerived = derivedRuntimeOptions.filter(([id,label]) => matches(label,id));
 	const choose = (next) => { setOpen(false); setQuery(''); onChange(next); };
 	return <div className="relative min-w-0">
-		<button type="button" onClick={() => setOpen(v => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selected}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
+		<button type="button" onClick={() => setOpen(v => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selected}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button><ScriptCompatibleFunctionPicker kind={kind} value={value} gameData={gameData} onChange={onChange} />
 		{open && <div className="absolute z-[95] left-0 top-full mt-1 w-80 max-h-96 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search ${config.label.toLowerCase()}...`} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div className="max-h-80 overflow-y-auto p-1">
+				<ScriptCompatibleFunctionList kind={kind} value={value} gameData={gameData} onChange={(next) => { onChange(next); setOpen(false); setQuery(''); }} />
 				{filteredStatic.length > 0 && <>
 					<div className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-[#85B7EB]">Specific {config.plural}</div>
 					{filteredStatic.map(o => <button key={`static-${o.id}`} type="button" onClick={() => choose(o.id)} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588] font-mono">{o.id}</div></button>)}
@@ -1633,17 +1634,81 @@ function ScriptTypedReferenceField({ kind, value, gameData, onChange }) {
 	</div>;
 }
 
+const SCRIPT_FUNCTIONS_BY_RESULT_KIND = {
+  entityRef: ['thisEntity','selectedEntity','getEntityFromId','getOwner','getOwnerOfItem','getSourceUnitOfProjectile','getSourceItemOfProjectile','getLastAttackedUnit','getLastAttackingUnit','getLastUnitToAttackEntity','getLastTouchedUnit','getLastTouchingUnit','getLastCastingUnit','getLastCreatedUnit','getLastPurchasedUnit','getTriggeringUnit','getPlayerSelectedUnit','getItemAtSlot','getItemInInventorySlot','getTriggeringItem','selectedItem','getLastCreatedItem','getLastUsedItem','getLastAttackingItem','getTriggeringProjectile','selectedProjectile','getLastCreatedProjectile'],
+  unitRef: ['getOwner','getOwnerOfItem','getSourceUnitOfProjectile','getTriggeringUnit','getSelectedUnit','selectedUnit','getLastAttackedUnit','getLastAttackingUnit','getLastUnitToAttackEntity','getLastTouchedUnit','getLastTouchingUnit','getLastCastingUnit','getLastCreatedUnit','getLastPurchasedUnit','getPlayerSelectedUnit'],
+  itemRef: ['getTriggeringItem','getSelectedItem','selectedItem','getLastCreatedItem','getLastUsedItem','getLastAttackingItem','getItemAtSlot','getItemInInventorySlot'],
+  projectileRef: ['getTriggeringProjectile','getSelectedProjectile','selectedProjectile','getLastCreatedProjectile'],
+  playerRef: ['getTriggeringPlayer','getSelectedPlayer','selectedPlayer','getLastPlayerSelectingDialogueOption'],
+  regionRef: ['allRegions','dynamicRegion','getEntireMapRegion'],
+  unitGroupRef: ['allUnits','allUnitsOfUnitType','allUnitsOwnedByPlayer'],
+  itemGroupRef: ['allItems','allItemsOfItemType'],
+  projectileGroupRef: ['allProjectiles','allProjectilesOfProjectileType'],
+  playerGroupRef: ['allPlayers','humanPlayers','computerPlayers','botPlayers','playersOfPlayerType'],
+  entityGroupRef: ['allEntities','entitiesInRegion','entitiesBetweenTwoPositions','entitiesInRegionInFrontOfEntityAtDistance','entitiesCollidingWithLastRaycast'],
+  unitTypeGroupRef: ['allUnitTypesInGame'],
+  itemTypeGroupRef: ['allItemTypesInGame'],
+  regionGroupRef: ['allRegions'],
+  unitTypeRef: ['selectedUnitType','getUnitType','getUnitTypeOfUnit','getRandomUnitTypeFromUnitTypeGroup'],
+  itemTypeRef: ['selectedItemType','getItemType','getItemTypeOfItem','getRandomItemTypeFromItemTypeGroup'],
+  projectileTypeRef: ['getProjectileTypeOfProjectile'],
+  playerTypeRef: ['playerTypeOfPlayer'],
+};
+
+function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
+  const [open, setOpen] = useState(false);
+  const names = SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || [];
+  const available = names.map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
+  if (!available.length) return null;
+  const currentName = value?.function;
+  return <div className="relative shrink-0">
+    <button type="button" title="Choose a function or expression" onClick={() => setOpen((v) => !v)} className={`px-1.5 py-1 rounded border text-[10px] ${open ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]'}`}><Zap size={11} /></button>
+    {open && <div className="absolute z-[110] left-0 top-full mt-1 w-80 max-h-80 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
+      <div className="px-2 py-1.5 border-b border-[#3d4a57] text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>
+      <div className="max-h-72 overflow-y-auto p-1">
+        {available.map((entry) => <button key={entry.name} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); setOpen(false); }} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2 ${currentName === entry.name ? 'bg-[#303b47]' : ''}`}>
+          <span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span>
+        </button>)}
+      </div>
+    </div>}
+  </div>;
+}
+
+function ScriptCompatibleFunctionList({ kind, value, gameData, onChange, closeAfterSelect = false }) {
+  const names = SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || [];
+  const available = names.map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
+  if (!available.length) return null;
+  return <div className="border-t border-[#3d4a57] mt-1 pt-1">
+    <div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>
+    {available.map((entry) => <button key={entry.name} type="button" onClick={() => onChange(createFunctionValue(entry.name, gameData))} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48] flex items-center justify-between gap-2 ${value?.function === entry.name ? 'bg-[#303b47]' : ''}`}>
+      <span className="text-xs text-[#c5ccd3]">{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span>
+    </button>)}
+  </div>;
+}
+
 function ScriptGroupReferenceField({ kind, value, gameData, onChange }) {
-	const [open, setOpen] = useState(false);
-	const [query, setQuery] = useState('');
-	const dataType = { unitGroupRef:'unitGroup', itemGroupRef:'itemGroup', unitTypeGroupRef:'unitTypeGroup', itemTypeGroupRef:'itemTypeGroup', playerGroupRef:'playerGroup' }[kind];
-	const label = { unitGroupRef:'Unit group', itemGroupRef:'Item group', unitTypeGroupRef:'Unit type group', itemTypeGroupRef:'Item type group', playerGroupRef:'Player group' }[kind];
-	const options = variableReferenceOptions(dataType, gameData);
-	const selectedId = value?.function === 'getVariable' ? value.variableName : '';
-	const selected = options.find(o => o.id === selectedId);
-	const q = query.trim().toLowerCase();
-	const filtered = options.filter(o => !q || o.name.toLowerCase().includes(q) || o.id.toLowerCase().includes(q));
-	return <div className="relative min-w-0"><button type="button" onClick={() => setOpen(v=>!v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee]"><span className="truncate">{selected?.name || (selectedId ? selectedId : `Choose ${label.toLowerCase()}...`)}</span><ChevronDown size={11}/></button>{open && <div className="absolute z-[95] left-0 top-full mt-1 w-80 max-h-80 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl"><div className="p-2 border-b border-[#3d4a57]"><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder={`Search ${label.toLowerCase()}...`} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none"/></div><div className="max-h-60 overflow-y-auto p-1">{filtered.map(o=><button key={o.id} type="button" onClick={()=>{setOpen(false);setQuery('');onChange({function:'getVariable',variableName:o.id});}} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588]">{o.id}</div></button>)}{!filtered.length&&<div className="px-2 py-4 text-xs text-[#637588] italic">No matching groups.</div>}</div></div>}</div>;
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const dataType = { unitGroupRef:'unitGroup', itemGroupRef:'itemGroup', unitTypeGroupRef:'unitTypeGroup', itemTypeGroupRef:'itemTypeGroup', playerGroupRef:'playerGroup', regionGroupRef:'regionGroup' }[kind];
+  const label = { unitGroupRef:'Unit group', itemGroupRef:'Item group', unitTypeGroupRef:'Unit type group', itemTypeGroupRef:'Item type group', playerGroupRef:'Player group', regionGroupRef:'Region group', entityGroupRef:'Entity group', projectileGroupRef:'Projectile group' }[kind] || readableType(kind);
+  const options = dataType ? variableReferenceOptions(dataType, gameData) : [];
+  const selectedId = value?.function === 'getVariable' ? value.variableName : '';
+  const selected = options.find(o => o.id === selectedId);
+  const selectedLabel = selected?.name || (value?.function ? functionDisplayName(value.function) : (selectedId ? selectedId : `Choose ${label.toLowerCase()}...`));
+  const q = query.trim().toLowerCase();
+  const filtered = options.filter(o => !q || o.name.toLowerCase().includes(q) || o.id.toLowerCase().includes(q));
+  return <div className="relative min-w-0 flex items-center gap-1">
+    <button type="button" onClick={() => setOpen(v=>!v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee]"><span className="truncate">{selectedLabel}</span><ChevronDown size={11}/></button>
+    <ScriptCompatibleFunctionPicker kind={kind} value={value} gameData={gameData} onChange={onChange} />
+    {open && <div className="absolute z-[95] left-0 top-full mt-1 w-80 max-h-96 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
+      <div className="p-2 border-b border-[#3d4a57]"><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder={`Search ${label.toLowerCase()}...`} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none"/></div>
+      <div className="max-h-80 overflow-y-auto p-1">
+        <ScriptCompatibleFunctionList kind={kind} value={value} gameData={gameData} onChange={(next) => { onChange(next); setOpen(false); setQuery(''); }} />
+        {filtered.map(o=><button key={o.id} type="button" onClick={()=>{setOpen(false);setQuery('');onChange({function:'getVariable',variableName:o.id});}} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588]">{o.id}</div></button>)}
+        {!filtered.length && dataType && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching groups.</div>}
+      </div>
+    </div>}
+  </div>;
 }
 
 function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
@@ -1662,10 +1727,11 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 	const filtered = allOptions.filter(([, label, group, rawId]) => { const q = query.trim().toLowerCase(); return !q || label.toLowerCase().includes(q) || group.toLowerCase().includes(q) || String(rawId || '').toLowerCase().includes(q); });
 	const selectedLabel = selected?.[1] || (value && typeof value === 'object' ? describeValue(value, gameData) : (value || 'Choose reference...'));
 	return <div className="relative min-w-0">
-		<button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selectedLabel}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
+		<button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selectedLabel}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button><ScriptCompatibleFunctionPicker kind={kind} value={value} gameData={gameData} onChange={onChange} />
 		{open && <div className="absolute z-[90] left-0 top-full mt-1 w-72 max-h-80 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search references..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div className="max-h-60 overflow-y-auto p-1">
+				<ScriptCompatibleFunctionList kind={kind} value={value} gameData={gameData} onChange={(next) => { onChange(next); setOpen(false); setQuery(''); }} />
 				{filtered.map(([id, label, group, rawId]) => <button key={id} type="button" onClick={() => { const fn = id.startsWith('variable:') ? { function: 'getVariable', variableName: rawId || id.slice(9) } : runtimeReferenceFunction(id); setOpen(false); setQuery(''); onChange(fn || id); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[10px] text-[#637588]">{group}</div></button>)}
 				<button type="button" onClick={() => { setOpen(false); setQuery(''); }} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48] text-xs text-[#8291a1]">Keep raw value</button>
 			</div>
@@ -1676,7 +1742,7 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 function ScriptFieldInput({ kind, value, gameData, onChange }) {
 	if (kind === 'positionExpr') return <ScriptPositionEditor value={value} gameData={gameData} onChange={onChange} />;
 	if (['unitTypeRef','itemTypeRef','playerTypeRef','projectileTypeRef'].includes(kind)) return <ScriptTypedReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
-	if (['unitGroupRef','itemGroupRef','unitTypeGroupRef','itemTypeGroupRef','playerGroupRef'].includes(kind)) return <ScriptGroupReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
+	if (['unitGroupRef','itemGroupRef','unitTypeGroupRef','itemTypeGroupRef','playerGroupRef','entityGroupRef','projectileGroupRef','regionGroupRef'].includes(kind)) return <ScriptGroupReferenceField kind={kind} value={value} gameData={gameData} onChange={onChange} />;
 	if (kind === 'regionRef') {
 		if (value && typeof value === 'object' && value.function && value.function !== 'getVariable') return <ScriptExpressionInput value={value} gameData={gameData} expectedKind={kind} onChange={onChange} />;
 		return <ScriptRegionField value={value} gameData={gameData} onChange={onChange} />;
@@ -1837,6 +1903,26 @@ function defaultConditionOperand(type) {
 	if (type === 'region') return { function: 'getVariable', variableName: '' };
 	return null;
 }
+function ScriptConditionLiteralPicker({ value, operandType, gameData, onChange, onClose }) {
+	const [functionOpen, setFunctionOpen] = useState(false);
+	const commit = (next) => { onChange(next); onClose(); };
+	const isBoolean = operandType === 'boolean';
+	const isNumber = operandType === 'number';
+	const isString = operandType === 'string';
+	const label = isBoolean ? String(value === true) : isNumber ? String(typeof value === 'number' ? value : 0) : String(value ?? '');
+	return <div className="absolute z-[90] left-0 top-full mt-1 w-72 rounded-lg border border-[#48596a] bg-[#20272e] shadow-2xl p-1.5">
+		<div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">Value</div>
+		{isBoolean && <div className="flex gap-1 p-1"><button type="button" onClick={() => commit(true)} className={`flex-1 px-2 py-1.5 rounded border text-xs ${value === true ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#c5ccd3] hover:bg-[#323d48]'}`}>true</button><button type="button" onClick={() => commit(false)} className={`flex-1 px-2 py-1.5 rounded border text-xs ${value !== true ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#c5ccd3] hover:bg-[#323d48]'}`}>false</button></div>}
+		{isNumber && <div className="p-1"><input autoFocus type="number" value={typeof value === 'number' ? value : 0} onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))} onKeyDown={(e) => { if (e.key === 'Enter') onClose(); }} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none focus:border-[#85B7EB]" /></div>}
+		{isString && <div className="p-1"><input autoFocus type="text" value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onClose(); }} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none focus:border-[#85B7EB]" /></div>}
+		{!isBoolean && !isNumber && !isString && <div className="px-2 py-2 text-[10px] text-[#637588]">Choose a reference or function below.</div>}
+		<div className="border-t border-[#3d4a57] mt-1 pt-1">
+			<button type="button" onClick={() => setFunctionOpen((v) => !v)} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#AFA9EC] hover:bg-[#323d48] flex items-center justify-between"><span>Choose function / expression</span><ChevronDown size={11} className={functionOpen ? 'rotate-180' : ''} /></button>
+			{functionOpen && <div className="mt-1"><ScriptValuePicker expectedKind={operandType} value={value} gameData={gameData} onChange={(next) => { onChange(next); onClose(); }} onClose={() => setFunctionOpen(false)} /></div>}
+		</div>
+	</div>;
+}
+
 function ScriptTypedValueEditor({ value, operandType, gameData, onChange }) {
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const refKind = { region: 'regionRef', unit: 'unitRef', item: 'itemRef', projectile: 'projectileRef', player: 'playerRef', entity: 'entityRef', unitType: 'unitTypeRef', itemType: 'itemTypeRef', playerType: 'playerTypeRef', projectileType: 'projectileTypeRef', unitGroup: 'unitGroupRef', itemGroup: 'itemGroupRef', unitTypeGroup: 'unitTypeGroupRef', itemTypeGroup: 'itemTypeGroupRef', playerGroup: 'playerGroupRef', state: 'stateId', attributeType: 'attributeId' }[operandType];
@@ -1846,9 +1932,7 @@ function ScriptTypedValueEditor({ value, operandType, gameData, onChange }) {
 		{pickerOpen && <ScriptValuePicker expectedKind={operandType} value={value} gameData={gameData} onChange={(next) => { onChange(next); setPickerOpen(false); }} onClose={() => setPickerOpen(false)} />}
 	</div>;
 	if (value && typeof value === 'object') return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} expectedKind={operandType} />;
-	if (operandType === 'boolean') return <ScriptExpressionInput value={typeof value === 'boolean' ? value : false} gameData={gameData} onChange={onChange} expectedKind="boolean" />;
-	if (operandType === 'number') return <ScriptExpressionInput value={typeof value === 'number' ? value : 0} gameData={gameData} onChange={onChange} expectedKind="number" />;
-	if (operandType === 'string') return <ScriptExpressionInput value={typeof value === 'string' ? value : ''} gameData={gameData} onChange={onChange} expectedKind="string" />;
+	if (operandType === 'boolean' || operandType === 'number' || operandType === 'string') return <div className="relative inline-flex min-w-0"><button type="button" onClick={() => setPickerOpen((v) => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{operandType === 'boolean' ? String(value === true) : operandType === 'number' ? String(typeof value === 'number' ? value : 0) : String(value ?? '')}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>{pickerOpen && <ScriptConditionLiteralPicker value={value} operandType={operandType} gameData={gameData} onChange={onChange} onClose={() => setPickerOpen(false)} />}</div>;
 	return <ScriptExpressionInput value={value} gameData={gameData} onChange={onChange} expectedKind={operandType} />;
 }
 function ScriptConditionEditor({ value, gameData, onChange }) {
@@ -2009,11 +2093,11 @@ const SCRIPT_ACTION_FIELD_KIND_OVERRIDES = {
 	forAllUnits: { unitGroup: 'unitGroupRef' },
 	forAllItems: { itemGroup: 'itemGroupRef' },
 	forAllPlayers: { playerGroup: 'playerGroupRef' },
-	forAllEntities: { entityGroup: 'entityRef' },
+	forAllEntities: { entityGroup: 'entityGroupRef' },
 	forAllUnitTypes: { unitTypeGroup: 'unitTypeGroupRef' },
 	forAllItemTypes: { itemTypeGroup: 'itemTypeGroupRef' },
-	forAllProjectiles: { projectileGroup: 'valueExpr' },
-	forAllRegions: { regionGroup: 'regionRef' },
+	forAllProjectiles: { projectileGroup: 'projectileGroupRef' },
+	forAllRegions: { regionGroup: 'regionGroupRef' },
 };
 
 function scriptActionFieldKind(actionType, key, fallback = 'valueExpr') {
