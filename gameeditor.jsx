@@ -461,7 +461,6 @@ function applyScriptOp(script, path, operation, payload) {
     if (node && target) {
       const [, , groupKey, , defaultGroup] = target;
       const next = { ...node, type: payload };
-      // Remove every for-all range field, then install the one required by the new loop type.
       for (const [, , oldGroupKey] of FOR_ALL_ACTION_TYPES) delete next[oldGroupKey];
       next[groupKey] = deepClone(defaultGroup);
       parent[lastKey] = next;
@@ -1315,10 +1314,6 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	const expected = String(expectedKind || 'valueExpr');
 	const variableNames = Object.keys(gameData?.data?.variables || {}).sort();
 	const functionVocabulary = getFunctionVocabulary(gameData);
-	// These functions are intentionally available from the general value picker,
-	// regardless of the value category currently being edited.  They are not
-	// filtered by the expected return kind because the editor is a script builder,
-	// not a strict static type checker.
 	const generalFunctionNames = new Set(SCRIPT_GENERAL_FUNCTIONS);
 	const generalFunctionEntries = functionVocabulary.filter((entry) => generalFunctionNames.has(entry.name));
 	const allowed = (entry) => {
@@ -1442,10 +1437,31 @@ function getScriptReferenceInfo(kind, gameData) {
 function scriptReferenceOptions(kind, gameData) {
 	const info = getScriptReferenceInfo(kind, gameData);
 	if (!info) return [];
-	return Object.entries(info.collection || {}).map(([id, value]) => ({
+	const entries = new Map(Object.entries(info.collection || {}).map(([id, value]) => [id, {
 		id,
 		name: value?.name || value?.folderName || value?.displayName || id,
-	})).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+		source: 'global',
+	}]));
+	
+	if (kind === 'stateId') {
+		for (const collectionKey of ['unitTypes', 'itemTypes', 'projectileTypes']) {
+			for (const [entityId, entity] of Object.entries(gameData?.data?.[collectionKey] || {})) {
+				for (const [stateId, state] of Object.entries(entity?.states || {})) {
+					const entityName = entity?.name || entityId;
+					const stateName = state?.name || stateId;
+					const existing = entries.get(stateId);
+					if (!existing) {
+						entries.set(stateId, { id: stateId, name: `${stateName} — ${entityName}`, source: 'entity' });
+					} else if (existing.source === 'global' && existing.name === stateId) {
+						entries.set(stateId, { ...existing, name: `${stateName} — ${entityName}` });
+					} else if (existing.source === 'entity' && !existing.name.includes(` — ${entityName}`)) {
+						entries.set(stateId, { ...existing, name: `${stateName} — multiple entities` });
+					}
+				}
+			}
+		}
+	}
+	return [...entries.values()].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 function ScriptReferenceField({ kind, value, gameData, onChange }) {
