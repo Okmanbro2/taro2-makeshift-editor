@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createPortal } from 'react-dom';
+import { createPortal } from 'https://esm.sh/react-dom@18?external=react';
 import { Upload, Download, Plus, Trash2, Search, Copy, Clipboard, ClipboardPaste, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2, Paintbrush, PaintBucket, Eraser, Move, Eye, EyeOff, ScanSearch } from 'lucide-react';
 
 const ENTITY_TABS = [
