@@ -23,7 +23,6 @@ const GROUP_TABS = [
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
-
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
 	let output = '';
