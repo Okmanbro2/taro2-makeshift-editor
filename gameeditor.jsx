@@ -1444,8 +1444,17 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 		return entry && (isGeneral || allowed(entry)) && (!q || functionDisplayName(name).toLowerCase().includes(q) || name.toLowerCase().includes(q) || scriptFunctionSourceLabel(name).toLowerCase().includes(q));
 	};
 	const generalFunctions = generalFunctionEntries.filter((entry) => !q || functionDisplayName(entry.name).toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
-	const quickGroups = SCRIPT_VALUE_GROUPS.map((group) => ({ ...group, functions: group.functions.filter((name) => matches(name)) })).filter((group) => group.functions.length);
-	const otherFunctions = functionVocabulary.filter((entry) => !generalFunctionNames.has(entry.name) && !SCRIPT_VALUE_GROUPS.some((g) => g.functions.includes(entry.name)) && matches(entry.name));
+	const alreadyListed = new Set(generalFunctions.map((entry) => entry.name));
+	const quickGroups = SCRIPT_VALUE_GROUPS.map((group) => {
+		const functions = [];
+		for (const name of group.functions) {
+			if (alreadyListed.has(name) || !matches(name)) continue;
+			alreadyListed.add(name);
+			functions.push(name);
+		}
+		return { ...group, functions };
+	}).filter((group) => group.functions.length);
+	const otherFunctions = functionVocabulary.filter((entry) => !alreadyListed.has(entry.name) && matches(entry.name));
 	const menu = <div ref={menuRef} style={portalPosition ? { position: 'fixed', zIndex: 2147483000, left: portalPosition.left, top: portalPosition.top, width: portalPosition.width, maxHeight: portalPosition.maxHeight } : undefined} className={portalPosition ? 'overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-lg shadow-2xl' : 'absolute z-[80] left-0 top-full mt-1 w-[360px] max-h-[340px] overflow-hidden bg-[#20272e] border border-[#48596a] rounded-lg shadow-2xl'}>
 		<div className="p-2 border-b border-[#3d4a57]">
 			<div className="flex items-center gap-2"><Search size={13} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="What value do you want?" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none" /><button type="button" onClick={onClose} className="text-[#637588] hover:text-[#c5ccd3]"><X size={13} /></button></div>
@@ -1837,7 +1846,7 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
     }
     setOpen((v) => !v);
   };
-  const available = getFunctionVocabulary(gameData);
+  const available = [...new Map(getFunctionVocabulary(gameData).map((entry) => [entry.name, entry])).values()];
   const currentName = value?.function;
   const q = query.trim().toLowerCase();
   const ownerChoices = [
@@ -1861,7 +1870,7 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
 }
 
 function ScriptCompatibleFunctionList({ kind, value, gameData, onChange, closeAfterSelect = false }) {
-  const available = getFunctionVocabulary(gameData);
+  const available = [...new Map(getFunctionVocabulary(gameData).map((entry) => [entry.name, entry])).values()];
   if (!available.length) return null;
   return <div className="border-t border-[#3d4a57] mt-1 pt-1">
     <div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>
