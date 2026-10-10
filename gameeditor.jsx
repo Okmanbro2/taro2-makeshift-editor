@@ -24,9 +24,6 @@ const GROUP_TABS = [
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
 
-// Repair raw ASCII control characters that appear inside malformed JSON strings.
-// A backslash immediately before a control character must not cause that character
-// to bypass sanitization. Preserve both characters semantically by escaping each.
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
 	let output = '';
@@ -46,7 +43,6 @@ function sanitizeJsonControlCharacters(input) {
 		if (ch === '\\') {
 			const next = source[i + 1];
 			if (next !== undefined && next.charCodeAt(0) < 0x20) {
-				// Encode the literal backslash, then encode the raw control character.
 				output += '\\\\' + '\\u' + next.charCodeAt(0).toString(16).padStart(4, '0');
 				i++;
 			} else {
@@ -1995,8 +1991,6 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKi
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [activeField, setActiveField] = useState(null);
 	const current = getFunctionEntry(gameData, value?.function);
-	// Always normalize and render typed argument selectors. Hiding these behind an
-	// advanced toggle made values such as getOwner.entity appear uneditable.
 	const schema = normalizeScriptFunctionSchema(value?.function, current?.schema || []);
 	const extraKeys = Object.keys(value || {}).filter((k) => k !== 'function' && !schema.some((f) => f.key === k));
 	const fields = {
