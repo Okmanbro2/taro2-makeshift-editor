@@ -23,7 +23,6 @@ const GROUP_TABS = [
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
-
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
 	let output = '';
@@ -1105,7 +1104,7 @@ function getFunctionVocabulary(gameData) {
 			example: { function: name, ...Object.fromEntries((Array.isArray(schema) ? schema : []).map((field) => [field.key, defaultValueForScriptField(field.kind)])) },
 		});
 	}
-	
+
 	for (const [name, fieldKind] of [['getOwner', 'entityRef'], ['getOwnerOfItem', 'itemRef']]) {
 		if (!byName.has(name)) {
 			const schema = [{ key: 'entity', kind: fieldKind }];
@@ -1792,7 +1791,7 @@ const SCRIPT_FUNCTIONS_BY_RESULT_KIND = {
   entityGroupRef: ['allEntities','entitiesInRegion','entitiesBetweenTwoPositions','entitiesInRegionInFrontOfEntityAtDistance','entitiesCollidingWithLastRaycast'],
   unitTypeGroupRef: ['allUnitTypesInGame'],
   itemTypeGroupRef: ['allItemTypesInGame'],
-  regionGroupRef: ['allRegions'],
+  regionGroupRef: ['allRegions'], // collection type: only allRegions returns a region collection; dynamicRegion/getEntireMapRegion are single regions
   unitTypeRef: ['selectedUnitType','getUnitType','getUnitTypeOfUnit','getRandomUnitTypeFromUnitTypeGroup'],
   itemTypeRef: ['selectedItemType','getItemType','getItemTypeOfItem','getRandomItemTypeFromItemTypeGroup'],
   projectileTypeRef: ['getProjectileTypeOfProjectile'],
@@ -1801,6 +1800,7 @@ const SCRIPT_FUNCTIONS_BY_RESULT_KIND = {
 
 function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const [menuPosition, setMenuPosition] = useState(null);
   const triggerRef = useRef(null);
   const toggleMenu = () => {
