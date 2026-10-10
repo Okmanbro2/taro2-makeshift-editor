@@ -24,6 +24,46 @@ const GROUP_TABS = [
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
 
+function sanitizeJsonControlCharacters(input) {
+	const source = String(input ?? '');
+	let output = '';
+	let inString = false;
+	for (let i = 0; i < source.length; i++) {
+		const ch = source[i];
+		if (!inString) {
+			output += ch;
+			if (ch === '"') inString = true;
+			continue;
+		}
+		if (ch === '"') {
+			output += ch;
+			continue;
+		}
+		if (ch === '\\') {
+			const next = source[i + 1];
+			if (next !== undefined && next.charCodeAt(0) < 0x20) {
+				output += '\\\\' + '\\u' + next.charCodeAt(0).toString(16).padStart(4, '0');
+				i++;
+			} else {
+				output += ch;
+				if (next !== undefined) {
+					output += next;
+					i++;
+				}
+			}
+			continue;
+		}
+		const code = ch.charCodeAt(0);
+		if (code < 0x20) {
+			output += '\\u' + code.toString(16).padStart(4, '0');
+		} else {
+			output += ch;
+		}
+	}
+	return output;
+}
+
+
 const DEFAULT_UNIT_CONTROLS = {
 	movementMethod: 'velocity',
 	movementControlScheme: 'wasd',
@@ -2255,7 +2295,7 @@ function serializeScriptNodeForClipboard(node) {
 
 function parseScriptNodeFromClipboard(text) {
 	try {
-		const parsed = JSON.parse(text);
+		const parsed = JSON.parse(sanitizeJsonControlCharacters(text));
 		if (parsed?.taroEditorClipboard === 1 && parsed?.kind === 'scriptNode' && parsed.node && typeof parsed.node === 'object' && !Array.isArray(parsed.node)) return parsed.node;
 		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && typeof parsed.type === 'string') return parsed;
 	} catch (_) {}
@@ -3156,7 +3196,7 @@ function confirmLeaveEntityEditor() {
 		if (!scriptDraft) return { value: null, error: null };
 		if (!scriptDraft.bodyText.trim()) return { value: { triggers: [], conditions: [], actions: [] }, error: null };
 		try {
-			return { value: JSON.parse(scriptDraft.bodyText), error: null };
+			return { value: JSON.parse(sanitizeJsonControlCharacters(scriptDraft.bodyText)), error: null };
 		} catch (e) {
 			return { value: null, error: e.message };
 		}
@@ -3194,7 +3234,7 @@ function confirmLeaveEntityEditor() {
 		const reader = new FileReader();
 		reader.onload = (evt) => {
 			try {
-				const parsed = JSON.parse(evt.target.result);
+				const parsed = JSON.parse(sanitizeJsonControlCharacters(evt.target.result));
 				if (!parsed?.data) throw new Error("This doesn't look like a game.json - no top-level \"data\" field found.");
 				normalizeFolders(parsed);
 				normalizeItemAttributeVisibility(parsed);
@@ -3758,7 +3798,7 @@ function confirmLeaveEntityEditor() {
 		const text = script._editorBodyText;
 		if (typeof text !== 'string') return;
 		try {
-			const body = text.trim() ? JSON.parse(text) : { triggers: [], conditions: [], actions: [] };
+			const body = text.trim() ? JSON.parse(sanitizeJsonControlCharacters(text)) : { triggers: [], conditions: [], actions: [] };
 			setDraft((d) => ({
 				...d,
 				scripts: {
@@ -3949,7 +3989,7 @@ function confirmLeaveEntityEditor() {
 	function saveDraft() {
 		let restParsed;
 		try {
-			restParsed = advancedText.trim() ? JSON.parse(advancedText) : {};
+			restParsed = advancedText.trim() ? JSON.parse(sanitizeJsonControlCharacters(advancedText)) : {};
 		} catch (err) {
 			setAdvancedError('Advanced JSON is invalid: ' + err.message);
 			return;
@@ -3972,7 +4012,7 @@ function confirmLeaveEntityEditor() {
 		};
 		for (const [key, value] of Object.entries(draft.scripts || {})) {
 			if (typeof value?._editorBodyText === 'string') {
-				try { JSON.parse(value._editorBodyText.trim() || '{\"triggers\":[],\"conditions\":[],\"actions\":[]}'); }
+				try { JSON.parse(sanitizeJsonControlCharacters(value._editorBodyText.trim() || '{\"triggers\":[],\"conditions\":[],\"actions\":[]}')); }
 				catch (err) { setAdvancedError(`Embedded script "${value?.name || key}" is invalid: ${err.message}`); return; }
 			}
 		}
@@ -3994,7 +4034,7 @@ function confirmLeaveEntityEditor() {
 				const { _editorBodyText, ...cleanScript } = value || {};
 				if (typeof _editorBodyText === 'string') {
 					try {
-						const parsedBody = _editorBodyText.trim() ? JSON.parse(_editorBodyText) : { triggers: [], conditions: [], actions: [] };
+						const parsedBody = _editorBodyText.trim() ? JSON.parse(sanitizeJsonControlCharacters(_editorBodyText)) : { triggers: [], conditions: [], actions: [] };
 						return [key, { ...parsedBody, key: cleanScript.key ?? key, name: cleanScript.name || '', parent: cleanScript.parent ?? null, order: cleanScript.order ?? 0 }];
 					} catch (err) { throw new Error(`Embedded script "${cleanScript.name || key}" is invalid: ${err.message}`); }
 				}
@@ -4334,7 +4374,7 @@ function confirmLeaveEntityEditor() {
 	function saveScriptDraft() {
 		let body;
 		try {
-			body = scriptDraft.bodyText.trim() ? JSON.parse(scriptDraft.bodyText) : { triggers: [], conditions: [], actions: [] };
+			body = scriptDraft.bodyText.trim() ? JSON.parse(sanitizeJsonControlCharacters(scriptDraft.bodyText)) : { triggers: [], conditions: [], actions: [] };
 		} catch (err) {
 			setScriptBodyError('Script JSON is invalid: ' + err.message);
 			return;
@@ -5859,7 +5899,7 @@ function confirmLeaveEntityEditor() {
 						const script = draft.scripts[selectedEntityScriptKey];
 						const raw = script._editorBodyText ?? JSON.stringify((({ _editorBodyText, ...body }) => body)(script), null, 2);
 						let parsed = null; let parseError = null;
-						try { parsed = raw.trim() ? JSON.parse(raw) : { triggers: [], conditions: [], actions: [] }; } catch (e) { parseError = e.message; }
+						try { parsed = raw.trim() ? JSON.parse(sanitizeJsonControlCharacters(raw)) : { triggers: [], conditions: [], actions: [] }; } catch (e) { parseError = e.message; }
 						return <div className="bg-[#323d48] border border-[#3d4a57] rounded-md p-2.5">
 							<div className="flex items-center justify-between gap-2 mb-2"><div className="text-xs text-[#8291a1]">{script.name || selectedEntityScriptKey}{script.isProtected === true && <span className="ml-2 text-[9px] text-amber-400">Protected</span>}</div><div className="flex items-center gap-2">{entityScriptViewMode === 'tree' && <span className="text-[10px] text-[#637588]">Editable tree</span>}<button type="button" disabled={script.isProtected === true} onClick={()=>deleteEntityScript(selectedEntityScriptKey)} className="px-2 py-1 rounded border border-red-900 text-[10px] text-red-300 disabled:opacity-30">Delete</button></div></div>
 							{entityScriptViewMode === 'tree' ? (
@@ -6236,7 +6276,7 @@ function confirmLeaveEntityEditor() {
 								<button type="button" onClick={()=>setAdvancedViewMode('raw')} className={`px-2 py-1 rounded text-[10px] ${advancedViewMode==='raw'?'bg-[#3d4a57] text-[#e1e6ea]':'text-[#8291a1]'}`}>Raw JSON</button>
 								<button type="button" onClick={()=>setAdvancedViewMode('tree')} className={`px-2 py-1 rounded text-[10px] ${advancedViewMode==='tree'?'bg-[#3d4a57] text-[#e1e6ea]':'text-[#8291a1]'}`}>Tree / arrays</button>
 							</div>
-							{advancedViewMode === 'raw' ? <textarea value={advancedText} onChange={(e) => setAdvancedText(e.target.value)} spellCheck={false} rows={14} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]" /> : (() => { try { const parsed = advancedText.trim() ? JSON.parse(advancedText) : {}; return <JsonTreeEditor value={parsed} onChange={(next) => setAdvancedText(JSON.stringify(next, null, 2))} pathLabel="advanced" />; } catch (e) { return <div className="text-xs text-red-300 border border-red-900 rounded p-2">Fix the JSON in Raw JSON view before using Tree / arrays.</div>; } })()}
+							{advancedViewMode === 'raw' ? <textarea value={advancedText} onChange={(e) => setAdvancedText(e.target.value)} spellCheck={false} rows={14} className="w-full bg-[#323d48] border border-[#3d4a57] rounded-md p-3 text-xs font-mono text-[#c5ccd3] focus:outline-none focus:border-[#1a56da]" /> : (() => { try { const parsed = advancedText.trim() ? JSON.parse(sanitizeJsonControlCharacters(advancedText)) : {}; return <JsonTreeEditor value={parsed} onChange={(next) => setAdvancedText(JSON.stringify(next, null, 2))} pathLabel="advanced" />; } catch (e) { return <div className="text-xs text-red-300 border border-red-900 rounded p-2">Fix the JSON in Raw JSON view before using Tree / arrays.</div>; } })()}
 							{advancedError && <p className="text-xs text-red-400 mt-1">{advancedError}</p>}
 						</details>
 											</>
@@ -7265,7 +7305,7 @@ function confirmLeaveEntityEditor() {
 					const current = draft?.scripts?.[selectedEntityScriptKey];
 					if (!current) return null;
 					const raw = current._editorBodyText ?? JSON.stringify((({ _editorBodyText, ...body }) => body)(current), null, 2);
-					try { return raw.trim() ? JSON.parse(raw) : { triggers: [], conditions: [], actions: [] }; } catch { return null; }
+					try { return raw.trim() ? JSON.parse(sanitizeJsonControlCharacters(raw)) : { triggers: [], conditions: [], actions: [] }; } catch { return null; }
 				})();
 				const viewerTitle = isGlobal ? (scriptDraft?.name || 'Script viewer') : (draft?.scripts?.[selectedEntityScriptKey]?.name || 'Entity script viewer');
 				return <div className="fixed inset-0 z-50 bg-black/70 p-3 md:p-6">
