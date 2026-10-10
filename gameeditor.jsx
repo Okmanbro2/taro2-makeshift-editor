@@ -24,9 +24,6 @@ const GROUP_TABS = [
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
 
-// Repair raw ASCII control characters that appear inside malformed JSON strings.
-// A backslash immediately before a control character must not cause that character
-// to bypass sanitization. Preserve both characters semantically by escaping each.
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
 	let output = '';
@@ -46,7 +43,6 @@ function sanitizeJsonControlCharacters(input) {
 		if (ch === '\\') {
 			const next = source[i + 1];
 			if (next !== undefined && next.charCodeAt(0) < 0x20) {
-				// Encode the literal backslash, then encode the raw control character.
 				output += '\\\\' + '\\u' + next.charCodeAt(0).toString(16).padStart(4, '0');
 				i++;
 			} else {
@@ -1110,8 +1106,6 @@ function getFunctionVocabulary(gameData) {
 		});
 	}
 
-	// Always expose ownership helpers in the reference finder, even when no
-	// existing script uses them and a source schema was omitted.
 	for (const [name, fieldKind] of [['getOwner', 'entityRef'], ['getOwnerOfItem', 'itemRef']]) {
 		if (!byName.has(name)) {
 			const schema = [{ key: 'entity', kind: fieldKind }];
@@ -1254,7 +1248,6 @@ const SCRIPT_FUNCTION_FIELD_KIND_OVERRIDES = {
 };
 
 function scriptFunctionFieldKind(functionName, key, fallback = 'valueExpr') {
-	// Ownership/group expressions need reference pickers, not a generic expression slot.
 	if (functionName === 'allItemsOwnedByUnit' && key === 'entity') return 'entityRef';
 	if (functionName === 'allUnitsOwnedByPlayer' && key === 'player') return 'playerRef';
 	if (functionName === 'dynamicRegion' && ['x', 'y', 'width', 'height'].includes(key)) return 'numberExpr';
@@ -1273,8 +1266,7 @@ function defaultFunctionExpression(entry) {
 	if (!entry) return { function: 'undefinedValue' };
 	if (entry.name === 'calculate') return { function: 'calculate', items: [{ operator: '+' }, 0, 0] };
 	if (entry.name === 'getOwner') return { function: 'getOwner', entity: { function: 'thisEntity' } };
-	if (entry.name === 'getOwnerOfItem') return { function: 'getOwnerOfItem', entity: { function: 'getTriggeringItem' } };
-	// Give common parameterized expressions useful, editable starting values instead of null/'nothing'.
+	if (entry.name === 'getOwnerOfItem') return { function: 'getOwnerOfItem', entity: { function: 'getTriggeringItem' } 
 	if (entry.name === 'dynamicRegion') return { function: 'dynamicRegion', x: 0, y: 0, width: 1, height: 1 };
 	if (entry.name === 'allItemsOwnedByUnit') return { function: 'allItemsOwnedByUnit', entity: { function: 'thisEntity' } };
 	if (entry.name === 'allUnitsOwnedByPlayer') return { function: 'allUnitsOwnedByPlayer', player: { function: 'getTriggeringPlayer' } };
@@ -1396,8 +1388,6 @@ function scriptSearchMatches(queryText, ...fields) {
 	const query = String(queryText || '').trim().toLowerCase();
 	if (!query) return true;
 	const haystack = fields.filter(Boolean).join(' ').toLowerCase();
-	// Match each search word independently, so `owner of get` can find
-	// `Owner of triggering unit` whose underlying expression is getTriggeringUnit.
 	return query.split(/\s+/).every((token) => haystack.includes(token));
 }
 
@@ -1422,11 +1412,6 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	const functionVocabulary = getFunctionVocabulary(gameData);
 	const generalFunctionNames = new Set(SCRIPT_GENERAL_FUNCTIONS);
 	const generalFunctionEntries = functionVocabulary.filter((entry) => generalFunctionNames.has(entry.name));
-	// Expand owner helpers into concrete, searchable choices in this finder.
-	// These are expression presets, not new engine functions.
-	// Expand owner helpers into searchable, concrete expressions. Include the underlying
-	// engine function names in search text so queries such as `owner of get` work too.
-	// getOwner accepts an entity reference; getOwnerOfItem specifically accepts an item.
 	const ownerEntityReferences = [
 		['thisEntity', 'this entity', { function: 'thisEntity' }],
 		['selectedEntity', 'selected entity', { function: 'getSelectedEntity' }],
@@ -1829,7 +1814,7 @@ const SCRIPT_FUNCTIONS_BY_RESULT_KIND = {
   entityGroupRef: ['allEntities','entitiesInRegion','entitiesBetweenTwoPositions','entitiesInRegionInFrontOfEntityAtDistance','entitiesCollidingWithLastRaycast'],
   unitTypeGroupRef: ['allUnitTypesInGame'],
   itemTypeGroupRef: ['allItemTypesInGame'],
-  regionGroupRef: ['allRegions'], // Collection type: only allRegions returns a region collection; dynamicRegion/getEntireMapRegion are single regions
+  regionGroupRef: ['allRegions'], // collection type: only allRegions returns a region collection; dynamicRegion/getEntireMapRegion are single regions
   unitTypeRef: ['selectedUnitType','getUnitType','getUnitTypeOfUnit','getRandomUnitTypeFromUnitTypeGroup'],
   itemTypeRef: ['selectedItemType','getItemType','getItemTypeOfItem','getRandomItemTypeFromItemTypeGroup'],
   projectileTypeRef: ['getProjectileTypeOfProjectile'],
@@ -1852,8 +1837,6 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
     }
     setOpen((v) => !v);
   };
-  // Reference finder is a searchable catalog, not a result-kind whitelist.
-  // Keep every source-defined expression discoverable; each entry retains its source label.
   const available = getFunctionVocabulary(gameData);
   const currentName = value?.function;
   const q = query.trim().toLowerCase();
@@ -1878,8 +1861,6 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
 }
 
 function ScriptCompatibleFunctionList({ kind, value, gameData, onChange, closeAfterSelect = false }) {
-  // Match the main finder: don't hide source-defined expressions merely because
-  // this field's result-kind table has not been updated yet.
   const available = getFunctionVocabulary(gameData);
   if (!available.length) return null;
   return <div className="border-t border-[#3d4a57] mt-1 pt-1">
@@ -2082,8 +2063,6 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKi
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [activeField, setActiveField] = useState(null);
 	const current = getFunctionEntry(gameData, value?.function);
-	// Always normalize and render typed argument selectors. Hiding these behind an
-	// advanced toggle made values such as getOwner.entity appear uneditable.
 	const schema = normalizeScriptFunctionSchema(value?.function, current?.schema || []);
 	const extraKeys = Object.keys(value || {}).filter((k) => k !== 'function' && !schema.some((f) => f.key === k));
 	const fields = {
@@ -2233,9 +2212,6 @@ function semanticScriptFieldKind(key, kind = 'valueExpr') {
 	if (kind !== 'valueExpr') return kind;
 	const k = String(key || '');
 	const lower = k.toLowerCase();
-	// ParameterComponent schemas often label arguments generically as valueExpr.
-	// Recover the intended editor from the parameter's semantic name so every
-	// function gets editable, typed arguments without per-function UI code.
 	if (/^(position|positiona|positionb|targetposition|spawnposition|mouseposition|startposition|endposition)$/.test(lower)) return 'positionExpr';
 	if (/^(region|regiona|regionb|targetregion|source region)$/.test(lower)) return 'regionRef';
 	if (/^(unitgroup|unitsgroup|unitgroupref)$/.test(lower)) return 'unitGroupRef';
@@ -2447,8 +2423,6 @@ const FOR_ALL_ACTION_TYPES = [
   ['forAllUnitTypes', 'For all unit types', 'unitTypeGroup', 'unitTypeGroupRef', { function: 'allUnitTypesInGame' }],
   ['forAllItemTypes', 'For all item types', 'itemTypeGroup', 'itemTypeGroupRef', { function: 'allItemTypesInGame' }],
   ['forAllProjectiles', 'For all projectiles', 'projectileGroup', 'projectileGroupRef', { function: 'allProjectiles' }],
-  // The loop consumes an array of regions. `dynamicRegion` is a single region
-  // object, so it is deliberately not used as the default collection expression.
   ['forAllRegions', 'For all regions', 'regionGroup', 'regionGroupRef', { function: 'allRegions' }],
 ];
 
