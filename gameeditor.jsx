@@ -23,6 +23,7 @@ const GROUP_TABS = [
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
+
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
 	let output = '';
@@ -1104,7 +1105,7 @@ function getFunctionVocabulary(gameData) {
 			example: { function: name, ...Object.fromEntries((Array.isArray(schema) ? schema : []).map((field) => [field.key, defaultValueForScriptField(field.kind)])) },
 		});
 	}
-
+	
 	for (const [name, fieldKind] of [['getOwner', 'entityRef'], ['getOwnerOfItem', 'itemRef']]) {
 		if (!byName.has(name)) {
 			const schema = [{ key: 'entity', kind: fieldKind }];
@@ -1389,17 +1390,24 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	const functionVocabulary = getFunctionVocabulary(gameData);
 	const generalFunctionNames = new Set(SCRIPT_GENERAL_FUNCTIONS);
 	const generalFunctionEntries = functionVocabulary.filter((entry) => generalFunctionNames.has(entry.name));
+	const ownerEntityReferences = [
+		['thisEntity', 'this entity', { function: 'thisEntity' }],
+		['selectedEntity', 'selected entity', { function: 'getSelectedEntity' }],
+		...getRuntimeReferenceOptions('unitRef').map(([id, label]) => [id, label.toLowerCase(), runtimeReferenceFunction(id)]),
+		...getRuntimeReferenceOptions('itemRef').map(([id, label]) => [id, label.toLowerCase(), runtimeReferenceFunction(id)]),
+		...getRuntimeReferenceOptions('projectileRef').map(([id, label]) => [id, label.toLowerCase(), runtimeReferenceFunction(id)]),
+	];
 	const ownerOptions = [
-		...getRuntimeReferenceOptions('unitRef').map(([id, label]) => ({
-			key: `owner-unit-${id}`, label: `Owner of ${label.toLowerCase()}`, source: 'part of Owner Of',
-			expression: { function: 'getOwner', entity: runtimeReferenceFunction(id) },
+		...ownerEntityReferences.filter(([, , expr]) => expr).map(([id, label, expr]) => ({
+			key: `owner-unit-${id}`, label: `Owner of ${label}`, searchText: `owner of ${label} getOwner ${expr.function || ''}`, source: 'part of Owner Of',
+			expression: { function: 'getOwner', entity: expr },
 		})),
 		...getRuntimeReferenceOptions('itemRef').map(([id, label]) => ({
-			key: `owner-item-${id}`, label: `Owner of ${label.toLowerCase()}`, source: 'part of Owner Of item',
+			key: `owner-item-${id}`, label: `Owner of item ${label.toLowerCase()}`, searchText: `owner of item ${label} getOwnerOfItem ${runtimeReferenceFunction(id)?.function || ''}`, source: 'part of Owner Of item',
 			expression: { function: 'getOwnerOfItem', entity: runtimeReferenceFunction(id) },
 		})),
 	];
-	const filteredOwnerOptions = ownerOptions.filter((option) => !q || option.label.toLowerCase().includes(q) || option.source.toLowerCase().includes(q));
+	const filteredOwnerOptions = ownerOptions.filter((option) => !q || option.label.toLowerCase().includes(q) || option.searchText.toLowerCase().includes(q) || option.source.toLowerCase().includes(q));
 	const allowed = (entry) => {
 		if (!entry) return false;
 		if (expected === 'positionExpr') return SCRIPT_POSITION_FUNCTIONS.has(entry.name);
@@ -1810,14 +1818,22 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
   const available = names.map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
   if (!available.length) return null;
   const currentName = value?.function;
+  const q = query.trim().toLowerCase();
+  const ownerChoices = [
+    ...getRuntimeReferenceOptions('unitRef').map(([id,label]) => ({ key:`owner-unit-${id}`, label:`Owner of ${label.toLowerCase()}`, source:'part of Owner Of', expression:{function:'getOwner',entity:runtimeReferenceFunction(id)}, search:`owner of ${label} getOwner ${runtimeReferenceFunction(id)?.function || ''}` })),
+    ...getRuntimeReferenceOptions('itemRef').map(([id,label]) => ({ key:`owner-item-${id}`, label:`Owner of item ${label.toLowerCase()}`, source:'part of Owner Of item', expression:{function:'getOwnerOfItem',entity:runtimeReferenceFunction(id)}, search:`owner of item ${label} getOwnerOfItem ${runtimeReferenceFunction(id)?.function || ''}` }))
+  ].filter(o => o.expression.entity && (!q || `${o.label} ${o.source} ${o.search}`.toLowerCase().includes(q)));
+  const filteredAvailable = available.filter(entry => !q || `${functionDisplayName(entry.name)} ${entry.name} ${scriptFunctionSourceLabel(entry.name)}`.toLowerCase().includes(q));
   return <div className="relative shrink-0">
     <button ref={triggerRef} type="button" title="Choose a function or expression" aria-expanded={open} onClick={toggleMenu} className={`px-1.5 py-1 rounded border text-[10px] ${open ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]'}`}><Zap size={11} /></button>
     {open && menuPosition && typeof document !== 'undefined' && createPortal(<div style={{ position: 'fixed', zIndex: 2147483000, left: menuPosition.left, top: menuPosition.top, width: menuPosition.width, maxHeight: menuPosition.maxHeight }} className="overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-md shadow-2xl">
-      <div className="px-2 py-1.5 border-b border-[#3d4a57] text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>
-      <div style={{ maxHeight: menuPosition.maxHeight - 36 }} className="overflow-y-auto p-1">
-        {available.map((entry) => <button key={entry.name} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); setOpen(false); }} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2 ${currentName === entry.name ? 'bg-[#303b47]' : ''}`}>
+      <div className="p-2 border-b border-[#3d4a57]"><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search functions and options..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none" /></div>
+      <div style={{ maxHeight: menuPosition.maxHeight - 68 }} className="overflow-y-auto p-1">
+        {ownerChoices.length > 0 && <><div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Ownership expressions</div>{ownerChoices.map(o=><button key={o.key} type="button" onClick={()=>{onChange(deepClone(o.expression));setOpen(false);setQuery('');}} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{o.label}</span><span className="text-[9px] text-[#637588] font-mono">{o.source}</span></button>)}</>}
+        {filteredAvailable.length > 0 && <><div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>{filteredAvailable.map((entry) => <button key={entry.name} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); setOpen(false); setQuery(''); }} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2 ${currentName === entry.name ? 'bg-[#303b47]' : ''}`}>
           <span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(entry.name)}</span>
-        </button>)}
+        </button>)}</>}
+        {!ownerChoices.length && !filteredAvailable.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values or functions.</div>}
       </div>
     </div>, document.body)}
   </div>;
@@ -2361,6 +2377,7 @@ function parseScriptNodeFromClipboard(text) {
 }
 
 const FOR_ALL_ACTION_TYPES = [
+  ['forAllElementsInObject', 'For all elements in object', 'object', 'valueExpr', { function: 'emptyObject' }],
   ['forAllUnits', 'For all units', 'unitGroup', 'unitGroupRef', { function: 'allUnits' }],
   ['forAllItems', 'For all items', 'itemGroup', 'itemGroupRef', { function: 'allItems' }],
   ['forAllPlayers', 'For all players', 'playerGroup', 'playerGroupRef', { function: 'allPlayers' }],
