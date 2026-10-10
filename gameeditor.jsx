@@ -22,7 +22,7 @@ const GROUP_TABS = [
 	{ key: 'itemTypeGroups', label: 'Item Type Groups', dataType: 'itemTypeGroup', collection: 'itemTypes' },
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
-const TILE_PX = 64;
+const TILE_PX = 64; 
 
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
@@ -1106,6 +1106,18 @@ function getFunctionVocabulary(gameData) {
 		});
 	}
 
+	for (const [name, fieldKind] of [['getOwner', 'entityRef'], ['getOwnerOfItem', 'itemRef']]) {
+		if (!byName.has(name)) {
+			const schema = [{ key: 'entity', kind: fieldKind }];
+			byName.set(name, {
+				name,
+				schema: normalizeScriptFunctionSchema(name, schema),
+				args: new Set(['entity']),
+				example: { function: name, entity: { function: fieldKind === 'itemRef' ? 'getTriggeringItem' : 'thisEntity' } },
+			});
+		}
+	}
+
 	function walk(value) {
 		if (Array.isArray(value)) return value.forEach(walk);
 		if (!value || typeof value !== 'object') return;
@@ -1389,7 +1401,7 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	const matches = (name) => {
 		const entry = functionVocabulary.find((x) => x.name === name);
 		const isGeneral = generalFunctionNames.has(name);
-		return entry && (isGeneral || allowed(entry)) && (!q || functionDisplayName(name).toLowerCase().includes(q) || name.toLowerCase().includes(q));
+		return entry && (isGeneral || allowed(entry)) && (!q || functionDisplayName(name).toLowerCase().includes(q) || name.toLowerCase().includes(q) || scriptFunctionSourceLabel(name).toLowerCase().includes(q));
 	};
 	const generalFunctions = generalFunctionEntries.filter((entry) => !q || functionDisplayName(entry.name).toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
 	const quickGroups = SCRIPT_VALUE_GROUPS.map((group) => ({ ...group, functions: group.functions.filter((name) => matches(name)) })).filter((group) => group.functions.length);
@@ -1793,7 +1805,7 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
       <div className="px-2 py-1.5 border-b border-[#3d4a57] text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>
       <div style={{ maxHeight: menuPosition.maxHeight - 36 }} className="overflow-y-auto p-1">
         {available.map((entry) => <button key={entry.name} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); setOpen(false); }} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2 ${currentName === entry.name ? 'bg-[#303b47]' : ''}`}>
-          <span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span>
+          <span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(entry.name)}</span>
         </button>)}
       </div>
     </div>, document.body)}
@@ -1807,7 +1819,7 @@ function ScriptCompatibleFunctionList({ kind, value, gameData, onChange, closeAf
   return <div className="border-t border-[#3d4a57] mt-1 pt-1">
     <div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>
     {available.map((entry) => <button key={entry.name} type="button" onClick={() => onChange(createFunctionValue(entry.name, gameData))} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48] flex items-center justify-between gap-2 ${value?.function === entry.name ? 'bg-[#303b47]' : ''}`}>
-      <span className="text-xs text-[#c5ccd3]">{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span>
+      <span className="text-xs text-[#c5ccd3]">{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(entry.name)}</span>
     </button>)}
   </div>;
 }
@@ -1834,7 +1846,7 @@ function ScriptGroupReferenceField({ kind, value, gameData, onChange }) {
     {open && menuPosition && typeof document !== 'undefined' && createPortal(<div style={{ position: 'fixed', zIndex: 2147483000, left: menuPosition.left, top: menuPosition.top, width: menuPosition.width, maxHeight: menuPosition.maxHeight }} className="overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-md shadow-2xl">
       <div className="p-2 border-b border-[#3d4a57]"><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder={`Search ${label.toLowerCase()} or functions...`} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none"/></div>
       <div className="max-h-80 overflow-y-auto p-1">
-        {filteredFunctions.length > 0 && <><div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>{filteredFunctions.map(entry => <button key={`fn-${entry.name}`} type="button" onClick={()=>choose(createFunctionValue(entry.name, gameData))} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47] flex items-center justify-between gap-2 ${value?.function === entry.name ? 'bg-[#303b47]' : ''}`}><span className="text-xs text-[#c5ccd3]">{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span></button>)}</>}
+        {filteredFunctions.length > 0 && <><div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>{filteredFunctions.map(entry => <button key={`fn-${entry.name}`} type="button" onClick={()=>choose(createFunctionValue(entry.name, gameData))} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47] flex items-center justify-between gap-2 ${value?.function === entry.name ? 'bg-[#303b47]' : ''}`}><span className="text-xs text-[#c5ccd3]">{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(entry.name)}</span></button>)}</>}
         {filtered.map(o=><button key={o.id} type="button" onClick={()=>choose({function:'getVariable',variableName:o.id})} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588]">{o.id}</div></button>)}
         {!filtered.length && !filteredFunctions.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching groups or functions.</div>}
       </div>
@@ -1880,7 +1892,7 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 		{open && menuPosition && typeof document !== 'undefined' && createPortal(<div style={{ position: 'fixed', zIndex: 2147483000, left: menuPosition.left, top: menuPosition.top, width: menuPosition.width, maxHeight: menuPosition.maxHeight }} className="overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search references or functions..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div style={{ maxHeight: Math.max(100, menuPosition.maxHeight - 56) }} className="overflow-y-auto p-1">
-				{filteredFunctions.length > 0 && <><div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>{filteredFunctions.map((entry) => <button key={`fn-${entry.name}`} type="button" onClick={() => choose(createFunctionValue(entry.name, gameData))} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47] flex items-center justify-between gap-2 ${value?.function === entry.name ? 'bg-[#303b47]' : ''}`}><span className="text-xs text-[#c5ccd3]">{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span></button>)}</>}
+				{filteredFunctions.length > 0 && <><div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>{filteredFunctions.map((entry) => <button key={`fn-${entry.name}`} type="button" onClick={() => choose(createFunctionValue(entry.name, gameData))} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47] flex items-center justify-between gap-2 ${value?.function === entry.name ? 'bg-[#303b47]' : ''}`}><span className="text-xs text-[#c5ccd3]">{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(entry.name)}</span></button>)}</>}
 				{filtered.map(([id, label, group, rawId]) => <button key={id} type="button" onClick={() => choose(id.startsWith('variable:') ? { function: 'getVariable', variableName: rawId || id.slice(9) } : runtimeReferenceFunction(id) || id)} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[10px] text-[#637588]">{group}</div></button>)}
 				{!filtered.length && !filteredFunctions.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values or functions.</div>}
 			</div>
