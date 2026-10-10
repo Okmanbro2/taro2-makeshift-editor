@@ -36,6 +36,7 @@ function sanitizeJsonControlCharacters(input) {
 		}
 		if (ch === '"') {
 			output += ch;
+			inString = false;
 			continue;
 		}
 		if (ch === '\\') {
