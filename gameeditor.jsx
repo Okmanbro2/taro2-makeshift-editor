@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
 import { Upload, Download, Plus, Trash2, Search, Copy, Clipboard, ClipboardPaste, X, Save, AlertCircle, ChevronRight, ChevronDown, FolderPlus, Pencil, Play, Square, Zap, Maximize2, Minimize2, Paintbrush, PaintBucket, Eraser, Move, Eye, EyeOff, ScanSearch } from 'lucide-react';
 
 const ENTITY_TABS = [
@@ -1697,20 +1698,33 @@ const SCRIPT_FUNCTIONS_BY_RESULT_KIND = {
 
 function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
+  const triggerRef = useRef(null);
+  const toggleMenu = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const width = Math.min(320, Math.max(240, window.innerWidth - 16));
+      const height = Math.min(320, Math.max(160, window.innerHeight - 24));
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+      const top = window.innerHeight - rect.bottom >= Math.min(height, 220) ? Math.min(rect.bottom + 4, window.innerHeight - height - 8) : Math.max(8, rect.top - height - 4);
+      setMenuPosition({ left, top, width, maxHeight: height });
+    }
+    setOpen((v) => !v);
+  };
   const names = [...new Set([...(SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []), ...SCRIPT_GENERAL_FUNCTIONS])];
   const available = names.map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
   if (!available.length) return null;
   const currentName = value?.function;
   return <div className="relative shrink-0">
-    <button type="button" title="Choose a function or expression" onClick={() => setOpen((v) => !v)} className={`px-1.5 py-1 rounded border text-[10px] ${open ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]'}`}><Zap size={11} /></button>
-    {open && <div className="absolute z-[110] left-0 top-full mt-1 w-80 max-h-80 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
+    <button ref={triggerRef} type="button" title="Choose a function or expression" aria-expanded={open} onClick={toggleMenu} className={`px-1.5 py-1 rounded border text-[10px] ${open ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]'}`}><Zap size={11} /></button>
+    {open && menuPosition && typeof document !== 'undefined' && createPortal(<div style={{ position: 'fixed', zIndex: 2147483000, left: menuPosition.left, top: menuPosition.top, width: menuPosition.width, maxHeight: menuPosition.maxHeight }} className="overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-md shadow-2xl">
       <div className="px-2 py-1.5 border-b border-[#3d4a57] text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>
-      <div className="max-h-72 overflow-y-auto p-1">
+      <div style={{ maxHeight: menuPosition.maxHeight - 36 }} className="overflow-y-auto p-1">
         {available.map((entry) => <button key={entry.name} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); setOpen(false); }} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2 ${currentName === entry.name ? 'bg-[#303b47]' : ''}`}>
           <span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span>
         </button>)}
       </div>
-    </div>}
+    </div>, document.body)}
   </div>;
 }
 
@@ -1755,6 +1769,20 @@ function ScriptGroupReferenceField({ kind, value, gameData, onChange }) {
 function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState('');
+	const [menuPosition, setMenuPosition] = useState(null);
+	const triggerRef = useRef(null);
+	const openReferenceMenu = () => {
+		const rect = triggerRef.current?.getBoundingClientRect();
+		if (rect) {
+			const width = Math.min(320, Math.max(240, window.innerWidth - 16));
+			const height = Math.min(384, Math.max(180, window.innerHeight - 24));
+			const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+			const below = window.innerHeight - rect.bottom;
+			const top = below >= Math.min(height, 260) || rect.top < height ? Math.min(rect.bottom + 4, window.innerHeight - height - 8) : Math.max(8, rect.top - height - 4);
+			setMenuPosition({ left, top, width, maxHeight: height });
+		}
+		setOpen((v) => !v);
+	};
 	const options = getRuntimeReferenceOptions(kind);
 	const variableType = { unitRef: 'unit', itemRef: 'item', projectileRef: 'projectile', playerRef: 'player', entityRef: null }[kind];
 	const variableOptions = variableType ? variableReferenceOptions(variableType, gameData).map((o) => [`variable:${o.id}`, o.name, 'Variable', o.id]) : [];
@@ -1769,19 +1797,19 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 	const selected = allOptions.find(([id]) => id === value);
 	const filtered = allOptions.filter(([, label, group, rawId]) => !q || label.toLowerCase().includes(q) || group.toLowerCase().includes(q) || String(rawId || '').toLowerCase().includes(q));
 	const filteredFunctions = functionOptions.filter((entry) => !q || functionDisplayName(entry.name).toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
-	const selectedLabel = selected?.[1] || (value && typeof value === 'object' ? describeValue(value, gameData) : (value || 'Choose reference...'));
+	const selectedLabel = selected?.[1] || (value && typeof value === 'object' ? describeValue(value, gameData) : (value ? (options.find(([id]) => id === value)?.[1] || String(value)) : 'Choose reference...'));
 	const choose = (next) => { onChange(next); setOpen(false); setQuery(''); };
 	return <div className="relative min-w-0 flex items-center gap-1">
-		<button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d47]"><span className="truncate">{selectedLabel}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
+		<button ref={triggerRef} type="button" onClick={openReferenceMenu} aria-expanded={open} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d47]"><span className="truncate">{selectedLabel}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
 		<ScriptCompatibleFunctionPicker kind={kind} value={value} gameData={gameData} onChange={onChange} />
-		{open && <div className="absolute z-[110] left-0 top-full mt-1 w-80 max-h-96 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
+		{open && menuPosition && typeof document !== 'undefined' && createPortal(<div style={{ position: 'fixed', zIndex: 2147483000, left: menuPosition.left, top: menuPosition.top, width: menuPosition.width, maxHeight: menuPosition.maxHeight }} className="overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search references or functions..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
-			<div className="max-h-80 overflow-y-auto p-1">
+			<div style={{ maxHeight: Math.max(100, menuPosition.maxHeight - 56) }} className="overflow-y-auto p-1">
 				{filteredFunctions.length > 0 && <><div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>{filteredFunctions.map((entry) => <button key={`fn-${entry.name}`} type="button" onClick={() => choose(createFunctionValue(entry.name, gameData))} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47] flex items-center justify-between gap-2 ${value?.function === entry.name ? 'bg-[#303b47]' : ''}`}><span className="text-xs text-[#c5ccd3]">{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span></button>)}</>}
 				{filtered.map(([id, label, group, rawId]) => <button key={id} type="button" onClick={() => choose(id.startsWith('variable:') ? { function: 'getVariable', variableName: rawId || id.slice(9) } : runtimeReferenceFunction(id) || id)} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47]"><div className="text-xs text-[#c5ccd3]">{label}</div><div className="text-[10px] text-[#637588]">{group}</div></button>)}
 				{!filtered.length && !filteredFunctions.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values or functions.</div>}
 			</div>
-		</div>}
+		</div>, document.body)}
 	</div>;
 }
 function ScriptLiteralField({ kind, value, gameData, onChange }) {
