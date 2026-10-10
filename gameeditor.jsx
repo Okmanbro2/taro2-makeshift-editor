@@ -22,7 +22,7 @@ const GROUP_TABS = [
 	{ key: 'itemTypeGroups', label: 'Item Type Groups', dataType: 'itemTypeGroup', collection: 'itemTypes' },
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
-const TILE_PX = 64; 
+const TILE_PX = 64;
 
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
@@ -1336,6 +1336,16 @@ function functionDisplayName(name) {
 	return special[name] || readableType(name);
 }
 
+function scriptFunctionSourceLabel(name) {
+	if (SCRIPT_GENERAL_FUNCTIONS.includes(name)) return 'General';
+	const group = SCRIPT_VALUE_GROUPS.find((item) => item.functions.includes(name));
+	if (group) return `part of ${group.label}`;
+	for (const [kind, names] of Object.entries(SCRIPT_FUNCTIONS_BY_RESULT_KIND)) {
+		if (names.includes(name)) return `part of ${readableType(kind)}`;
+	}
+	return 'Other';
+}
+
 function valueFunctionLabel(value, gameData) {
 	if (!value || typeof value !== 'object' || typeof value.function !== 'string') return describeValue(value, gameData);
 	return describeValue(value, gameData);
@@ -1383,16 +1393,16 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	};
 	const generalFunctions = generalFunctionEntries.filter((entry) => !q || functionDisplayName(entry.name).toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
 	const quickGroups = SCRIPT_VALUE_GROUPS.map((group) => ({ ...group, functions: group.functions.filter((name) => matches(name)) })).filter((group) => group.functions.length);
-	const otherFunctions = functionVocabulary.filter((entry) => !generalFunctionNames.has(entry.name) && !SCRIPT_VALUE_GROUPS.some((g) => g.functions.includes(entry.name)) && matches(entry.name)).slice(0, 80);
+	const otherFunctions = functionVocabulary.filter((entry) => !generalFunctionNames.has(entry.name) && !SCRIPT_VALUE_GROUPS.some((g) => g.functions.includes(entry.name)) && matches(entry.name));
 	const menu = <div ref={menuRef} style={portalPosition ? { position: 'fixed', zIndex: 2147483000, left: portalPosition.left, top: portalPosition.top, width: portalPosition.width, maxHeight: portalPosition.maxHeight } : undefined} className={portalPosition ? 'overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-lg shadow-2xl' : 'absolute z-[80] left-0 top-full mt-1 w-[360px] max-h-[340px] overflow-hidden bg-[#20272e] border border-[#48596a] rounded-lg shadow-2xl'}>
 		<div className="p-2 border-b border-[#3d4a57]">
 			<div className="flex items-center gap-2"><Search size={13} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="What value do you want?" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none" /><button type="button" onClick={onClose} className="text-[#637588] hover:text-[#c5ccd3]"><X size={13} /></button></div>
 		</div>
 		<div className="max-h-[275px] overflow-y-auto p-1.5 space-y-1">
 			{expected === 'variable' && <div className="mb-1"><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">Variables</div>{variableNames.filter((x) => !q || x.toLowerCase().includes(q)).map((name) => <button key={name} type="button" onClick={() => { onChange({ function: 'getVariable', variableName: name }); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-[#323d48] text-[#c5ccd3]">{name}</button>)}</div>}
-			{generalFunctions.length > 0 && <div><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">General functions</div>{generalFunctions.map((entry) => <button key={`general-${entry.name}`} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span></button>)}</div>}
-			{quickGroups.map((group) => <div key={group.label}><div className="px-2 py-1 text-[10px] uppercase tracking-wide" style={{ color: group.color }}>{group.label}</div>{group.functions.slice(0, 24).map((name) => <button key={name} type="button" onClick={() => { onChange(createFunctionValue(name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{functionDisplayName(name)}</span><span className="text-[9px] text-[#637588] font-mono">{(getFunctionEntry(gameData, name)?.schema || []).length ? 'has options' : ''}</span></button>)}</div>)}
-			{otherFunctions.length > 0 && <div><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">More functions</div>{otherFunctions.map((entry) => <button key={entry.name} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48]">{functionDisplayName(entry.name)}</button>)}</div>}
+			{generalFunctions.length > 0 && <div><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">General functions</div>{generalFunctions.map((entry) => <button key={`general-${entry.name}`} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(entry.name)}</span></button>)}</div>}
+			{quickGroups.map((group) => <div key={group.label}><div className="px-2 py-1 text-[10px] uppercase tracking-wide" style={{ color: group.color }}>{group.label}</div>{group.functions.map((name) => <button key={name} type="button" onClick={() => { onChange(createFunctionValue(name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{functionDisplayName(name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(name)}</span></button>)}</div>)}
+			{otherFunctions.length > 0 && <div><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">More functions</div>{otherFunctions.map((entry) => <button key={entry.name} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(entry.name)}</span></button>)}</div>}
 			{!generalFunctions.length && !quickGroups.length && !otherFunctions.length && expected !== 'variable' && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values.</div>}
 		</div>
 	</div>;
