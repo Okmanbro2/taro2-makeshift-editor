@@ -1570,6 +1570,7 @@ function ScriptRegionField({ value, gameData, onChange }) {
 
 function getRuntimeReferenceOptions(kind) {
 	const common = [
+		['thisEntity', 'This entity', 'Entity'], ['selectedEntity', 'Selected entity', 'Entity'],
 		['triggeringUnit', 'Triggering unit', 'Unit'], ['selectedUnit', 'Selected unit', 'Unit'],
 		['lastAttackedUnit', 'Last attacked unit', 'Unit'], ['lastAttackingUnit', 'Last attacking unit', 'Unit'],
 		['lastCreatedUnit', 'Last created unit', 'Unit'], ['lastTouchedUnit', 'Last touched unit', 'Unit'],
@@ -1596,6 +1597,7 @@ function getRuntimeReferenceOptions(kind) {
 
 function runtimeReferenceFunction(id) {
 	const map = {
+		thisEntity: 'thisEntity', selectedEntity: 'getSelectedEntity',
 		triggeringUnit: 'getTriggeringUnit', selectedUnit: 'getSelectedUnit', lastAttackedUnit: 'getLastAttackedUnit', lastAttackingUnit: 'getLastAttackingUnit', lastCreatedUnit: 'getLastCreatedUnit', lastTouchedUnit: 'getLastTouchedUnit', lastTouchingUnit: 'getLastTouchingUnit', lastCastingUnit: 'getLastCastingUnit', sourceUnit: 'getSourceUnitOfProjectile',
 		triggeringItem: 'getTriggeringItem', selectedItem: 'getSelectedItem', lastCreatedItem: 'getLastCreatedItem', lastAttackingItem: 'getLastAttackingItem',
 		triggeringProjectile: 'getTriggeringProjectile', selectedProjectile: 'getSelectedProjectile', lastCreatedProjectile: 'getLastCreatedProjectile',
@@ -1895,9 +1897,8 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKi
 	if (value?.function === 'calculate') return <CalculateFunctionEditor value={value} gameData={gameData} onChange={onChange} />;
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [activeField, setActiveField] = useState(null);
-	const [advanced, setAdvanced] = useState(false);
 	const current = getFunctionEntry(gameData, value?.function);
-	const schema = current?.schema || [];
+	const schema = normalizeScriptFunctionSchema(value?.function, current?.schema || []);
 	const extraKeys = Object.keys(value || {}).filter((k) => k !== 'function' && !schema.some((f) => f.key === k));
 	const fields = {
 		gameData,
@@ -1908,8 +1909,6 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKi
 	const chooseFunction = (name) => {
 		setPickerOpen(false);
 		setActiveField(null);
-		const entry = getFunctionEntry(gameData, name);
-		setAdvanced(Boolean(entry?.schema?.length));
 		onChange(createFunctionValue(name, gameData));
 	};
 	const setField = (key, next) => onChange({ ...(value || {}), [key]: next });
@@ -1920,15 +1919,15 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKi
 			<Zap size={11} className="text-[#AFA9EC] shrink-0" />
 			<button type="button" onClick={() => setPickerOpen((v) => !v)} className="text-left text-xs font-medium text-[#c5ccd3] hover:text-white hover:underline decoration-[#85B7EB] underline-offset-2">{functionDisplayName(value?.function || 'Choose a value...')}</button>
 			{value?.function && <span className="text-xs text-[#c5ccd3]">{content}</span>}
-			{value?.function && (schema.length || extraKeys.length) > 0 && <button type="button" title="Advanced fields" onClick={() => setAdvanced((v) => !v)} className={`ml-auto shrink-0 px-1.5 py-0.5 rounded text-[10px] border ${advanced ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#637588] hover:text-[#c5ccd3]'}`}>•••</button>}
 		</div>
 		{pickerOpen && <ScriptValuePicker expectedKind={expectedKind} value={value} gameData={gameData} onChange={(next) => onChange(next)} onClose={() => setPickerOpen(false)} />}
 		{activeField && <div className="mt-1.5 rounded-md border border-[#3d4a57] bg-[#252d35] p-2">
 			<div className="flex items-center justify-between mb-1.5"><span className="text-[10px] uppercase tracking-wide text-[#637588]">Edit {readableType(activeField)}</span><button type="button" onClick={() => setActiveField(null)} className="text-[#637588] hover:text-[#c5ccd3]"><X size={12} /></button></div>
 			<ScriptFieldInput kind={schema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, value?.[activeField])} value={value?.[activeField]} gameData={gameData} onChange={(next) => { setField(activeField, next); }} />
 		</div>}
-		{advanced && <div className="mt-1.5 ml-4 rounded-md border border-[#3d4a57] bg-[#252d35] p-2 space-y-1.5">
-			{schema.map((field) => <div key={field.key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] w-28 shrink-0 pt-1">{readableType(field.key)}</span><div className="min-w-0 flex-1"><ScriptFieldInput kind={field.kind} value={value?.[field.key]} gameData={gameData} onChange={(next) => setField(field.key, next)} /></div></div>)}
+		{(schema.length > 0 || extraKeys.length > 0) && <div className="mt-1.5 ml-4 rounded-md border border-[#3d4a57] bg-[#252d35] p-2 space-y-2">
+			<div className="text-[10px] uppercase tracking-wide text-[#8291a1]">Choose arguments</div>
+			{schema.map((field) => <div key={field.key} className="flex items-start gap-2"><span className="text-[10px] text-[#c5ccd3] w-28 shrink-0 pt-1">{readableType(field.key)}</span><div className="min-w-0 flex-1"><ScriptFieldInput kind={field.kind} value={value?.[field.key]} gameData={gameData} onChange={(next) => setField(field.key, next)} /></div></div>)}
 			{extraKeys.map((key) => <div key={key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] w-28 shrink-0 pt-1">{readableType(key)}</span><div className="min-w-0 flex-1"><ScriptValueEditor value={value[key]} gameData={gameData} depth={depth + 1} onChange={(next) => setField(key, next)} /></div></div>)}
 		</div>}
 	</div>;
