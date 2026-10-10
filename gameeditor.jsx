@@ -1444,17 +1444,8 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 		return entry && (isGeneral || allowed(entry)) && (!q || functionDisplayName(name).toLowerCase().includes(q) || name.toLowerCase().includes(q) || scriptFunctionSourceLabel(name).toLowerCase().includes(q));
 	};
 	const generalFunctions = generalFunctionEntries.filter((entry) => !q || functionDisplayName(entry.name).toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
-	const alreadyListed = new Set(generalFunctions.map((entry) => entry.name));
-	const quickGroups = SCRIPT_VALUE_GROUPS.map((group) => {
-		const functions = [];
-		for (const name of group.functions) {
-			if (alreadyListed.has(name) || !matches(name)) continue;
-			alreadyListed.add(name);
-			functions.push(name);
-		}
-		return { ...group, functions };
-	}).filter((group) => group.functions.length);
-	const otherFunctions = functionVocabulary.filter((entry) => !alreadyListed.has(entry.name) && matches(entry.name));
+	const quickGroups = SCRIPT_VALUE_GROUPS.map((group) => ({ ...group, functions: group.functions.filter((name) => matches(name)) })).filter((group) => group.functions.length);
+	const otherFunctions = functionVocabulary.filter((entry) => !generalFunctionNames.has(entry.name) && !SCRIPT_VALUE_GROUPS.some((g) => g.functions.includes(entry.name)) && matches(entry.name));
 	const menu = <div ref={menuRef} style={portalPosition ? { position: 'fixed', zIndex: 2147483000, left: portalPosition.left, top: portalPosition.top, width: portalPosition.width, maxHeight: portalPosition.maxHeight } : undefined} className={portalPosition ? 'overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-lg shadow-2xl' : 'absolute z-[80] left-0 top-full mt-1 w-[360px] max-h-[340px] overflow-hidden bg-[#20272e] border border-[#48596a] rounded-lg shadow-2xl'}>
 		<div className="p-2 border-b border-[#3d4a57]">
 			<div className="flex items-center gap-2"><Search size={13} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="What value do you want?" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none" /><button type="button" onClick={onClose} className="text-[#637588] hover:text-[#c5ccd3]"><X size={13} /></button></div>
@@ -1846,7 +1837,7 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
     }
     setOpen((v) => !v);
   };
-  const available = [...new Map(getFunctionVocabulary(gameData).map((entry) => [entry.name, entry])).values()];
+  const available = getFunctionVocabulary(gameData);
   const currentName = value?.function;
   const q = query.trim().toLowerCase();
   const ownerChoices = [
@@ -1870,7 +1861,7 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
 }
 
 function ScriptCompatibleFunctionList({ kind, value, gameData, onChange, closeAfterSelect = false }) {
-  const available = [...new Map(getFunctionVocabulary(gameData).map((entry) => [entry.name, entry])).values()];
+  const available = getFunctionVocabulary(gameData);
   if (!available.length) return null;
   return <div className="border-t border-[#3d4a57] mt-1 pt-1">
     <div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>
@@ -3703,6 +3694,59 @@ function confirmLeaveEntityEditor() {
 			const fixtures = Array.isArray(body.fixtures) ? body.fixtures.slice() : [];
 			if (!fixtures[index]) return d;
 			fixtures[index] = { ...fixtures[index], isSensor: !!value };
+			return { ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...body, fixtures } } };
+		});
+	}
+
+	function updateBodyFixtureField(index, field, value) {
+		setDraft((d) => {
+			const body = d.bodies?.[selectedBodyName] || {};
+			const fixtures = Array.isArray(body.fixtures) ? body.fixtures.slice() : [];
+			if (!fixtures[index]) return d;
+			fixtures[index] = { ...fixtures[index], [field]: value };
+			return { ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...body, fixtures } } };
+		});
+	}
+
+	function updateBodyFixtureShapeType(index, type) {
+		setDraft((d) => {
+			const body = d.bodies?.[selectedBodyName] || {};
+			const fixtures = Array.isArray(body.fixtures) ? body.fixtures.slice() : [];
+			if (!fixtures[index]) return d;
+			const oldData = fixtures[index]?.shape?.data || {};
+			let data;
+			if (type === 'circle') data = { radius: Math.max(Number(body.width) || TILE_PX, Number(body.height) || TILE_PX) / 2, x: oldData.x ?? 0, y: oldData.y ?? 0 };
+			else if (type === 'rectangle') data = { halfWidth: (Number(body.width) || TILE_PX) / 2, halfHeight: (Number(body.height) || TILE_PX) / 2, x: oldData.x ?? 0, y: oldData.y ?? 0 };
+			else data = { _poly: oldData._poly || [], length: oldData.length || 0 };
+			fixtures[index] = { ...fixtures[index], shape: { ...(fixtures[index].shape || {}), type, data } };
+			return { ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...body, fixtures } } };
+		});
+	}
+
+	function updateBodyFixtureShapeData(index, field, value) {
+		setDraft((d) => {
+			const body = d.bodies?.[selectedBodyName] || {};
+			const fixtures = Array.isArray(body.fixtures) ? body.fixtures.slice() : [];
+			if (!fixtures[index]) return d;
+			const fixture = fixtures[index];
+			fixtures[index] = { ...fixture, shape: { ...(fixture.shape || {}), data: { ...(fixture.shape?.data || {}), [field]: value } } };
+			return { ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...body, fixtures } } };
+		});
+	}
+
+	function addBodyFixture() {
+		setDraft((d) => {
+			const body = d.bodies?.[selectedBodyName] || {};
+			const fixtures = Array.isArray(body.fixtures) ? body.fixtures.slice() : [];
+			fixtures.push({ density: 1, friction: 0.2, restitution: 0, isSensor: false, shape: { type: 'rectangle', data: { halfWidth: (Number(body.width) || TILE_PX) / 2, halfHeight: (Number(body.height) || TILE_PX) / 2, x: 0, y: 0 } } });
+			return { ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...body, fixtures } } };
+		});
+	}
+
+	function removeBodyFixture(index) {
+		setDraft((d) => {
+			const body = d.bodies?.[selectedBodyName] || {};
+			const fixtures = Array.isArray(body.fixtures) ? body.fixtures.filter((_, i) => i !== index) : [];
 			return { ...d, bodies: { ...d.bodies, [selectedBodyName]: { ...body, fixtures } } };
 		});
 	}
@@ -6299,7 +6343,23 @@ function confirmLeaveEntityEditor() {
 															<label className="flex items-center gap-2 text-xs text-[#a3adb8] cursor-pointer mt-2">
 																<input type="checkbox" checked={draft.bodies[selectedBodyName]['constantSpeed +DestroyedOnCollisionWithWall/unit'] === true} onChange={(e) => updateBodyField('constantSpeed +DestroyedOnCollisionWithWall/unit', e.target.checked)} className="accent-[#1a56da]" /> Constant speed: destroy on wall/unit collision
 															</label>
-															{Array.isArray(draft.bodies[selectedBodyName].fixtures) && draft.bodies[selectedBodyName].fixtures.length > 0 && <div className="mt-3"><div className="text-[10px] uppercase tracking-wide text-[#637588] mb-1.5">Fixtures</div>{draft.bodies[selectedBodyName].fixtures.map((fixture, index) => <label key={index} className="flex items-center justify-between gap-3 py-1 text-xs text-[#a3adb8]"><span>Fixture {index + 1} · {fixture?.shape?.type || 'unknown shape'}</span><input type="checkbox" checked={fixture?.isSensor === true} onChange={(e) => updateBodyFixtureSensor(index, e.target.checked)} className="accent-[#1a56da]" /></label>)}</div>}
+															<div className="mt-3 rounded border border-[#3d4a57] p-2.5">
+							<div className="flex items-center justify-between gap-2 mb-2"><div className="text-[10px] uppercase tracking-wide text-[#637588]">Physics fixtures</div><button type="button" onClick={addBodyFixture} className="rounded bg-[#263c50] px-2 py-1 text-[10px] text-[#d9e8f6] hover:bg-[#31506b]">+ Add fixture</button></div>
+							<p className="text-[10px] text-[#637588] mb-2">TaroEntityPhysics supports circle and rectangle directly; the Box2D wrapper also supports polygon fixtures.</p>
+							{(Array.isArray(draft.bodies[selectedBodyName].fixtures) ? draft.bodies[selectedBodyName].fixtures : []).map((fixture, index) => <div key={index} className="mb-3 last:mb-0 rounded bg-[#202a34] p-2">
+								<div className="flex items-center justify-between gap-2 mb-2"><span className="text-xs font-medium text-[#d7e0e8]">Fixture {index + 1}</span><button type="button" onClick={() => removeBodyFixture(index)} className="text-[10px] text-[#e78c8c] hover:text-red-300">Remove</button></div>
+								<div className="grid grid-cols-2 gap-2 mb-2">
+									<label className="text-[10px] text-[#8291a1]">Shape type<select value={fixture?.shape?.type || 'rectangle'} onChange={(e) => updateBodyFixtureShapeType(index, e.target.value)} className="mt-1 w-full rounded border border-[#3d4a57] bg-[#323d48] px-2 py-1.5 text-xs text-[#e1e6ea]"><option value="circle">circle</option><option value="rectangle">rectangle</option></select></label>
+									<label className="flex items-center gap-2 pt-4 text-[10px] text-[#a3adb8]"><input type="checkbox" checked={fixture?.isSensor === true} onChange={(e) => updateBodyFixtureSensor(index, e.target.checked)} className="accent-[#1a56da]" /> Sensor (overlap only)</label>
+								</div>
+								<div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+									{[['density','Density'],['friction','Friction'],['restitution','Restitution']].map(([field,label]) => <label key={field} className="text-[10px] text-[#8291a1]">{label}<input type="number" step="any" value={fixture?.[field] ?? (field === 'density' ? 1 : field === 'friction' ? 0.2 : 0)} onChange={(e) => updateBodyFixtureField(index, field, Number(e.target.value) || 0)} className="mt-1 w-full rounded border border-[#3d4a57] bg-[#323d48] px-2 py-1 text-xs text-[#e1e6ea]" /></label>)}
+								</div>
+								{fixture?.shape?.type === 'circle' && <div className="grid grid-cols-3 gap-2">{[['radius','Radius'],['x','Offset X'],['y','Offset Y']].map(([field,label]) => <label key={field} className="text-[10px] text-[#8291a1]">{label}<input type="number" step="any" value={fixture?.shape?.data?.[field] ?? (field === 'radius' ? Math.max(Number(draft.bodies[selectedBodyName].width) || TILE_PX, Number(draft.bodies[selectedBodyName].height) || TILE_PX) / 2 : 0)} onChange={(e) => updateBodyFixtureShapeData(index, field, Number(e.target.value) || 0)} className="mt-1 w-full rounded border border-[#3d4a57] bg-[#323d48] px-2 py-1 text-xs text-[#e1e6ea]" /></label>)}</div>}
+								{fixture?.shape?.type === 'rectangle' && <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{[['halfWidth','Half-width'],['halfHeight','Half-height'],['x','Offset X'],['y','Offset Y']].map(([field,label]) => <label key={field} className="text-[10px] text-[#8291a1]">{label}<input type="number" step="any" value={fixture?.shape?.data?.[field] ?? (field === 'halfWidth' ? (Number(draft.bodies[selectedBodyName].width) || TILE_PX) / 2 : field === 'halfHeight' ? (Number(draft.bodies[selectedBodyName].height) || TILE_PX) / 2 : 0)} onChange={(e) => updateBodyFixtureShapeData(index, field, Number(e.target.value) || 0)} className="mt-1 w-full rounded border border-[#3d4a57] bg-[#323d48] px-2 py-1 text-xs text-[#e1e6ea]" /></label>)}</div>}
+							</div>) }
+							{(!Array.isArray(draft.bodies[selectedBodyName].fixtures) || draft.bodies[selectedBodyName].fixtures.length === 0) && <p className="text-[10px] text-[#8291a1]">No fixtures configured. Add one to define this body's collision shape.</p>}
+						</div>
 															</div>
 										</div>
 										<p className="text-xs text-[#637588] max-w-[15rem]">
