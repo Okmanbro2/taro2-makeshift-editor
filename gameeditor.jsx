@@ -23,6 +23,10 @@ const GROUP_TABS = [
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
+
+// Repair raw ASCII control characters that appear inside malformed JSON strings.
+// A backslash immediately before a control character must not cause that character
+// to bypass sanitization. Preserve both characters semantically by escaping each.
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
 	let output = '';
@@ -42,6 +46,7 @@ function sanitizeJsonControlCharacters(input) {
 		if (ch === '\\') {
 			const next = source[i + 1];
 			if (next !== undefined && next.charCodeAt(0) < 0x20) {
+				// Encode the literal backslash, then encode the raw control character.
 				output += '\\\\' + '\\u' + next.charCodeAt(0).toString(16).padStart(4, '0');
 				i++;
 			} else {
@@ -1105,6 +1110,8 @@ function getFunctionVocabulary(gameData) {
 		});
 	}
 
+	// Always expose ownership helpers in the reference finder, even when no
+	// existing script uses them and a source schema was omitted.
 	for (const [name, fieldKind] of [['getOwner', 'entityRef'], ['getOwnerOfItem', 'itemRef']]) {
 		if (!byName.has(name)) {
 			const schema = [{ key: 'entity', kind: fieldKind }];
@@ -1389,6 +1396,11 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	const functionVocabulary = getFunctionVocabulary(gameData);
 	const generalFunctionNames = new Set(SCRIPT_GENERAL_FUNCTIONS);
 	const generalFunctionEntries = functionVocabulary.filter((entry) => generalFunctionNames.has(entry.name));
+	// Expand owner helpers into concrete, searchable choices in this finder.
+	// These are expression presets, not new engine functions.
+	// Expand owner helpers into searchable, concrete expressions. Include the underlying
+	// engine function names in search text so queries such as `owner of get` work too.
+	// getOwner accepts an entity reference; getOwnerOfItem specifically accepts an item.
 	const ownerEntityReferences = [
 		['thisEntity', 'this entity', { function: 'thisEntity' }],
 		['selectedEntity', 'selected entity', { function: 'getSelectedEntity' }],
@@ -1791,7 +1803,7 @@ const SCRIPT_FUNCTIONS_BY_RESULT_KIND = {
   entityGroupRef: ['allEntities','entitiesInRegion','entitiesBetweenTwoPositions','entitiesInRegionInFrontOfEntityAtDistance','entitiesCollidingWithLastRaycast'],
   unitTypeGroupRef: ['allUnitTypesInGame'],
   itemTypeGroupRef: ['allItemTypesInGame'],
-  regionGroupRef: ['allRegions'], // collection type: only allRegions returns a region collection; dynamicRegion/getEntireMapRegion are single regions
+  regionGroupRef: ['allRegions'], // Collection type: only allRegions returns a region collection; dynamicRegion/getEntireMapRegion are single regions
   unitTypeRef: ['selectedUnitType','getUnitType','getUnitTypeOfUnit','getRandomUnitTypeFromUnitTypeGroup'],
   itemTypeRef: ['selectedItemType','getItemType','getItemTypeOfItem','getRandomItemTypeFromItemTypeGroup'],
   projectileTypeRef: ['getProjectileTypeOfProjectile'],
@@ -2040,6 +2052,8 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKi
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [activeField, setActiveField] = useState(null);
 	const current = getFunctionEntry(gameData, value?.function);
+	// Always normalize and render typed argument selectors. Hiding these behind an
+	// advanced toggle made values such as getOwner.entity appear uneditable.
 	const schema = normalizeScriptFunctionSchema(value?.function, current?.schema || []);
 	const extraKeys = Object.keys(value || {}).filter((k) => k !== 'function' && !schema.some((f) => f.key === k));
 	const fields = {
@@ -2385,6 +2399,8 @@ const FOR_ALL_ACTION_TYPES = [
   ['forAllUnitTypes', 'For all unit types', 'unitTypeGroup', 'unitTypeGroupRef', { function: 'allUnitTypesInGame' }],
   ['forAllItemTypes', 'For all item types', 'itemTypeGroup', 'itemTypeGroupRef', { function: 'allItemTypesInGame' }],
   ['forAllProjectiles', 'For all projectiles', 'projectileGroup', 'projectileGroupRef', { function: 'allProjectiles' }],
+  // The loop consumes an array of regions. `dynamicRegion` is a single region
+  // object, so it is deliberately not used as the default collection expression.
   ['forAllRegions', 'For all regions', 'regionGroup', 'regionGroupRef', { function: 'allRegions' }],
 ];
 
