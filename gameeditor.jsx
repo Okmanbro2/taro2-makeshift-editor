@@ -1375,6 +1375,15 @@ function createFunctionValue(name, gameData) {
 	return defaultFunctionExpression(entry);
 }
 
+function scriptSearchMatches(queryText, ...fields) {
+	const query = String(queryText || '').trim().toLowerCase();
+	if (!query) return true;
+	const haystack = fields.filter(Boolean).join(' ').toLowerCase();
+	// Match each search word independently, so `owner of get` can find
+	// `Owner of triggering unit` whose underlying expression is getTriggeringUnit.
+	return query.split(/\s+/).every((token) => haystack.includes(token));
+}
+
 function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChange, onClose }) {
 	const [query, setQuery] = useState('');
 	const menuRef = useRef(null);
@@ -1418,7 +1427,7 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 			expression: { function: 'getOwnerOfItem', entity: runtimeReferenceFunction(id) },
 		})),
 	];
-	const filteredOwnerOptions = ownerOptions.filter((option) => !q || option.label.toLowerCase().includes(q) || option.searchText.toLowerCase().includes(q) || option.source.toLowerCase().includes(q));
+	const filteredOwnerOptions = ownerOptions.filter((option) => scriptSearchMatches(q, option.label, option.searchText, option.source, option.expression?.entity?.function));
 	const allowed = (entry) => {
 		if (!entry) return false;
 		if (expected === 'positionExpr') return SCRIPT_POSITION_FUNCTIONS.has(entry.name);
@@ -1834,8 +1843,8 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
   const ownerChoices = [
     ...getRuntimeReferenceOptions('unitRef').map(([id,label]) => ({ key:`owner-unit-${id}`, label:`Owner of ${label.toLowerCase()}`, source:'part of Owner Of', expression:{function:'getOwner',entity:runtimeReferenceFunction(id)}, search:`owner of ${label} getOwner ${runtimeReferenceFunction(id)?.function || ''}` })),
     ...getRuntimeReferenceOptions('itemRef').map(([id,label]) => ({ key:`owner-item-${id}`, label:`Owner of item ${label.toLowerCase()}`, source:'part of Owner Of item', expression:{function:'getOwnerOfItem',entity:runtimeReferenceFunction(id)}, search:`owner of item ${label} getOwnerOfItem ${runtimeReferenceFunction(id)?.function || ''}` }))
-  ].filter(o => o.expression.entity && (!q || `${o.label} ${o.source} ${o.search}`.toLowerCase().includes(q)));
-  const filteredAvailable = available.filter(entry => !q || `${functionDisplayName(entry.name)} ${entry.name} ${scriptFunctionSourceLabel(entry.name)}`.toLowerCase().includes(q));
+  ].filter(o => o.expression?.entity && scriptSearchMatches(q, o.label, o.source, o.search, o.expression.function, o.expression.entity.function));
+  const filteredAvailable = available.filter(entry => scriptSearchMatches(q, functionDisplayName(entry.name), entry.name, scriptFunctionSourceLabel(entry.name)));
   return <div className="relative shrink-0">
     <button ref={triggerRef} type="button" title="Choose a function or expression" aria-expanded={open} onClick={toggleMenu} className={`px-1.5 py-1 rounded border text-[10px] ${open ? 'border-[#85B7EB] text-[#85B7EB] bg-[#303b47]' : 'border-[#48596a] text-[#AFA9EC] hover:bg-[#323d48]'}`}><Zap size={11} /></button>
     {open && menuPosition && typeof document !== 'undefined' && createPortal(<div style={{ position: 'fixed', zIndex: 2147483000, left: menuPosition.left, top: menuPosition.top, width: menuPosition.width, maxHeight: menuPosition.maxHeight }} className="overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-md shadow-2xl">
