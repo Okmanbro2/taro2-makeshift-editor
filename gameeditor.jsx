@@ -23,7 +23,6 @@ const GROUP_TABS = [
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
-
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
 	let output = '';
@@ -1390,6 +1389,17 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	const functionVocabulary = getFunctionVocabulary(gameData);
 	const generalFunctionNames = new Set(SCRIPT_GENERAL_FUNCTIONS);
 	const generalFunctionEntries = functionVocabulary.filter((entry) => generalFunctionNames.has(entry.name));
+	const ownerOptions = [
+		...getRuntimeReferenceOptions('unitRef').map(([id, label]) => ({
+			key: `owner-unit-${id}`, label: `Owner of ${label.toLowerCase()}`, source: 'part of Owner Of',
+			expression: { function: 'getOwner', entity: runtimeReferenceFunction(id) },
+		})),
+		...getRuntimeReferenceOptions('itemRef').map(([id, label]) => ({
+			key: `owner-item-${id}`, label: `Owner of ${label.toLowerCase()}`, source: 'part of Owner Of item',
+			expression: { function: 'getOwnerOfItem', entity: runtimeReferenceFunction(id) },
+		})),
+	];
+	const filteredOwnerOptions = ownerOptions.filter((option) => !q || option.label.toLowerCase().includes(q) || option.source.toLowerCase().includes(q));
 	const allowed = (entry) => {
 		if (!entry) return false;
 		if (expected === 'positionExpr') return SCRIPT_POSITION_FUNCTIONS.has(entry.name);
@@ -1412,10 +1422,11 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 		</div>
 		<div className="max-h-[275px] overflow-y-auto p-1.5 space-y-1">
 			{expected === 'variable' && <div className="mb-1"><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">Variables</div>{variableNames.filter((x) => !q || x.toLowerCase().includes(q)).map((name) => <button key={name} type="button" onClick={() => { onChange({ function: 'getVariable', variableName: name }); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-[#323d48] text-[#c5ccd3]">{name}</button>)}</div>}
+			{filteredOwnerOptions.length > 0 && <div><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Owner options</div>{filteredOwnerOptions.map((option) => <button key={option.key} type="button" onClick={() => { onChange(deepClone(option.expression)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{option.label}</span><span className="text-[9px] text-[#637588] font-mono">{option.source}</span></button>)}</div>}
 			{generalFunctions.length > 0 && <div><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">General functions</div>{generalFunctions.map((entry) => <button key={`general-${entry.name}`} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(entry.name)}</span></button>)}</div>}
 			{quickGroups.map((group) => <div key={group.label}><div className="px-2 py-1 text-[10px] uppercase tracking-wide" style={{ color: group.color }}>{group.label}</div>{group.functions.map((name) => <button key={name} type="button" onClick={() => { onChange(createFunctionValue(name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{functionDisplayName(name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(name)}</span></button>)}</div>)}
 			{otherFunctions.length > 0 && <div><div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[#637588]">More functions</div>{otherFunctions.map((entry) => <button key={entry.name} type="button" onClick={() => { onChange(createFunctionValue(entry.name, gameData)); onClose(); }} className="w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] flex items-center justify-between gap-2"><span>{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{scriptFunctionSourceLabel(entry.name)}</span></button>)}</div>}
-			{!generalFunctions.length && !quickGroups.length && !otherFunctions.length && expected !== 'variable' && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values.</div>}
+			{!filteredOwnerOptions.length && !generalFunctions.length && !quickGroups.length && !otherFunctions.length && expected !== 'variable' && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values.</div>}
 		</div>
 	</div>;
 	return portalPosition && typeof document !== 'undefined' ? createPortal(menu, document.body) : menu;
