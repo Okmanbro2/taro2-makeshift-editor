@@ -1355,6 +1355,8 @@ function functionDisplayName(name) {
 }
 
 function scriptFunctionSourceLabel(name) {
+	if (name === 'getOwner') return 'part of Owner Of';
+	if (name === 'getOwnerOfItem') return 'part of Owner Of item';
 	if (SCRIPT_GENERAL_FUNCTIONS.includes(name)) return 'General';
 	const group = SCRIPT_VALUE_GROUPS.find((item) => item.functions.includes(name));
 	if (group) return `part of ${group.label}`;
@@ -1835,9 +1837,9 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
     }
     setOpen((v) => !v);
   };
-  const names = [...new Set([...(SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []), ...SCRIPT_GENERAL_FUNCTIONS])];
-  const available = names.map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
-  if (!available.length) return null;
+  // Reference finder is a searchable catalog, not a result-kind whitelist.
+  // Keep every source-defined expression discoverable; each entry retains its source label.
+  const available = getFunctionVocabulary(gameData);
   const currentName = value?.function;
   const q = query.trim().toLowerCase();
   const ownerChoices = [
@@ -1861,8 +1863,9 @@ function ScriptCompatibleFunctionPicker({ kind, value, gameData, onChange }) {
 }
 
 function ScriptCompatibleFunctionList({ kind, value, gameData, onChange, closeAfterSelect = false }) {
-  const names = [...new Set([...(SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []), ...SCRIPT_GENERAL_FUNCTIONS])];
-  const available = names.map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
+  // Match the main finder: don't hide source-defined expressions merely because
+  // this field's result-kind table has not been updated yet.
+  const available = getFunctionVocabulary(gameData);
   if (!available.length) return null;
   return <div className="border-t border-[#3d4a57] mt-1 pt-1">
     <div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>
@@ -1881,7 +1884,7 @@ function ScriptGroupReferenceField({ kind, value, gameData, onChange }) {
   const dataType = { unitGroupRef:'unitGroup', itemGroupRef:'itemGroup', unitTypeGroupRef:'unitTypeGroup', itemTypeGroupRef:'itemTypeGroup', playerGroupRef:'playerGroup', regionGroupRef:'regionGroup' }[kind];
   const label = { unitGroupRef:'Unit group', itemGroupRef:'Item group', unitTypeGroupRef:'Unit type group', itemTypeGroupRef:'Item type group', playerGroupRef:'Player group', regionGroupRef:'Region group', entityGroupRef:'Entity group', projectileGroupRef:'Projectile group' }[kind] || readableType(kind);
   const options = dataType ? variableReferenceOptions(dataType, gameData) : [];
-  const functionOptions = [...new Set([...(SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []), ...SCRIPT_GENERAL_FUNCTIONS])].map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
+  const functionOptions = getFunctionVocabulary(gameData);
   const selectedId = value?.function === 'getVariable' ? value.variableName : '';
   const selected = options.find(o => o.id === selectedId);
   const selectedLabel = selected?.name || (value?.function ? functionDisplayName(value.function) : (selectedId ? selectedId : `Choose ${label.toLowerCase()}...`));
@@ -1926,7 +1929,7 @@ function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
 		...variableReferenceOptions('item', gameData).map((o) => [`variable:${o.id}`, o.name, 'Item variable', o.id]),
 		...variableReferenceOptions('projectile', gameData).map((o) => [`variable:${o.id}`, o.name, 'Projectile variable', o.id]),
 	].sort((a,b) => a[1].localeCompare(b[1]) || a[3].localeCompare(b[3])) : [];
-	const functionOptions = [...new Set([...(SCRIPT_FUNCTIONS_BY_RESULT_KIND[kind] || []), ...SCRIPT_GENERAL_FUNCTIONS])].map((name) => getFunctionEntry(gameData, name)).filter(Boolean);
+	const functionOptions = getFunctionVocabulary(gameData);
 	const q = query.trim().toLowerCase();
 	const allOptions = [...options, ...variableOptions, ...entityVariableOptions];
 	const selected = allOptions.find(([id]) => id === value);
