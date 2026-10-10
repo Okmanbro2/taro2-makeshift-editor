@@ -1266,7 +1266,7 @@ function defaultFunctionExpression(entry) {
 	if (!entry) return { function: 'undefinedValue' };
 	if (entry.name === 'calculate') return { function: 'calculate', items: [{ operator: '+' }, 0, 0] };
 	if (entry.name === 'getOwner') return { function: 'getOwner', entity: { function: 'thisEntity' } };
-	if (entry.name === 'getOwnerOfItem') return { function: 'getOwnerOfItem', entity: { function: 'getTriggeringItem' } 
+	if (entry.name === 'getOwnerOfItem') return { function: 'getOwnerOfItem', entity: { function: 'getTriggeringItem' } };
 	if (entry.name === 'dynamicRegion') return { function: 'dynamicRegion', x: 0, y: 0, width: 1, height: 1 };
 	if (entry.name === 'allItemsOwnedByUnit') return { function: 'allItemsOwnedByUnit', entity: { function: 'thisEntity' } };
 	if (entry.name === 'allUnitsOwnedByPlayer') return { function: 'allUnitsOwnedByPlayer', player: { function: 'getTriggeringPlayer' } };
