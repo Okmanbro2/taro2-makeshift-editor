@@ -1254,6 +1254,10 @@ const SCRIPT_FUNCTION_FIELD_KIND_OVERRIDES = {
 };
 
 function scriptFunctionFieldKind(functionName, key, fallback = 'valueExpr') {
+	// Ownership/group expressions need reference pickers, not a generic expression slot.
+	if (functionName === 'allItemsOwnedByUnit' && key === 'entity') return 'entityRef';
+	if (functionName === 'allUnitsOwnedByPlayer' && key === 'player') return 'playerRef';
+	if (functionName === 'dynamicRegion' && ['x', 'y', 'width', 'height'].includes(key)) return 'numberExpr';
 	if (SCRIPT_POSITION_FUNCTIONS.has(functionName) && /^(position|positionA|positionB)$/.test(key)) return 'positionExpr';
 	return SCRIPT_FUNCTION_FIELD_KIND_OVERRIDES[functionName]?.[key] || fallback;
 }
@@ -1270,9 +1274,20 @@ function defaultFunctionExpression(entry) {
 	if (entry.name === 'calculate') return { function: 'calculate', items: [{ operator: '+' }, 0, 0] };
 	if (entry.name === 'getOwner') return { function: 'getOwner', entity: { function: 'thisEntity' } };
 	if (entry.name === 'getOwnerOfItem') return { function: 'getOwnerOfItem', entity: { function: 'getTriggeringItem' } };
+	// Give common parameterized expressions useful, editable starting values instead of null/'nothing'.
+	if (entry.name === 'dynamicRegion') return { function: 'dynamicRegion', x: 0, y: 0, width: 1, height: 1 };
+	if (entry.name === 'allItemsOwnedByUnit') return { function: 'allItemsOwnedByUnit', entity: { function: 'thisEntity' } };
+	if (entry.name === 'allUnitsOwnedByPlayer') return { function: 'allUnitsOwnedByPlayer', player: { function: 'getTriggeringPlayer' } };
 	const out = { function: entry.name };
-	for (const field of (entry.schema || [])) {
-		out[field.key] = defaultValueForScriptField(field.kind);
+	for (const field of normalizeScriptFunctionSchema(entry.name, entry.schema || [])) {
+		const kind = field.kind;
+		if (kind === 'entityRef' || kind === 'unitRef') out[field.key] = { function: 'thisEntity' };
+		else if (kind === 'itemRef') out[field.key] = { function: 'getTriggeringItem' };
+		else if (kind === 'playerRef') out[field.key] = { function: 'getTriggeringPlayer' };
+		else if (kind === 'projectileRef') out[field.key] = { function: 'getTriggeringProjectile' };
+		else if (kind === 'regionRef') out[field.key] = { function: 'getTriggeringRegion' };
+		else if (kind === 'positionExpr') out[field.key] = { x: 0, y: 0 };
+		else out[field.key] = defaultValueForScriptField(kind);
 	}
 	return out;
 }
@@ -2000,7 +2015,10 @@ const SCRIPT_FUNCTION_PHRASES = {
 	getItemTypeOfItem: (fields) => <>item type of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
 	getProjectileTypeOfProjectile: (fields) => <>projectile type of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
 	getOwner: (fields) => <>owner of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
-	getOwnerOfItem: (fields) => <>owner of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	getOwnerOfItem: (fields) => <>owner of item <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	allItemsOwnedByUnit: (fields) => <>all items owned by <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	allUnitsOwnedByPlayer: (fields) => <>all units owned by <ScriptInlineFunctionField field="player" fields={fields} /></>,
+	dynamicRegion: (fields) => <>dynamic region x <ScriptInlineFunctionField field="x" fields={fields} /> y <ScriptInlineFunctionField field="y" fields={fields} /> width <ScriptInlineFunctionField field="width" fields={fields} /> height <ScriptInlineFunctionField field="height" fields={fields} /></>,
 	isUnitMoving: (fields) => <><ScriptInlineFunctionField field="unit" fields={fields} /> is moving</>,
 	unitIsInRegion: (fields) => <><ScriptInlineFunctionField field="unit" fields={fields} /> is in <ScriptInlineFunctionField field="region" fields={fields} /></>,
 	itemIsInRegion: (fields) => <><ScriptInlineFunctionField field="item" fields={fields} /> is in <ScriptInlineFunctionField field="region" fields={fields} /></>,
@@ -2215,22 +2233,40 @@ function semanticScriptFieldKind(key, kind = 'valueExpr') {
 	if (kind !== 'valueExpr') return kind;
 	const k = String(key || '');
 	const lower = k.toLowerCase();
-	if (/^(position|positiona|positionb|targetposition|spawnposition)$/.test(lower)) return 'positionExpr';
-	if (lower === 'region' || lower === 'regiona' || lower === 'regionb') return 'regionRef';
-	if (/^(unitgroup|unitsgroup)$/.test(lower)) return 'unitGroupRef';
-	if (/^(itemgroup|itemsgroup)$/.test(lower)) return 'itemGroupRef';
-	if (/^unittypegroup$/.test(lower)) return 'unitTypeGroupRef';
-	if (/^itemtypegroup$/.test(lower)) return 'itemTypeGroupRef';
-	if (/^playergroup$/.test(lower)) return 'playerGroupRef';
-	if (/^(unit|sourceunit|targetunit|triggeringunit|selectedunit)$/.test(lower)) return 'unitRef';
+	// ParameterComponent schemas often label arguments generically as valueExpr.
+	// Recover the intended editor from the parameter's semantic name so every
+	// function gets editable, typed arguments without per-function UI code.
+	if (/^(position|positiona|positionb|targetposition|spawnposition|mouseposition|startposition|endposition)$/.test(lower)) return 'positionExpr';
+	if (/^(region|regiona|regionb|targetregion|source region)$/.test(lower)) return 'regionRef';
+	if (/^(unitgroup|unitsgroup|unitgroupref)$/.test(lower)) return 'unitGroupRef';
+	if (/^(itemgroup|itemsgroup|itemgroupref)$/.test(lower)) return 'itemGroupRef';
+	if (/^(unittypegroup|unittypegroupref)$/.test(lower)) return 'unitTypeGroupRef';
+	if (/^(itemtypegroup|itemtypegroupref)$/.test(lower)) return 'itemTypeGroupRef';
+	if (/^(playergroup|playergroupref)$/.test(lower)) return 'playerGroupRef';
+	if (/^(entitygroup|entitygroupref)$/.test(lower)) return 'entityGroupRef';
+	if (/^(projectilegroup|projectilegroupref)$/.test(lower)) return 'projectileGroupRef';
+	if (/^(unit|sourceunit|targetunit|triggeringunit|selectedunit|ownerunit)$/.test(lower)) return 'unitRef';
 	if (/^(item|sourceitem|targetitem|triggeringitem|selecteditem)$/.test(lower)) return 'itemRef';
 	if (/^(projectile|sourceprojectile|targetprojectile|triggeringprojectile|selectedprojectile)$/.test(lower)) return 'projectileRef';
-	if (/^(player|playera|playerb|triggeringplayer|selectedplayer)$/.test(lower)) return 'playerRef';
-	if (lower === 'entity' || lower === 'sourceentity' || lower === 'targetentity' || lower === 'owner') return 'entityRef';
-	if (lower === 'sound' || lower === 'soundid') return 'soundId';
-	if (lower === 'music' || lower === 'musicid') return 'musicId';
-	if (SCRIPT_STRING_FIELD_KEYS.has(k)) return 'stringExpr';
-	if (SCRIPT_NUMBER_FIELD_KEYS.has(k)) return 'numberExpr';
+	if (/^(player|playera|playerb|triggeringplayer|selectedplayer|targetplayer|sourceplayer)$/.test(lower)) return 'playerRef';
+	if (/^(entity|sourceentity|targetentity|owner|target|sourceentityid)$/.test(lower)) return 'entityRef';
+	if (/^(unittype|unittypeid)$/.test(lower)) return 'unitTypeId';
+	if (/^(itemtype|itemtypeid)$/.test(lower)) return 'itemTypeId';
+	if (/^(projectiletype|projectiletypeid)$/.test(lower)) return 'projectileTypeId';
+	if (/^(playertype|playertypeid)$/.test(lower)) return 'playerTypeId';
+	if (/^(attributetype|attribute|attributeid)$/.test(lower)) return 'attributeId';
+	if (/^(particle|particletype|particletypeid)$/.test(lower)) return 'particleTypeId';
+	if (/^(state|stateid)$/.test(lower)) return 'stateId';
+	if (/^(variable|variablename|variableid)$/.test(lower)) return lower === 'variable' ? 'variable' : 'variableName';
+	if (/^(sound|soundid)$/.test(lower)) return 'soundId';
+	if (/^(music|musicid)$/.test(lower)) return 'musicId';
+	if (/^(script|scriptid)$/.test(lower)) return 'scriptId';
+	if (/^(dialogue|dialogueid)$/.test(lower)) return 'dialogueId';
+	if (/^(shop|shopid)$/.test(lower)) return 'shopId';
+	if (/^(boolean|condition|enabled|visible|isactive|active|completed|success)$/.test(lower)) return 'boolean';
+	if (/^(string|text|stringa|stringb|message|url|varname|elementid|classname|targettext|htmlcontent|inputlabel|title|description|animation|color|abilityname|questid|apicredentials|keyword|patternstring|matchstring|newstring|sourcestring|texta|textb|name|key)$/.test(lower)) return 'stringExpr';
+	if (/^(number|value|amount|count|quantity|slot|index|fromindex|toindex|layer|x|y|z|width|height|depth|distance|radius|angle|alpha|beta|power|base|min|max|minvalue|maxvalue|time|duration|seconds|milliseconds|speed|force|opacity|rotation|scale|zoom|panspeed|lifespan|precision|offset|limit|size|probability|percentage|ratio|velocity|damage|health|coins|ammo|level|threshold|step|range)$/.test(lower)) return 'numberExpr';
+	if (lower === 'object' || lower === 'data' || lower === 'json') return 'valueExpr';
 	return kind;
 }
 
