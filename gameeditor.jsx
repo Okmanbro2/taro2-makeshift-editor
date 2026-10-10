@@ -23,6 +23,10 @@ const GROUP_TABS = [
 ];
 const ROOT_NAMES = { units: 'Units', items: 'Items', projectiles: 'Projectiles' };
 const TILE_PX = 64; 
+
+// Repair raw ASCII control characters that appear inside malformed JSON strings.
+// A backslash immediately before a control character must not cause that character
+// to bypass sanitization. Preserve both characters semantically by escaping each.
 function sanitizeJsonControlCharacters(input) {
 	const source = String(input ?? '');
 	let output = '';
@@ -42,6 +46,7 @@ function sanitizeJsonControlCharacters(input) {
 		if (ch === '\\') {
 			const next = source[i + 1];
 			if (next !== undefined && next.charCodeAt(0) < 0x20) {
+				// Encode the literal backslash, then encode the raw control character.
 				output += '\\\\' + '\\u' + next.charCodeAt(0).toString(16).padStart(4, '0');
 				i++;
 			} else {
@@ -1348,6 +1353,19 @@ function createFunctionValue(name, gameData) {
 
 function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChange, onClose }) {
 	const [query, setQuery] = useState('');
+	const menuRef = useRef(null);
+	const [portalPosition, setPortalPosition] = useState(null);
+	useEffect(() => {
+		const parent = menuRef.current?.parentElement;
+		if (!parent || typeof window === 'undefined') return;
+		const rect = parent.getBoundingClientRect();
+		const width = Math.min(360, Math.max(240, window.innerWidth - 16));
+		const height = Math.min(340, Math.max(160, window.innerHeight - 16));
+		const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+		const below = window.innerHeight - rect.bottom;
+		const top = below >= Math.min(height, 200) ? Math.min(rect.bottom + 4, window.innerHeight - height - 8) : Math.max(8, rect.top - height - 4);
+		setPortalPosition({ left, top, width, maxHeight: height });
+	}, []);
 	const q = query.trim().toLowerCase();
 	const expected = String(expectedKind || 'valueExpr');
 	const variableNames = Object.keys(gameData?.data?.variables || {}).sort();
@@ -1370,7 +1388,7 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	const generalFunctions = generalFunctionEntries.filter((entry) => !q || functionDisplayName(entry.name).toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
 	const quickGroups = SCRIPT_VALUE_GROUPS.map((group) => ({ ...group, functions: group.functions.filter((name) => matches(name)) })).filter((group) => group.functions.length);
 	const otherFunctions = functionVocabulary.filter((entry) => !generalFunctionNames.has(entry.name) && !SCRIPT_VALUE_GROUPS.some((g) => g.functions.includes(entry.name)) && matches(entry.name)).slice(0, 80);
-	return <div className="absolute z-[80] left-0 top-full mt-1 w-[360px] max-h-[340px] overflow-hidden bg-[#20272e] border border-[#48596a] rounded-lg shadow-2xl">
+	const menu = <div ref={menuRef} style={portalPosition ? { position: 'fixed', zIndex: 2147483000, left: portalPosition.left, top: portalPosition.top, width: portalPosition.width, maxHeight: portalPosition.maxHeight } : undefined} className={portalPosition ? 'overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-lg shadow-2xl' : 'absolute z-[80] left-0 top-full mt-1 w-[360px] max-h-[340px] overflow-hidden bg-[#20272e] border border-[#48596a] rounded-lg shadow-2xl'}>
 		<div className="p-2 border-b border-[#3d4a57]">
 			<div className="flex items-center gap-2"><Search size={13} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="What value do you want?" className="flex-1 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none" /><button type="button" onClick={onClose} className="text-[#637588] hover:text-[#c5ccd3]"><X size={13} /></button></div>
 		</div>
@@ -1382,6 +1400,8 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 			{!generalFunctions.length && !quickGroups.length && !otherFunctions.length && expected !== 'variable' && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values.</div>}
 		</div>
 	</div>;
+	return portalPosition && typeof document !== 'undefined' ? createPortal(menu, document.body) : menu;
+	return portalPosition && typeof document !== 'undefined' ? createPortal(menu, document.body) : menu;
 }
 
 function JsonTreeEditor({ value, onChange, pathLabel = 'value', depth = 0 }) {
@@ -1546,6 +1566,9 @@ function entityVariableReferenceOptions(gameData) {
 function ScriptEntityVariableField({ value, gameData, onChange }) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState('');
+	const [menuPosition, setMenuPosition] = useState(null);
+	const triggerRef = useRef(null);
+	const toggleMenu = () => { const rect = triggerRef.current?.getBoundingClientRect(); if (rect) { const width = Math.min(320, Math.max(240, window.innerWidth - 16)); const height = Math.min(384, Math.max(180, window.innerHeight - 24)); const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)); const top = window.innerHeight - rect.bottom >= Math.min(height, 260) ? Math.min(rect.bottom + 4, window.innerHeight - height - 8) : Math.max(8, rect.top - height - 4); setMenuPosition({ left, top, width, maxHeight: height }); } setOpen(v => !v); };
 	const options = entityVariableReferenceOptions(gameData);
 	const selectedId = typeof value === 'object' && value?.key ? value.key : (typeof value === 'string' ? value : '');
 	const selected = options.find((o) => o.id === selectedId);
@@ -1557,14 +1580,14 @@ function ScriptEntityVariableField({ value, gameData, onChange }) {
 	};
 	if (value && typeof value === 'object' && value.function && value.function !== 'getEntityVariable') return <ScriptExpressionInput value={value} gameData={gameData} expectedKind="entityVariable" onChange={onChange} />;
 	return <div className="relative min-w-0">
-		<button type="button" onClick={() => setOpen(v => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selected?.name || 'Choose entity variable...'}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
-		{open && <div className="absolute z-[95] left-0 top-full mt-1 w-80 max-h-96 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
+		<button ref={triggerRef} type="button" onClick={toggleMenu} aria-expanded={open} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selected?.name || 'Choose entity variable...'}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button>
+		{open && menuPosition && typeof document !== 'undefined' && createPortal(<div style={{ position: 'fixed', zIndex: 2147483000, left: menuPosition.left, top: menuPosition.top, width: menuPosition.width, maxHeight: menuPosition.maxHeight }} className="overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search entity variables..." className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div className="max-h-80 overflow-y-auto p-1">
 				{filtered.map(o => <button key={o.id} type="button" onClick={() => choose(o)} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d48]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588] font-mono">{o.id} · {o.dataType}</div></button>)}
 				{!filtered.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching entity variables.</div>}
 			</div>
-		</div>}
+		</div>, document.body)}
 	</div>;
 }
 
@@ -1656,6 +1679,9 @@ function variableReferenceOptions(dataType, gameData) {
 function ScriptTypedReferenceField({ kind, value, gameData, onChange }) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState('');
+	const [menuPosition, setMenuPosition] = useState(null);
+	const triggerRef = useRef(null);
+	const toggleMenu = () => { const rect = triggerRef.current?.getBoundingClientRect(); if (rect) { const width = Math.min(320, Math.max(240, window.innerWidth - 16)); const height = Math.min(384, Math.max(180, window.innerHeight - 24)); const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)); const top = window.innerHeight - rect.bottom >= Math.min(height, 260) ? Math.min(rect.bottom + 4, window.innerHeight - height - 8) : Math.max(8, rect.top - height - 4); setMenuPosition({ left, top, width, maxHeight: height }); } setOpen(v => !v); };
 	const config = {
 		unitTypeRef: { idKind: 'unitTypeId', label: 'Unit type', plural: 'Unit types', selected: 'selectedUnitType', dataType: 'unitType' },
 		itemTypeRef: { idKind: 'itemTypeId', label: 'Item type', plural: 'Item types', selected: 'selectedItemType', dataType: 'itemType' },
@@ -1686,8 +1712,8 @@ function ScriptTypedReferenceField({ kind, value, gameData, onChange }) {
 	const filteredDerived = derivedRuntimeOptions.filter(([id,label]) => matches(label,id));
 	const choose = (next) => { setOpen(false); setQuery(''); onChange(next); };
 	return <div className="relative min-w-0">
-		<button type="button" onClick={() => setOpen(v => !v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selected}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button><ScriptCompatibleFunctionPicker kind={kind} value={value} gameData={gameData} onChange={onChange} />
-		{open && <div className="absolute z-[95] left-0 top-full mt-1 w-80 max-h-96 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
+		<button ref={triggerRef} type="button" onClick={toggleMenu} aria-expanded={open} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee] hover:bg-[#323d48]"><span className="truncate">{selected}</span><ChevronDown size={11} className="shrink-0 text-[#8291a1]" /></button><ScriptCompatibleFunctionPicker kind={kind} value={value} gameData={gameData} onChange={onChange} />
+		{open && menuPosition && typeof document !== 'undefined' && createPortal(<div style={{ position: 'fixed', zIndex: 2147483000, left: menuPosition.left, top: menuPosition.top, width: menuPosition.width, maxHeight: menuPosition.maxHeight }} className="overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-md shadow-2xl">
 			<div className="p-2 border-b border-[#3d4a57]"><div className="relative"><Search size={12} className="absolute left-2 top-2.5 text-[#637588]" /><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder={`Search ${config.label.toLowerCase()}...`} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-7 py-1.5 text-xs outline-none" /></div></div>
 			<div className="max-h-80 overflow-y-auto p-1">
 				<ScriptCompatibleFunctionList kind={kind} value={value} gameData={gameData} onChange={(next) => { onChange(next); setOpen(false); setQuery(''); }} />
@@ -1709,7 +1735,7 @@ function ScriptTypedReferenceField({ kind, value, gameData, onChange }) {
 				</>}
 				{!filteredStatic.length && !filteredVariables.length && !filteredDerived.length && !filteredRuntime.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching values.</div>}
 			</div>
-		</div>}
+		</div>, document.body)}
 	</div>;
 }
 
@@ -1783,6 +1809,9 @@ function ScriptCompatibleFunctionList({ kind, value, gameData, onChange, closeAf
 function ScriptGroupReferenceField({ kind, value, gameData, onChange }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [menuPosition, setMenuPosition] = useState(null);
+  const triggerRef = useRef(null);
+  const toggleMenu = () => { const rect = triggerRef.current?.getBoundingClientRect(); if (rect) { const width = Math.min(320, Math.max(240, window.innerWidth - 16)); const height = Math.min(384, Math.max(180, window.innerHeight - 24)); const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)); const top = window.innerHeight - rect.bottom >= Math.min(height, 260) ? Math.min(rect.bottom + 4, window.innerHeight - height - 8) : Math.max(8, rect.top - height - 4); setMenuPosition({ left, top, width, maxHeight: height }); } setOpen(v => !v); };
   const dataType = { unitGroupRef:'unitGroup', itemGroupRef:'itemGroup', unitTypeGroupRef:'unitTypeGroup', itemTypeGroupRef:'itemTypeGroup', playerGroupRef:'playerGroup', regionGroupRef:'regionGroup' }[kind];
   const label = { unitGroupRef:'Unit group', itemGroupRef:'Item group', unitTypeGroupRef:'Unit type group', itemTypeGroupRef:'Item type group', playerGroupRef:'Player group', regionGroupRef:'Region group', entityGroupRef:'Entity group', projectileGroupRef:'Projectile group' }[kind] || readableType(kind);
   const options = dataType ? variableReferenceOptions(dataType, gameData) : [];
@@ -1795,15 +1824,15 @@ function ScriptGroupReferenceField({ kind, value, gameData, onChange }) {
   const filteredFunctions = functionOptions.filter((entry) => !q || functionDisplayName(entry.name).toLowerCase().includes(q) || entry.name.toLowerCase().includes(q));
   const choose = (next) => { onChange(next); setOpen(false); setQuery(''); };
   return <div className="relative min-w-0 flex items-center gap-1">
-    <button type="button" onClick={() => setOpen(v=>!v)} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee]"><span className="truncate">{selectedLabel}</span><ChevronDown size={11}/></button>
-    {open && <div className="absolute z-[110] left-0 top-full mt-1 w-80 max-h-96 overflow-hidden bg-[#20272e] border border-[#48596a] rounded-md shadow-2xl">
+    <button ref={triggerRef} type="button" onClick={toggleMenu} aria-expanded={open} className="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded border border-[#48596a] bg-[#262e36] text-xs text-[#9fc8ee]"><span className="truncate">{selectedLabel}</span><ChevronDown size={11}/></button>
+    {open && menuPosition && typeof document !== 'undefined' && createPortal(<div style={{ position: 'fixed', zIndex: 2147483000, left: menuPosition.left, top: menuPosition.top, width: menuPosition.width, maxHeight: menuPosition.maxHeight }} className="overflow-hidden bg-[#20272e] border border-[#85B7EB] rounded-md shadow-2xl">
       <div className="p-2 border-b border-[#3d4a57]"><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder={`Search ${label.toLowerCase()} or functions...`} className="w-full bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1.5 text-xs outline-none"/></div>
       <div className="max-h-80 overflow-y-auto p-1">
         {filteredFunctions.length > 0 && <><div className="px-2 pt-1 pb-1 text-[10px] uppercase tracking-wide text-[#AFA9EC]">Functions & expressions</div>{filteredFunctions.map(entry => <button key={`fn-${entry.name}`} type="button" onClick={()=>choose(createFunctionValue(entry.name, gameData))} className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47] flex items-center justify-between gap-2 ${value?.function === entry.name ? 'bg-[#303b47]' : ''}`}><span className="text-xs text-[#c5ccd3]">{functionDisplayName(entry.name)}</span><span className="text-[9px] text-[#637588] font-mono">{(entry.schema || []).length ? 'has options' : ''}</span></button>)}</>}
         {filtered.map(o=><button key={o.id} type="button" onClick={()=>choose({function:'getVariable',variableName:o.id})} className="w-full text-left px-2 py-1.5 rounded hover:bg-[#323d47]"><div className="text-xs text-[#c5ccd3]">{o.name}</div><div className="text-[9px] text-[#637588]">{o.id}</div></button>)}
         {!filtered.length && !filteredFunctions.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching groups or functions.</div>}
       </div>
-    </div>}
+    </div>, document.body)}
   </div>;
 }
 function ScriptRuntimeReferenceField({ kind, value, gameData, onChange }) {
@@ -1966,6 +1995,8 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKi
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [activeField, setActiveField] = useState(null);
 	const current = getFunctionEntry(gameData, value?.function);
+	// Always normalize and render typed argument selectors. Hiding these behind an
+	// advanced toggle made values such as getOwner.entity appear uneditable.
 	const schema = normalizeScriptFunctionSchema(value?.function, current?.schema || []);
 	const extraKeys = Object.keys(value || {}).filter((k) => k !== 'function' && !schema.some((f) => f.key === k));
 	const fields = {
