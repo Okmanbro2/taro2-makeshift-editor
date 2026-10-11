@@ -1433,7 +1433,7 @@ function ScriptValuePicker({ value, expectedKind = 'valueExpr', gameData, onChan
 	const allowed = (entry) => {
 		if (!entry) return false;
 		if (expected === 'positionExpr') return SCRIPT_POSITION_FUNCTIONS.has(entry.name);
-		if (expected === 'boolean') return ['undefinedValue', 'getEntityAttribute', 'getPlayerAttribute', 'entityExists', 'isBotPlayer', 'isPlayerLoggedIn', 'playerIsControlledByHuman', 'playerIsCreator', 'playersAreFriendly', 'playersAreHostile', 'stringIsANumber'].includes(entry.name);
+		if (expected === 'boolean') return ['undefinedValue', 'getEntityAttribute', 'getPlayerAttribute', 'getValueOfEntityVariable', 'getValueOfPlayerVariable', 'entityExists', 'isBotPlayer', 'isPlayerLoggedIn', 'playerIsControlledByHuman', 'playerIsCreator', 'playersAreFriendly', 'playersAreHostile', 'stringIsANumber'].includes(entry.name);
 		if (expected === 'number' || expected === 'numberExpr') return !SCRIPT_STRING_FUNCTIONS.has(entry.name) && !['selectedUnit', 'selectedItem', 'selectedProjectile', 'selectedPlayer', 'selectedUnitType', 'selectedItemType', 'selectedRegion', 'numberToString', 'getPlayerName', 'getPlayerUsername', 'getItemTypeName', 'getEntityId', 'getPlayerId', 'concat', 'subString', 'substringOf'].includes(entry.name);
 		if (expected === 'string' || expected === 'stringExpr') return !SCRIPT_NUMBER_FUNCTIONS.has(entry.name) && !['stringToNumber', 'getMin', 'getMax', 'absoluteValueOfNumber', 'mathFloor', 'mathCeiling', 'getRandomNumberBetween', 'toRadians', 'cos', 'sin', 'tan', 'arctan', 'getExponent'].includes(entry.name);
 		return true;
@@ -1651,16 +1651,17 @@ function ScriptEntityVariableField({ value, gameData, onChange }) {
 	</div>;
 }
 
-function ScriptVariableField({ value, gameData, onChange }) {
+function ScriptVariableField({ value, gameData, onChange, dataTypeFilter = null }) {
 	const [query, setQuery] = useState('');
-	const variables = Object.keys(gameData?.data?.variables || {}).sort();
+	const allVariables = gameData?.data?.variables || {};
+	const variables = Object.keys(allVariables).filter((name) => !dataTypeFilter || String(allVariables[name]?.dataType || '').toLowerCase() === String(dataTypeFilter).toLowerCase()).sort();
 	const q = query.trim().toLowerCase();
-	const filtered = variables.filter((name) => !q || name.toLowerCase().includes(q));
+	const filtered = variables.filter((name) => !q || name.toLowerCase().includes(q) || String(allVariables[name]?.name || '').toLowerCase().includes(q));
 	return <div className="w-full rounded-md border border-[#3d4a57] bg-[#252d35] overflow-hidden">
-		<div className="p-1.5 border-b border-[#3d4a57] flex items-center gap-2"><Search size={12} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search variables..." className="flex-1 bg-[#20272e] border border-[#48596a] rounded px-2 py-1 text-xs outline-none" /></div>
+		<div className="p-1.5 border-b border-[#3d4a57] flex items-center gap-2"><Search size={12} className="text-[#637588]" /><input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={dataTypeFilter ? `Search ${dataTypeFilter} variables...` : 'Search variables...'} className="flex-1 bg-[#20272e] border border-[#48596a] rounded px-2 py-1 text-xs outline-none" /></div>
 		<div className="max-h-[180px] overflow-y-auto p-1">
-			{filtered.map((name) => <button key={name} type="button" onClick={() => onChange(name)} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] ${name === value ? 'bg-[#303b47]' : ''}`}>{name}</button>)}
-			{!filtered.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching variables.</div>}
+			{filtered.map((name) => <button key={name} type="button" onClick={() => onChange(name)} className={`w-full text-left px-2 py-1.5 rounded text-xs text-[#c5ccd3] hover:bg-[#323d48] ${name === value ? 'bg-[#303b47]' : ''}`}><span className="block">{allVariables[name]?.name || name}</span><span className="block text-[9px] text-[#637588] font-mono">{name} · {allVariables[name]?.dataType || 'unknown type'}</span></button>)}
+			{!filtered.length && <div className="px-2 py-4 text-xs text-[#637588] italic">No matching {dataTypeFilter ? `${dataTypeFilter} ` : ''}variables.</div>}
 		</div>
 	</div>;
 }
@@ -2100,11 +2101,11 @@ function ScriptFunctionEditor({ value, gameData, onChange, depth = 0, expectedKi
 		{pickerOpen && <ScriptValuePicker expectedKind={expectedKind} value={value} gameData={gameData} onChange={(next) => onChange(next)} onClose={() => setPickerOpen(false)} />}
 		{activeField && <div className="mt-1.5 rounded-md border border-[#3d4a57] bg-[#252d35] p-2">
 			<div className="flex items-center justify-between mb-1.5"><span className="text-[10px] uppercase tracking-wide text-[#637588]">Edit {readableType(activeField)}</span><button type="button" onClick={() => setActiveField(null)} className="text-[#637588] hover:text-[#c5ccd3]"><X size={12} /></button></div>
-			<ScriptFieldInput kind={schema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, value?.[activeField])} value={value?.[activeField]} gameData={gameData} onChange={(next) => { setField(activeField, next); }} />
+			{value?.function === 'getValueOfPlayerVariable' && activeField === 'variable' ? <ScriptVariableField value={value?.[activeField]} gameData={gameData} dataTypeFilter="player" onChange={(next) => setField(activeField, next)} /> : <ScriptFieldInput kind={schema.find((f) => f.key === activeField)?.kind || inferScriptFieldKind(activeField, value?.[activeField])} value={value?.[activeField]} gameData={gameData} onChange={(next) => { setField(activeField, next); }} />}
 		</div>}
 		{(schema.length > 0 || extraKeys.length > 0) && <div className="mt-1.5 ml-4 rounded-md border border-[#3d4a57] bg-[#252d35] p-2 space-y-2">
 			<div className="text-[10px] uppercase tracking-wide text-[#8291a1]">Choose arguments</div>
-			{schema.map((field) => <div key={field.key} className="flex items-start gap-2"><span className="text-[10px] text-[#c5ccd3] w-28 shrink-0 pt-1">{readableType(field.key)}</span><div className="min-w-0 flex-1"><ScriptFieldInput kind={field.kind} value={value?.[field.key]} gameData={gameData} onChange={(next) => setField(field.key, next)} /></div></div>)}
+			{schema.map((field) => <div key={field.key} className="flex items-start gap-2"><span className="text-[10px] text-[#c5ccd3] w-28 shrink-0 pt-1">{readableType(field.key)}</span><div className="min-w-0 flex-1">{value?.function === 'getValueOfPlayerVariable' && field.key === 'variable' ? <ScriptVariableField value={value?.[field.key]} gameData={gameData} dataTypeFilter="player" onChange={(next) => setField(field.key, next)} /> : <ScriptFieldInput kind={field.kind} value={value?.[field.key]} gameData={gameData} onChange={(next) => setField(field.key, next)} />}</div></div>)}
 			{extraKeys.map((key) => <div key={key} className="flex items-start gap-2"><span className="text-[10px] text-[#8291a1] w-28 shrink-0 pt-1">{readableType(key)}</span><div className="min-w-0 flex-1"><ScriptValueEditor value={value[key]} gameData={gameData} depth={depth + 1} onChange={(next) => setField(key, next)} /></div></div>)}
 		</div>}
 	</div>;
