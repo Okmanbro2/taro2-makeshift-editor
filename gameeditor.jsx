@@ -263,6 +263,20 @@ function readableType(str) {
 
 const CALC_OPERATORS = { '+': '+', '-': '-', '*': '×', '/': '÷' };
 
+function readableEditorValue(value) {
+	if (value === null) return 'null';
+	if (value === undefined) return '';
+	if (typeof value === 'string') return value;
+	if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+	if (Array.isArray(value)) return value.map((entry) => readableEditorValue(entry)).join(', ');
+	if (typeof value === 'object') {
+		if (typeof value.function === 'string') return describeValue(value);
+		if (typeof value.text === 'string') return value.text;
+		try { return JSON.stringify(value, null, 2); } catch (_) { return '[Object]'; }
+	}
+	return String(value);
+}
+
 function describeValue(val, gameData) {
 	if (val === null || val === undefined) return 'nothing';
 	if (typeof val === 'boolean') return val ? 'true' : 'false';
@@ -1248,6 +1262,11 @@ const SCRIPT_FUNCTION_FIELD_KIND_OVERRIDES = {
 };
 
 function scriptFunctionFieldKind(functionName, key, fallback = 'valueExpr') {
+	// stringToNumber consumes text; its legacy schema calls the argument `value`,
+	// which otherwise gets inferred as a numeric expression and is awkward to edit
+	if (functionName === 'stringToNumber' && key === 'value') return 'stringExpr';
+	if (functionName === 'getStringArrayElement' && key === 'number') return 'numberExpr';
+	if (functionName === 'getStringArrayElement' && key === 'string') return 'stringExpr';
 	if (functionName === 'allItemsOwnedByUnit' && key === 'entity') return 'entityRef';
 	if (functionName === 'allUnitsOwnedByPlayer' && key === 'player') return 'playerRef';
 	if (functionName === 'dynamicRegion' && ['x', 'y', 'width', 'height'].includes(key)) return 'numberExpr';
@@ -1362,13 +1381,13 @@ function functionDisplayName(name) {
 }
 
 function scriptFunctionSourceLabel(name) {
-	if (name === 'getOwner') return 'part of Owner Of';
-	if (name === 'getOwnerOfItem') return 'part of Owner Of item';
+	if (name === 'getOwner') return 'Owner Of';
+	if (name === 'getOwnerOfItem') return 'Owner Of Item';
 	if (SCRIPT_GENERAL_FUNCTIONS.includes(name)) return 'General';
 	const group = SCRIPT_VALUE_GROUPS.find((item) => item.functions.includes(name));
-	if (group) return `part of ${group.label}`;
+	if (group) return group.label;
 	for (const [kind, names] of Object.entries(SCRIPT_FUNCTIONS_BY_RESULT_KIND)) {
-		if (names.includes(name)) return `part of ${readableType(kind)}`;
+		if (names.includes(name)) return readableType(kind);
 	}
 	return 'Other';
 }
@@ -1469,7 +1488,7 @@ function JsonTreeEditor({ value, onChange, pathLabel = 'value', depth = 0 }) {
 	const isArray = Array.isArray(value);
 	const isObject = value && typeof value === 'object' && !isArray;
 	if (!isArray && !isObject) {
-		const text = value === null ? 'null' : String(value);
+		const text = readableEditorValue(value);
 		return <input value={text} onChange={(e) => { const raw=e.target.value; if (typeof value === 'number') onChange(raw === '' ? 0 : Number(raw)); else if (typeof value === 'boolean') onChange(raw === 'true'); else if (value === null) onChange(raw === 'null' ? null : raw); else onChange(raw); }} className="w-full min-w-0 bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-xs text-[#e1e6ea] focus:outline-none focus:border-[#1a56da]" />;
 	}
 	const entries = isArray ? value.map((v,i)=>[i,v]) : Object.entries(value);
@@ -1516,7 +1535,7 @@ function ScriptValueEditor({ value, gameData, onChange, depth = 0, expectedKind 
 	if (typedReferenceKinds.includes(expectedKind) && (value === null || value === undefined || (value && typeof value === 'object' && value.function === 'undefinedValue'))) return <ScriptFieldInput kind={expectedKind} value={value} gameData={gameData} onChange={onChange} />;
 	if (value && typeof value === 'object' && !Array.isArray(value) && typeof value.function === 'string') return <ScriptFunctionEditor value={value} gameData={gameData} depth={depth} expectedKind={expectedKind} onChange={onChange} />;
 	if (value === null) return <span className="text-xs text-[#8291a1] italic">nothing</span>;
-	if (expectedKind === 'string' || expectedKind === 'stringExpr') return <input type="text" value={typeof value === 'string' ? value : String(value ?? '')} onChange={(e) => onChange(e.target.value)} className="w-44 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" />;
+	if (expectedKind === 'string' || expectedKind === 'stringExpr') return <input type="text" value={typeof value === 'string' ? value : readableEditorValue(value)} onChange={(e) => onChange(e.target.value)} className="w-44 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" />;
 	if (expectedKind === 'number' || expectedKind === 'numberExpr') return <input type="number" value={typeof value === 'number' ? value : Number(value) || 0} onChange={(e) => onChange(Number(e.target.value))} className="w-24 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" />;
 	if (typeof value === 'boolean') return <select value={String(value)} onChange={(e) => onChange(e.target.value === 'true')} className="bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs"><option value="true">true</option><option value="false">false</option></select>;
 	if (typeof value === 'number') return <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-24 bg-[#262e36] border border-[#3d4a57] rounded px-1.5 py-0.5 text-xs" />;
@@ -1989,7 +2008,7 @@ const SCRIPT_FUNCTION_PHRASES = {
 	getValueOfPlayerVariable: (fields) => <>value of player variable <ScriptInlineFunctionField field="variable" fields={fields} /> for <ScriptInlineFunctionField field="player" fields={fields} /></>,
 	getPlayerVariable: (fields) => <>player variable <ScriptInlineFunctionField field="variable" fields={fields} /></>,
 	getValueOfEntityVariable: (fields) => <>value of entity variable <ScriptInlineFunctionField field="variable" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
-	getEntityVariable: (fields) => <>entity variable <ScriptInlineFunctionField field="variable" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
+	getEntityVariable: (fields) => <>entity variable <ScriptInlineFunctionField field="variable" fields={fields} /></>,
 	getItemAtSlot: (fields) => <>item at slot <ScriptInlineFunctionField field="slot" fields={fields} /> of <ScriptInlineFunctionField field="unit" fields={fields} /></>,
 	getEntityAttribute: (fields) => <>attribute <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="entity" fields={fields} /></>,
 	getPlayerAttribute: (fields) => <>attribute <ScriptInlineFunctionField field="attribute" fields={fields} /> of <ScriptInlineFunctionField field="player" fields={fields} /></>,
@@ -5908,6 +5927,11 @@ function confirmLeaveEntityEditor() {
 										<label className="block mt-3 text-xs text-[#aab7c4]">Recoil force</label>
 										<input type="number" value={draft.recoilForce ?? 0} onChange={(e) => updateDraftField('recoilForce', Number(e.target.value) || 0)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm" />
 										<div className="mt-1 text-xs text-[#637588]">Positive values push the unit using this item backward; negative values push it forward.</div>
+										<label className="block mt-3 text-xs text-[#8291a1] mb-1">Use tween</label>
+										<select value={draft.effects?.use?.tween ?? 'none'} onChange={(e) => updateDraftField('effects', { ...(draft.effects || {}), use: { ...(draft.effects?.use || {}), tween: e.target.value } })} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-xs text-[#e1e6ea]">
+											{['none','idle','recoil','wobble','swingCCW'].map((tween) => <option key={tween} value={tween}>{tween === 'swingCCW' ? 'Swing counter-clockwise' : tween.charAt(0).toUpperCase() + tween.slice(1)}</option>)}
+										</select>
+										<p className="mt-1 text-[10px] text-[#637588]">Options are drawn from tween values already used by this game's item, unit, and projectile effects.</p>
 									</div>
 									<div>
 										<label className="block text-xs text-[#8291a1] mb-1">Reload rate</label>
@@ -6322,7 +6346,10 @@ function confirmLeaveEntityEditor() {
 											<div><label className="block text-xs text-[#8291a1] mb-1">Type</label><select value={draft.bodies[selectedBodyName].type || 'dynamic'} onChange={(e) => updateBodyField('type', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="dynamic">dynamic - can be moved by any internal/external influences</option><option value="kinematic">kinematic - can only be moved by any internal/external influences</option><option value="static">static - can only be moved by 'move entity' action</option><option value="spriteOnly">sprite-only - can only be moved by 'set velocity' or 'move entity' actions</option></select></div>
 											<div><label className="block text-xs text-[#8291a1] mb-1">Z-index</label><div className="grid grid-cols-2 gap-2"><div><label className="block text-[10px] text-[#637588] mb-1">Layer</label><select value={draft.bodies[selectedBodyName]['z-index']?.layer ?? 3} onChange={(e) => updateBodyZIndex('layer',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"><option value="1">floor</option><option value="2">floor2</option><option value="3">debris</option><option value="4">walls</option><option value="5">trees</option></select></div><div><label className="block text-[10px] text-[#637588] mb-1">Depth</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.depth ?? 0} onChange={(e) => updateBodyZIndex('depth',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div></div><p className="text-[10px] text-[#637588] mt-1">Layer chooses the broad render group; Depth controls ordering within that layer. These labels are based on the layer usage already present in this game.</p>
 														<div className="mt-4 border-t border-[#3d4a57] pt-3">
-															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Attachment position</h4>
+															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Item / body preview (1:1)</h4>
+										<p className="text-[10px] text-[#8291a1] mb-2">Uses the same sprite sheet as the entity, cropped to the first frame. The preview uses the configured body dimensions in pixels.</p>
+										{(() => { const previewW = Math.max(1, Number(draft.bodies[selectedBodyName]?.width) || TILE_PX); const previewH = Math.max(1, Number(draft.bodies[selectedBodyName]?.height) || TILE_PX); const sheet = draft.cellSheet; const cols = Math.max(1, Number(sheet?.columnCount) || 1); const rows = Math.max(1, Number(sheet?.rowCount) || 1); const hasSprite = !!sheet?.url; const previewRot = Number(draft.bodies[selectedBodyName]?.itemAnchor?.rotation || 0); return <div className="w-full overflow-auto rounded border border-[#3d4a57] bg-[#11161b] p-3"><div className="relative flex items-center justify-center" style={{ minWidth: previewW + 24, minHeight: previewH + 24, width: previewW + 24, height: previewH + 24 }}>{hasSprite ? <div style={{ width: previewW, height: previewH, position: 'relative', overflow: 'hidden', transform: `rotate(${previewRot}deg)`, transformOrigin: 'center center' }}><img src={resolveAssetUrl(sheet.url)} alt="Item sprite preview" draggable={false} style={{ position: 'absolute', left: 0, top: 0, width: `${cols * 100}%`, height: `${rows * 100}%`, maxWidth: 'none', maxHeight: 'none', imageRendering: 'pixelated' }} /></div> : <div className="flex items-center justify-center border border-dashed border-[#637588] text-[10px] text-[#8291a1]" style={{ width: previewW, height: previewH }}>No sprite sheet</div>}</div><div className="mt-2 text-[10px] font-mono text-[#8291a1]">{previewW} × {previewH}px · item anchor rotation {previewRot}°</div></div>; })()}
+										<h4 className="text-xs font-medium text-[#c5ccd3] mb-2 mt-4">Attachment position</h4>
 															<div className="flex flex-wrap gap-2 mb-3">
 																{[['unitAnchor','Unit anchor'],['itemAnchor','Item anchor'],['holdPosition','Hold position']].map(([key,label]) => (
 																	<div key={key} className="min-w-[8rem] flex-1 rounded border border-[#3d4a57] p-2">
