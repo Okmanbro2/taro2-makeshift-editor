@@ -3103,6 +3103,7 @@ export default function GameContentEditor() {
 	const [scriptBodyError, setScriptBodyError] = useState('');
 	const [dialogueDraft, setDialogueDraft] = useState(null);
 	const [draft, setDraft] = useState(null);
+	const [previewHolderId, setPreviewHolderId] = useState('');
 	const [draftBaseline, setDraftBaseline] = useState(null);
 	const [advancedBaseline, setAdvancedBaseline] = useState('');
 	const baselineCaptureRef = useRef(false);
@@ -6346,9 +6347,48 @@ function confirmLeaveEntityEditor() {
 											<div><label className="block text-xs text-[#8291a1] mb-1">Type</label><select value={draft.bodies[selectedBodyName].type || 'dynamic'} onChange={(e) => updateBodyField('type', e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1.5 text-sm"><option value="dynamic">dynamic - can be moved by any internal/external influences</option><option value="kinematic">kinematic - can only be moved by any internal/external influences</option><option value="static">static - can only be moved by 'move entity' action</option><option value="spriteOnly">sprite-only - can only be moved by 'set velocity' or 'move entity' actions</option></select></div>
 											<div><label className="block text-xs text-[#8291a1] mb-1">Z-index</label><div className="grid grid-cols-2 gap-2"><div><label className="block text-[10px] text-[#637588] mb-1">Layer</label><select value={draft.bodies[selectedBodyName]['z-index']?.layer ?? 3} onChange={(e) => updateBodyZIndex('layer',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"><option value="1">floor</option><option value="2">floor2</option><option value="3">debris</option><option value="4">walls</option><option value="5">trees</option></select></div><div><label className="block text-[10px] text-[#637588] mb-1">Depth</label><input type="number" value={draft.bodies[selectedBodyName]['z-index']?.depth ?? 0} onChange={(e) => updateBodyZIndex('depth',e.target.value)} className="w-full bg-[#323d48] border border-[#3d4a57] rounded px-2 py-1 text-sm"/></div></div><p className="text-[10px] text-[#637588] mt-1">Layer chooses the broad render group; Depth controls ordering within that layer. These labels are based on the layer usage already present in this game.</p>
 														<div className="mt-4 border-t border-[#3d4a57] pt-3">
-															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">Item / body preview (1:1)</h4>
-										<p className="text-[10px] text-[#8291a1] mb-2">Uses the same sprite sheet as the entity, cropped to the first frame. The preview uses the configured body dimensions in pixels.</p>
-										{(() => { const previewW = Math.max(1, Number(draft.bodies[selectedBodyName]?.width) || TILE_PX); const previewH = Math.max(1, Number(draft.bodies[selectedBodyName]?.height) || TILE_PX); const sheet = draft.cellSheet; const cols = Math.max(1, Number(sheet?.columnCount) || 1); const rows = Math.max(1, Number(sheet?.rowCount) || 1); const hasSprite = !!sheet?.url; const previewRot = Number(draft.bodies[selectedBodyName]?.itemAnchor?.rotation || 0); return <div className="w-full overflow-auto rounded border border-[#3d4a57] bg-[#11161b] p-3"><div className="relative flex items-center justify-center" style={{ minWidth: previewW + 24, minHeight: previewH + 24, width: previewW + 24, height: previewH + 24 }}>{hasSprite ? <div style={{ width: previewW, height: previewH, position: 'relative', overflow: 'hidden', transform: `rotate(${previewRot}deg)`, transformOrigin: 'center center' }}><img src={resolveAssetUrl(sheet.url)} alt="Item sprite preview" draggable={false} style={{ position: 'absolute', left: 0, top: 0, width: `${cols * 100}%`, height: `${rows * 100}%`, maxWidth: 'none', maxHeight: 'none', imageRendering: 'pixelated' }} /></div> : <div className="flex items-center justify-center border border-dashed border-[#637588] text-[10px] text-[#8291a1]" style={{ width: previewW, height: previewH }}>No sprite sheet</div>}</div><div className="mt-2 text-[10px] font-mono text-[#8291a1]">{previewW} × {previewH}px · item anchor rotation {previewRot}°</div></div>; })()}
+															<h4 className="text-xs font-medium text-[#c5ccd3] mb-2">In-game preview</h4>
+										{(() => {
+											const body = draft.bodies[selectedBodyName] || {};
+											const itemW = Math.max(1, Number(body.width) || TILE_PX);
+											const itemH = Math.max(1, Number(body.height) || TILE_PX);
+											const itemSheet = draft.cellSheet || {};
+											const itemCols = Math.max(1, Number(itemSheet.columnCount) || 1);
+											const itemRows = Math.max(1, Number(itemSheet.rowCount) || 1);
+											const isItem = activeTab === 'itemTypes';
+											const unitEntries = Object.entries(gameData?.data?.unitTypes || {}).filter(([,u]) => u && u.cellSheet?.url);
+											const holderId = previewHolderId && gameData?.data?.unitTypes?.[previewHolderId] ? previewHolderId : (unitEntries[0]?.[0] || '');
+											const holder = gameData?.data?.unitTypes?.[holderId] || {};
+											const holderBody = holder.bodies?.default || Object.values(holder.bodies || {})[0] || {};
+											const holderW = Math.max(1, Number(holderBody.width) || TILE_PX);
+											const holderH = Math.max(1, Number(holderBody.height) || TILE_PX);
+											const holderSheet = holder.cellSheet || {};
+											const holderCols = Math.max(1, Number(holderSheet.columnCount) || 1);
+											const holderRows = Math.max(1, Number(holderSheet.rowCount) || 1);
+											const unitAnchor = body.unitAnchor || {};
+											const itemAnchor = body.itemAnchor || {};
+											const deg = Math.PI / 180;
+											const holderAngle = 0;
+											const ux = Number(unitAnchor.x) || 0, uy = Number(unitAnchor.y) || 0;
+											const ax = Number(itemAnchor.x) || 0, ay = Number(itemAnchor.y) || 0;
+											const anchorRot = (Number(unitAnchor.rotation) || 0) * deg;
+											const unitOffsetX = ux * Math.cos(holderAngle) + uy * Math.sin(holderAngle);
+											const unitOffsetY = ux * Math.sin(holderAngle) - uy * Math.cos(holderAngle);
+											const itemOffsetX = ax * Math.cos(anchorRot) + ay * Math.sin(anchorRot);
+											const itemOffsetY = ax * Math.sin(anchorRot) - ay * Math.cos(anchorRot);
+											const itemLeft = holderW / 2 + unitOffsetX + itemOffsetX - itemW / 2;
+											const itemTop = holderH / 2 - unitOffsetY - itemOffsetY - itemH / 2;
+											const previewW = Math.max(holderW, itemW + Math.abs(unitOffsetX + itemOffsetX) * 2) + 24;
+											const previewH = Math.max(holderH, itemH + Math.abs(unitOffsetY + itemOffsetY) * 2) + 24;
+											const shiftX = (previewW - holderW) / 2;
+											const shiftY = (previewH - holderH) / 2;
+											const spriteStyle = (url, w, h, cols, rows) => ({ width: w, height: h, flex: '0 0 auto', backgroundImage: url ? `url("${resolveAssetUrl(url)}")` : 'none', backgroundRepeat: 'no-repeat', backgroundPosition: '0 0', backgroundSize: `${w * cols}px ${h * rows}px`, imageRendering: 'pixelated' });
+											return <div className="w-full overflow-auto rounded border border-[#3d4a57] bg-[#11161b] p-3"><div className="relative mx-auto" style={{ width: previewW, height: previewH, minWidth: previewW, minHeight: previewH }}>
+												{isItem && holderSheet.url ? <div title={holder.name || holderId} style={{ position: 'absolute', left: shiftX + 12, top: shiftY + 12, ...spriteStyle(holderSheet.url, holderW, holderH, holderCols, holderRows) }} /> : null}
+												{itemSheet.url ? <div title={draft.name || 'Edited entity'} style={{ position: 'absolute', left: (isItem ? shiftX + 12 + itemLeft : (previewW - itemW) / 2), top: (isItem ? shiftY + 12 + itemTop : (previewH - itemH) / 2), transform: `rotate(${Number(unitAnchor.rotation) || 0}deg)`, transformOrigin: 'center center', ...spriteStyle(itemSheet.url, itemW, itemH, itemCols, itemRows) }} /> : <div className="absolute inset-0 flex items-center justify-center text-[10px] text-[#8291a1]">No sprite sheet</div>}
+											</div>
+											{isItem ? <div className="mt-2 flex flex-wrap items-center gap-2"><label className="text-[10px] text-[#8291a1]">Preview holder<select value={holderId} onChange={(e) => setPreviewHolderId(e.target.value)} className="ml-2 max-w-[220px] bg-[#262e36] border border-[#3d4a57] rounded px-2 py-1 text-[10px] text-[#e1e6ea]">{unitEntries.map(([id,u]) => <option key={id} value={id}>{u.name || id}</option>)}</select></label><span className="text-[10px] font-mono text-[#8291a1]">{holderW} × {holderH}px + item {itemW} × {itemH}px</span></div> : <div className="mt-2 text-[10px] font-mono text-[#8291a1]">{itemW} × {itemH}px</div>}</div>;
+										})()}
 										<h4 className="text-xs font-medium text-[#c5ccd3] mb-2 mt-4">Attachment position</h4>
 															<div className="flex flex-wrap gap-2 mb-3">
 																{[['unitAnchor','Unit anchor'],['itemAnchor','Item anchor'],['holdPosition','Hold position']].map(([key,label]) => (
